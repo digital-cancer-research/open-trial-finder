@@ -1,0 +1,1080 @@
+---
+title: "Data refresh for Trial Match API"
+author: "digital ECMT"
+date: "4/8/2020"
+output: html_document
+
+---
+
+```{r setup, include=FALSE, warning=FALSE, message=FALSE, results=F} 
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+##NOTE: the following packages are required to run this script, but should be installed (e.g. using code snippets below) before runnning the script, NOT as part of the script itself
+
+# options(repos = "http://cran.us.r-project.org")
+# install.packages("BiocManager")
+# BiocManager::install("AnnotationDbi")
+# BiocManager::install("org.Hs.eg.db")
+
+require(RPostgreSQL)
+require(RODBC)
+require(formattable)
+require(org.Hs.eg.db)
+require(DBI)
+require(dplyr)
+require(tidyr)
+require(kableExtra)
+require(KEGGREST)
+require(stringr)
+require(stringi)
+require(splitstackshape)
+require(reshape2)
+require(tictoc)
+require(maps)
+require(leaflet)
+require(PostcodesioR)
+require(rjson)
+
+##get today's date
+today <- format(Sys.Date(), format = "%d %B %Y")
+
+```
+
+**Date of data refresh: `r today`**  
+  
+  
+  
+```{r connect to clinicaltrialsgov}  
+## specify user name and password for AACT account
+## see https://aact.ctti-clinicaltrials.org/ for how to create an account
+
+## load configuration data from JSON file
+configuration <- fromJSON(file = "trialMatchConfiguration.json")
+aact.username <- configuration$aact.username
+aact.password <- configuration$aact.password
+
+drv <- dbDriver("PostgreSQL")
+conn2 <- dbConnect(drv, dbname="aact",host="aact-db.ctti-clinicaltrials.org", port=5432, user=aact.username, password=aact.password )
+```
+   
+### **Specify mappings between cancer types and synonyms based on csv file**  
+  
+Mappings between synonyms (cancer types specified in clinicaltrials.gov condition.name field) and controlled cancer types are specified by the file conditionSynonyms4.csv. The following mappings between have been used:  
+  
+  
+```{r read conditionSynonyms table}
+## conditionSynonyms specifies which cancer types are of interest, and which condition names (as used by clinicaltrials.gov) will be considered as matches for each
+
+## synonyms define on basis of those in clinicaltrials.gov
+conditionSynonyms <- read.csv(file = "conditionSynonyms4.csv", stringsAsFactors = FALSE)
+
+## remove redundancy, if any
+conditionSynonyms <- unique(conditionSynonyms)
+
+## display conditions and synonyms used
+formattable(as.data.frame(conditionSynonyms %>% 
+                  group_by(controlled.cancer.type) %>%
+                  summarise(
+                  synonyms = paste(condition.synonyms, collapse = ", "))))
+```
+  
+  
+### **Index studies on cancer type**  
+ 
+```{r get study data}
+
+## get country name specified in configuration file
+country <- configuration$country
+## get interventional studies for country specified in configuration file
+## any indication
+## with sites in specified country that have a status of "Recruiting" or "Not yet recruiting"
+
+# form query
+openStudiesQ <- paste0("SELECT s.nct_id, s.brief_title, s.overall_status, c.name AS condition, i.name AS interventions, 
+f.city AS locations, f.zip AS postcode, f.status AS site_status,
+fi.name as investigators,
+fc.email AS contacts
+FROM studies s
+INNER JOIN facilities f ON f.nct_id = s.nct_id
+INNER JOIN conditions c ON c.nct_id = s.nct_id
+INNER JOIN interventions i ON i.nct_id = s.nct_id
+LEFT JOIN facility_contacts fc ON f.id = fc.facility_id
+LEFT JOIN facility_investigators fi ON f.id=fi.facility_id
+WHERE f.country LIKE ('",
+country,
+"')
+  AND s.study_type LIKE ('Interventional')
+  AND s.overall_status IN ('Recruiting')
+  AND f.status IN ('Recruiting', 'Not yet recruiting')")
+
+
+## get data from clinicaltrials.gov
+openStudies <- dbGetQuery(conn2,openStudiesQ)
+
+## add a column to indicate refresh date
+openStudies$Refresh.date <- today
+
+```
+
+```{r loop through synonyms and look for matches against condition name}
+## add a column to hold matching condition
+openStudies$matching.condition <- NA
+openStudies$TARGET.condition <- NA
+
+## create an empty version to which matching rows will be added after looping through condition synonyms
+cancerStudies <- openStudies[0, ]
+
+# loop through condition synonyms
+for(i in 1:nrow(conditionSynonyms)) {
+  synonym <- as.character(conditionSynonyms$condition.synonyms[i])
+  targetCondition <- as.character(conditionSynonyms$controlled.cancer.type[i])
+  ## look for a match in condition name
+  matching.rows <- grep(pattern = synonym, x=openStudies$condition, ignore.case = TRUE)
+  ## create a temporary data frame to hold matches
+  temp <- openStudies[matching.rows, ]
+  if(nrow(temp)>0) {
+    temp$matching.condition <- synonym
+  temp$TARGET.condition <- targetCondition
+  cancerStudies <- rbind(cancerStudies, temp)
+  }
+}
+
+## overwrite openStudies with openStudies2
+#openStudies <- openStudies2
+## delete copy of openStudies to save memory
+rm(openStudies)
+
+## remove redundant rows, if any
+cancerStudies <- unique(cancerStudies)
+
+## add a column to hold link
+cancerStudies$Link <- paste0("https://clinicaltrials.gov/ct2/show/", cancerStudies$nct_id)
+
+```
+
+```{r get latitude and longitude values for sites based on postcode}
+## get lat and long for UK cities
+## use postcodes where available
+locations <- unique(dplyr::select(cancerStudies, postcode))
+locations$latitude <- NA
+locations$longitude <- NA
+
+for(i in 1:nrow(locations)) {
+  postcode <- locations$postcode[i]
+  tryCatch({
+            lat = postcode_lookup(postcode)$latitude
+            locations$latitude[i] <- lat 
+            long = postcode_lookup(postcode)$longitude
+            locations$longitude[i] <- long
+            }, error=function(cond) {return(NA)})
+}
+
+## join to cancerStudies table
+cancerStudies <- merge(x=cancerStudies, by.x="postcode", all.x=TRUE, y =locations, by.y ="postcode")
+```
+
+
+```{r fill missing lat long values based on city name}
+
+
+## try and fill any missing values based on city name
+# remove any commas and anything after a comma
+cancerStudies$locations <- gsub(pattern = ",.*", replacement = "", x=cancerStudies$locations)
+# get names of cities that are still missing latitude (and longitude) values
+data("world.cities")
+
+
+## get country specified in configuration file
+## accepted values are: 
+# Afghanistan, Albania, Algeria, American Samoa, Andorra, Angola, Anguilla, Antigua and Barbuda, Argentina, Armenia, Aruba, Australia, Austria, Azerbaijan, Azores, Bahamas, Bahrain, Bangladesh, Barbados, Belarus, Belgium, Belize, Benin, Bermuda, Bhutan, Bolivia, Bosnia and Herzegovina, Botswana, Brazil, British Virgin Islands, Brunei, Bulgaria, Burkina Faso, Burundi, Cambodia, Cameroon, Canada, Canary Islands, Cape Verde, Cayman Islands, Central African Republic, Chad, Chile, China, Colombia, Comoros, Congo, Congo Democratic Republic, Cook Islands, Costa Rica, Croatia, Cuba, Cyprus, Czech Republic, Denmark, Djibouti, Dominica, Dominican Republic, East Timor, Easter Island, Ecuador, Egypt, El Salvador, Equatorial Guinea, Eritrea, Estonia, Ethiopia, Falkland Islands, Faroe Islands, Fiji, Finland, France, French Guiana, French Polynesia, Gabon, Gambia, Georgia, Germany, Ghana, Gibraltar, Greece, Greenland, Grenada, Guadeloupe, Guam, Guatemala, Guernsey and Alderney, Guinea, Guinea-Bissau, Guyana, Haiti, Honduras, Hungary, Iceland, India, Indonesia, Iran, Iraq, Ireland, Isle of Man, Israel, Italy, Ivory Coast, Jamaica, Japan, Jersey, Jordan, Kazakhstan, Kenya, Kiribati, Korea North, Korea South, Kuwait, Kyrgyzstan, Laos, Latvia, Lebanon, Lesotho, Liberia, Libya, Liechtenstein, Lithuania, Luxembourg, Macedonia, Madagascar, Madeira, Madiera, Malawi, Malaysia, Maldives, Mali, Malta, Marshall Islands, Martinique, Mauritania, Mauritius, Mayotte, Mexico, Micronesia, Moldova, Monaco, Mongolia, Montserrat, Morocco, Mozambique, Myanmar, Namibia, Nauru, Nepal, Netherlands, Netherlands Antilles, New Caledonia, New Zealand, Nicaragua, Niger, Nigeria, Niue, Norfolk Island, Northern Mariana Islands, Norway, Oman, Pakistan, Palau, Palestine, Panama, Papua New Guinea, Paraguay, Peru, Philippines, Pitcairn, Poland, Portugal, Puerto Rico, Qatar, Reunion, Romania, Russia, Rwanda, Saint-Barthelemy, Saint-Martin, Saint Helena, Saint Kitts and Nevis, Saint Lucia, Saint Pierre and Miquelon, Saint Vincent and The Grenadines, Samoa, San Marino, Sao Tome and Principe, Saudi Arabia, Senegal, Serbia and Montenegro, Seychelles, Sicily, Sierra Leone, Singapore, Slovakia, Slovenia, Solomon Islands, Somalia, South Africa, Spain, Sri Lanka, Sudan, Suriname, Svalbard and Jan Mayen, Swaziland, Sweden, Switzerland, Syria, Taiwan, Tajikistan, Tanzania, Thailand, Togo, Tokelau, Tonga, Trinidad and Tobago, Tunisia, Turkey, Turkmenistan, Turks and Caicos, Tuvalu, Uganda, UK, Ukraine, United Arab Emirates, Uruguay, US Virgin Islands, USA, Uzbekistan, Vanuatu, Vatican City, Venezuela, Vietnam, Wallis and Futuna, Western Sahara, Yemen, Zambia, Zimbabwe
+world.cities.country <- configuration$world.cities.country
+
+
+cities <- world.cities %>% filter(country.etc == world.cities.country)
+## join on study location == city name
+cancerStudies <- merge(x=cancerStudies, by.x="locations", all.x=TRUE, y=dplyr::select(cities, name, lat, long), by.y="name")
+## where latitude value from postcode lookup is missing, use the latitude from city name lookup
+cancerStudies$latitude[is.na(cancerStudies$latitude)] <- cancerStudies$lat[is.na(cancerStudies$latitude)]
+## do the same for longitude values
+cancerStudies$longitude[is.na(cancerStudies$longitude)] <- cancerStudies$long[is.na(cancerStudies$longitude)]
+
+## drop lat and long columns
+cancerStudies <- dplyr::select(cancerStudies, -c(lat, long))
+
+## rename latitude and longitude columns
+# use new_name = old_name syntax
+cancerStudies <- rename(cancerStudies, c("lat"="latitude" ,"long"="longitude"))
+
+```
+  
+### **Locations of all cancer study sites identified**  
+  
+
+There are currently **`r length(unique(cancerStudies$nct_id))`** cancer studies in clinicaltrials.gov with sites in the specified country that are open to recruitment or not yet recruiting.    
+  
+```{r print a map with study sites indicated}
+locations.cancer.studies <- unique(dplyr::select(cancerStudies, nct_id, lat, long))
+
+## zoomed and centred based on parameters in configuration file...
+leaflet() %>%
+    addProviderTiles(providers$OpenStreetMap.Mapnik) %>%
+    setView(lat = configuration$zoom.lat, 
+            lng = configuration$zoom.long, 
+            zoom = 6) %>%
+    addMarkers(lat = locations.cancer.studies$lat, 
+               lng = locations.cancer.studies$long, 
+               label = locations.cancer.studies$nct_id,
+               clusterOptions = markerClusterOptions())
+
+```
+  
+  
+```{r write cancerStudies table to file}
+
+## write to tab-separated file    
+write.table(cancerStudies, file = "cancerStudies.tsv", sep = "\t",
+            row.names = FALSE, col.names = names(cancerStudies))
+```
+  
+  
+Cancer studies table has been written to file (cancerStudies.tsv), first few lines are as follows:  
+  
+
+
+```{r preview cancerStudies table}
+#dim(cancerStudies)
+
+kable(head(cancerStudies)) %>%
+  kable_styling(bootstrap_options = "striped") %>%
+  kable_styling(fixed_thead = T)
+
+## save a list of study IDs matched on condition to use later
+studyIDs <- unique(cancerStudies$nct_id)
+
+```
+
+### **Index inclusion criteria for cancer studies on human gene name**
+  
+```{r get eligibility criteria for cancer studies}
+
+## form SQL query
+studyIDsForSQL <- paste0("\'",paste(studyIDs, collapse = "\',\'"), "\'")
+getEligibilities <- paste0("select e.nct_id, e.criteria 
+from eligibilities e
+where e.nct_id in (",
+"", studyIDsForSQL,
+")")
+
+## get criteria from clinicaltrials.gov
+eligibilities <- dbGetQuery(conn2,getEligibilities)
+
+```
+
+```{r retain individual eligibility criteria containing mutant pattern}
+
+## define a pattern of word stems to filter for mutation-related criteria
+#mutantPattern <- "mutat|mutant|positiv|defect|deficien|alter|loss"
+## (OPTIONAL) drop matches containing "positive" as these tend to be IHC, not mutation
+mutantPattern <- "mutat|mutant|defect|deficien|alter|loss"
+
+
+for(i in 1:length(eligibilities$criteria)) {
+  criteria <- as.character(eligibilities$criteria[i])
+  #criteria <- unlist(strsplit(criteria, split = "\n\n"))## split on double line breaks (DEPRECATED)
+  criteria <- unlist(strsplit(criteria, split = "\r\n\r\n"))## split on double newline/carriage return
+  criteria <- trimws(x=criteria, which = "both")## trim whitespace from start and end
+  criteria <- gsub(pattern = "\n", replacement = "", x= criteria)## remove single line breaks from each criterion
+  criteria <- str_squish(string = criteria) ## squish repeated spaces within each criterion
+
+  index <- grep(pattern = "^Exclusion|^Major exclusion criteria|^Main exclusion criteria|^Key Exclusion Criteria", x = criteria, ignore.case = TRUE)## get index of element that starts with "exclusion criteria" (case-insensitive)
+  if(length(index)>0) {criteria <- criteria[1:index[1]-1]}## remove all criteria from first index onwards
+  
+  mutantIndices <- grep(pattern = mutantPattern, x=criteria, ignore.case = TRUE)## get indices of criteria matching mutant pattern
+  criteria <- criteria[mutantIndices]## filter and retain only criteria matching mutantPattern
+  
+  if(length(criteria)>0) {eligibilities$criteria[i] <- I(list(criteria))} else {eligibilities$criteria[i] <- NA} ## reset value of criteria in eligibilities, call to I keeps it as a list
+     
+  }
+
+eligibilities <- eligibilities[!is.na(eligibilities$criteria),] ## remove rows where criteria is NA
+
+eligibilities <- unnest(eligibilities, criteria) ## criteria is a list, so unnest it so each element gets its own row
+
+## NOW eligibilities TABLE JUST CONTAINS INDIVIDUAL INCLUSION CRITERIA (1 CRITERION PER ROW) THAT INCLUDE THE MUTANT PATTERN SPECIFIED
+
+```
+  
+```{r split criteria into substrings based on word range}
+# first, add a new column that will hold the words within specified wordRange of specified mutantPattern
+eligibilities$substring <- NA
+wordRange <- 6
+
+## start timer
+tic("split criteria into substrings")
+
+for(i in 1:nrow(eligibilities)) {
+  criterion <- eligibilities$criteria[i]
+  ## split into words (on space) and store as a vector
+  criterion <- unlist(strsplit(criterion, split = " "))
+  ## get indices of match(es) against mutantPattern
+  indices <- grep(pattern = mutantPattern, x = criterion, ignore.case = TRUE)
+  ## specify start and end point(s) based on specified word range
+  starts <- indices - wordRange
+  ends <- indices + wordRange
+  range <- numeric(0)
+  for(j in 1:length(starts)) { ## because there may be more than one match
+    if(starts[j] <1) {starts[j] <- 1}
+    range <- append(range,starts[j]:ends[j])
+  } ## now range contains the indices of the words either side of the mutantPattern, within specified word range
+  range <- unique(range) ## if the ranges overlap, just get the unique elements
+  ## range is the indices of words within the criterion that are within the specified wordRange from mutantPattern... (i.e. the ones we want to keep)
+  ## subset the criterion retain only words within specified range
+  criterion <- criterion[range]
+  ## omit any NA values (i.e. where match is less than wordRange from end of sentence)
+  criterion <- criterion[!is.na(criterion)]
+  ## get alternative words as well (e.g. "BRCA2" from "BRCA1/2")
+  alternatives <- grep(pattern = "/", x=criterion, value = TRUE)
+  alternatives <- gsub(pattern = "./", replacement = "",x=alternatives)
+  
+  ## collapse into a string
+  criterion <- paste(c(criterion,alternatives), collapse = " ")
+  ## set the value of eligibilities$substring[i]
+  eligibilities$substring[i] <- criterion
+} ## stop looping through eligibilities table
+
+toc()
+```
+
+```{r split substrings into words}
+
+tic("split substrings into words")
+## add another column that will hold individual words from substring
+
+# second, split on space or slash or comma or parentheses
+eligibilities$words <- strsplit(x=eligibilities$substring, split = " |/|,|\\(|\\)")
+#eligibilities$words <- strsplit(x=eligibilities$substring, split = " ")
+# # third, unnest to multiply rows
+eligibilities <- unnest(data = eligibilities, cols = words) 
+# # finally, convert back to data frame
+eligibilities <- as.data.frame(eligibilities)
+
+toc()
+```
+  
+This code requires a list of all human genes and their synonyms, accessible from https://www.ncbi.nlm.nih.gov/gene  
+Once only, download and save as follows:  
+search Gene using the term (Homo sapiens) AND "Homo sapiens"[porgn:__txid9606]  
+download using Send to/File/Create File  
+save as flat text file called humanGenes.tsv  
+
+ 
+```{r download a list of all human genes and their synonyms}
+
+## start timer
+tic("download a list of all human genes and their synonyms")
+
+
+humanGenes <- read.table(file = "humanGenes.tsv", header = TRUE, quote = "", sep = "\t", fill = TRUE, stringsAsFactors = FALSE)
+
+humanGenes <- dplyr::select(humanGenes, Symbol, Aliases)## drop everything except Symbol and Aliases columns
+
+
+humanGenes$Aliases <- strsplit(x=humanGenes$Aliases, split = ",")## split the aliases on comma 
+humanGenes <- unnest(data = humanGenes, cols = Aliases, keep_empty = TRUE) ## unnest to multiply rows, keep any rows with no aliases
+humanGenes <- as.data.frame(humanGenes) ## convert to data frame
+
+humanGenes$Aliases <- str_squish(string = humanGenes$Aliases) ## trim excess whitespace from Aliases values
+
+## Symbol values are not represented among Aliases
+# create a data frame with unique Symbol values
+symbols <- data.frame("Symbol"=unique(humanGenes$Symbol), "Aliases"=unique(humanGenes$Symbol))
+# bind this onto bottom of humanGenes data frame
+humanGenes <- rbind(humanGenes,symbols)
+# remove duplicated values, if any
+humanGenes <- unique(humanGenes)
+# sort on Symbol values
+humanGenes <- humanGenes[order(humanGenes$Symbol), ] 
+
+# drop any rows where Aliases is NA
+humanGenes <- humanGenes[!is.na(humanGenes$Aliases), ]
+
+## drop any rows where Aliases value is only a single character
+
+## NOW humanGenes TABLE CONTAINS ALL HUMAN GENES AND THEIR SYNONYMS
+## (61,593 unique symbols, 130,978 rows)
+
+## stop timer
+toc()
+```
+   
+```{r look for gene names among words in criteria}
+
+## %in% returns a logical vector indicating if there is a match or not for its left operand
+## i.e. it will indicate which gene aliases occur in any of the criteria
+# subset humanGenes, retain only those rows with a match between aliases and criteria
+humanGeneMatches <- humanGenes[humanGenes$Aliases %in% eligibilities$words, ]
+
+## drop any duplicated rows
+humanGeneMatches <- unique(humanGeneMatches)
+
+## drop any rows where Aliases value is a single character (e.g. PPIB, aka B)
+humanGeneMatches <- humanGeneMatches[nchar(humanGeneMatches$Aliases)>1, ]
+
+## drop any rows where the matching Alias is "not" (which is a synonym of ALG3 )
+humanGeneMatches <- humanGeneMatches[humanGeneMatches$Aliases != "not", ]
+
+## now we have a list of aliases (and their Entrez symbol) that occur within the specified range of the specified mutantPattern in inclusion criteria for open UK cancer studies
+
+## make a little table that will hold matches, will ultimately be joined to eligibilities on nct_id
+matchesTable <- data.frame(nct_id = character(0), 
+                           matching.substring = character(0),
+                           matching.alias = character(0), 
+                           matching.symbol = character(0))
+
+tic("loop through the list of aliases and match against criteria by grep")
+
+## loop through the list of aliases and match against criteria by grep
+for(i in 1:nrow(humanGeneMatches)) {
+  alias <- humanGeneMatches$Aliases[i]
+  symbol <- humanGeneMatches$Symbol[i]
+  ## get indices
+  indices <- grep(pattern = alias, x = eligibilities$substring, ignore.case = FALSE)
+  ## get NCT IDs
+  nct_ids <- eligibilities$nct_id[indices]
+  ## get matching substrings
+  matching.substring <- eligibilities$substring[indices]
+  matchesTable <- matchesTable %>% add_row(nct_id=nct_ids, matching.substring = matching.substring, matching.alias=alias, matching.symbol=symbol)
+  
+  ## now look for additional matches like "BRCA2" against "BRCA1/2"
+  more.indices <- grep(pattern = alias, x = gsub(pattern = "./", replacement = "",x=eligibilities$substring), ignore.case = FALSE)
+  if(length(more.indices)>0) {
+    ## get NCT IDs
+  more.nct_ids <- eligibilities$nct_id[more.indices]
+  ## get matching substrings
+  more.matching.substring <- eligibilities$substring[more.indices]
+  matchesTable <- matchesTable %>% add_row(nct_id=more.nct_ids, matching.substring = more.matching.substring, matching.alias=alias, matching.symbol=symbol)
+  }
+}
+
+toc()
+
+matchesTable <- unique(matchesTable)
+```
+
+
+```{r join matching genes table to table of eligibilities}
+## join matchesTable to eligibilities
+eligibilities <- merge(x=eligibilities, y=matchesTable, by.x = c("nct_id", "substring"), by.y=c("nct_id", "matching.substring"))
+
+## select columns of interest
+eligibilities <- dplyr::select(eligibilities, nct_id, criteria, matching.alias, matching.symbol)
+
+## remove duplicated rows
+eligibilities <- unique(eligibilities)
+
+
+## for reference, store todays's date, mutantPattern and wordRange
+eligibilities$refresh.date <- today
+eligibilities$mutantPattern <- mutantPattern
+eligibilities$wordRange <- wordRange
+
+```
+
+```{r join eligibilities table to cancerStudies}
+## inner join to NLPcriteria table
+manualNLPmatches <- merge(x=cancerStudies, y=eligibilities, by.x="nct_id", by.y="nct_id")
+
+## remove any redundant rows
+manualNLPmatches <- unique(manualNLPmatches)
+
+## remove any rows where matching.alias is only 1 character (e.g. 1 is an alias of ST3GAL1)
+manualNLPmatches <- manualNLPmatches[nchar(as.character(manualNLPmatches$matching.alias)) >1,  ]
+
+```
+
+```{r write manual NLP matches to file}
+#dim(manualNLPmatches)
+
+## for efficiency, just select unique features (get the rest from a join to cancerStudies)
+manualNLPmatches <- unique(dplyr::select(manualNLPmatches, nct_id, criteria, matching.alias, matching.symbol, mutantPattern, wordRange))
+
+#dim(manualNLPmatches)
+
+
+
+write.table(manualNLPmatches, file = "manualNLPmatches.tsv", sep = "\t",
+            row.names = FALSE, col.names = names(manualNLPmatches))
+```
+  
+Inclusion criteria for specified cancer studies have been indexed on gene name (Entrez symbol) and written to file (manualNLPmatches.tsv). First few lines are as follows:  
+  
+```{r preview manualNLPmatches table}
+
+## preview table
+kable(head(manualNLPmatches)) %>%
+  kable_styling(bootstrap_options = "striped") %>%
+  kable_styling(fixed_thead = T)
+
+```
+
+  
+### **Tag trial interventions with their mechanism**  
+
+#### **Create NCIthesaurus table**  
+
+```{r download and create NCIthesaurus table}
+
+tic("download, parse and write NCI thesaurus to file")
+
+## specify URL for NCI thesaurus - this should always be the most recent? 
+NCItURL <- "https://evs.nci.nih.gov/ftp1/NCI_Thesaurus/Thesaurus.FLAT.zip"
+
+destFlatFilename <- "NCIt_FLAT.zip"
+download.file(url=NCItURL,destfile = destFlatFilename)
+unzip(zipfile = paste0(getwd(),"/",destFlatFilename))
+
+NCIt <- read.table("Thesaurus.txt",header = FALSE, sep = "\t", comment.char = "", fill = TRUE, stringsAsFactors = FALSE, quote = "")
+names(NCIt) <- c("ID","URL","ParentID","Synonyms","Description","PreferredTerm","Type","Class")
+
+## a drug may have more than one class, so need to multiply rows
+## split and unnest the Class column of NCIt
+NCIt$Class <- strsplit(NCIt$Class, split = "\\|")
+NCIt <- unnest(data = NCIt, Class)
+
+## subset to retain only relevant classes
+NCItPharmacologics <- NCIt[which(NCIt$Class %in% c("Pharmacologic Substance","Amino Acid, Peptide, or Protein","Immunologic Factor")), ]
+
+## one drug can have more than one parent, so need to split into multiple rows...
+## split ParentID column on pipe symbol
+NCItPharmacologics$ParentID <- strsplit(NCItPharmacologics$ParentID, split = "\\|")
+## unnest the ID column to multiply rows
+NCItPharmacologics <- unnest(data=NCItPharmacologics,ParentID)
+
+## join parent synonyms
+## first, get the synonyms and IDs for parents
+NCItParents <- NCIt[which(NCIt$ID %in% NCItPharmacologics$ParentID), which(names(NCIt) %in% c("ID", "Synonyms"))]
+
+## each parent term may have more than one synonym
+## for simplicity, we will retain only the first synonym for each parent term
+NCItParents$Synonyms <- gsub("\\|.*","",NCItParents$Synonyms)
+
+## merge parents on entity ID = parent ID
+NCItPharmacologics <- merge(x=NCItPharmacologics,y=NCItParents,by.x="ParentID",by.y="ID",all.x=TRUE)
+## reorder and rename
+NCItPharmacologics <- dplyr::select(NCItPharmacologics,ID,Class,PreferredTerm,Synonyms="Synonyms.x",Description,ParentTerm="Synonyms.y",ParentID)
+
+## split the Synonyms column on pipe symbol
+NCItPharmacologics$Synonyms <- strsplit(NCItPharmacologics$Synonyms, split="\\|")
+## unnest the Synonyms column to multiply rows
+NCItPharmacologics <- unnest(data = NCItPharmacologics,Synonyms)
+
+## add a column with lower case drug synonyms for joining
+NCItPharmacologics$SynonymsLower <- tolower(NCItPharmacologics$Synonyms)
+
+## convert from tibble to data frame
+NCIthesaurus <- as.data.frame(NCItPharmacologics)
+
+## add a column to indicate date downloaded
+NCIthesaurus$downloaded <- Sys.Date()
+
+## write to comma separated file
+#write.csv(x=NCIthesaurus,file="NCIthesaurus.csv",row.names=FALSE)
+
+toc()
+
+## check written correctly
+#dim(read.csv("NCIthesaurus.csv", header = TRUE, stringsAsFactors = FALSE))
+#names(read.csv("NCIthesaurus.csv", header = TRUE, stringsAsFactors = FALSE))
+
+```
+    
+#### **Join to cancerStudies table**  
+
+```{r join thesaurus to cancerStudies table}
+## create a copy of cancerStudies table
+interventionMatches <- cancerStudies
+
+## add a lower case copy of interventions column to perform join to NCI thesaurus
+interventionMatches$interventionsLower <- tolower(interventionMatches$interventions)
+
+## inner join to NCIthesaurus data frame on NCIthesaurus$SynonymsLower
+interventionMatches <- merge(x=interventionMatches,y=NCIthesaurus,by.x="interventionsLower",by.y="SynonymsLower", all.x=TRUE)
+
+## drop any rows where mechanism is NA
+interventionMatches <- interventionMatches[!is.na(interventionMatches$ParentTerm), ]
+
+```
+
+There are a total of **`r length(levels(as.factor(interventionMatches$ParentTerm)))`** different mechanisms represented across selected cancer studies.  
+
+```{r write interventionMatches to file}
+#dim(interventionMatches)
+
+## for efficiency, just select unique features (get the rest from a join to cancerStudies)
+interventionMatches <- unique(dplyr::select(interventionMatches, nct_id, interventions, Description, ParentTerm ))
+
+#dim(interventionMatches)
+
+
+## write to file
+write.table(interventionMatches, file = "interventionMatches.tsv", sep = "\t",
+            row.names = FALSE, col.names = names(interventionMatches))
+
+```
+  
+Table of interventions, descriptions and mechanisms has been written to file (interventionMatches.tsv). First few lines are as follows:  
+  
+  
+```{r preview interventionMatches table}  
+
+
+kable(head(interventionMatches)) %>%
+  kable_styling(bootstrap_options = "striped") %>%
+  kable_styling(fixed_thead = T)
+
+```
+
+  
+  
+  
+### **Get molecular targets of trial interventions from KEGG**  
+  
+```{r get details of target genes for trial interventions from KEGG}
+## create a copy of cancerStudies table
+targetMatches <- cancerStudies
+
+## add a lower case copy of interventions column to perform join to NCI thesaurus
+targetMatches$interventionsLower <- tolower(targetMatches$interventions)
+
+## inner join to NCIthesaurus data frame on NCIthesaurus$SynonymsLower
+targetMatches <- merge(x=targetMatches,y=NCIthesaurus,by.x="interventionsLower",by.y="SynonymsLower", all.x=TRUE)
+
+## select and reorder required columns
+targetMatches <- dplyr::select(targetMatches, brief_title,  nct_id, Link = "Link",  TARGET.condition, condition, Interventions = "interventions", PreferredTerm, Mechanism = "ParentTerm", Locations = locations,  investigators, Contacts = contacts, Refresh.date)
+
+targets <- data.frame(PreferredTerm = unique(targetMatches$PreferredTerm), 
+                      drugID = NA, 
+                      drugTargetSymbol = NA)
+## drop any rows where PreferredTerm is empty
+targets <- targets[-which(targets$PreferredTerm == ""),]
+targets <- targets[-which(is.na(targets$PreferredTerm)),]
+
+tic("get IDs for drugs")
+
+## get IDs for drugs
+for(i in 1:nrow(targets)) {
+  drugid <- NA  
+  preferred <- as.character(targets$PreferredTerm[i])
+  ## get (onlY) first drug ID
+  tryCatch({drugid <- names(keggFind(database = "drug", query = preferred))[1]}, 
+             error=function(cond) {return(NA)})
+  if(length(drugid)>0 ) targets$drugID[i] <- drugid
+}
+
+## drop rows without a drugID
+targets <- targets[!is.na(targets$drugID),]
+
+toc()
+
+tic("use drug IDs to get names (Entrez Symbols) for target genes")
+
+## use drug IDs to get names (Entrez Symbols) for target genes
+for(i in 1:nrow(targets)) {
+  #print(i)
+    ##target variable will hold IDs of target gene(s) listed for each drug
+    target <- NA
+    # names variable will hold names of target gene(s)
+    names <- character(0)
+    id <- targets$drugID[i]
+    #print(id)    
+  
+    tryCatch({target <- keggGet(id)[[1]]$TARGET$TARGET}, 
+             error=function(cond) {return(NA)})
+    #print(target)
+    ## parse the TARGET value to get the target id(s)
+    if(length(target)>0 && !is.na(target)) {
+      #trim everything up to "HSA:"
+      target <- gsub(pattern = ".*\\HSA:", replacement = "", x=target)
+      # trim everything after square bracket
+      target <- gsub(pattern = "\\].*", replacement = "", x=target)
+      # split into individual ids, where applicable
+      target <- unlist(strsplit(x=target, split=" "))
+      # paste on a "hsa:"
+      target <- paste0("hsa:",target)
+      #print(target)
+      # make an empty vector that will hold names
+      #names <- character(0)
+      # make calls to keggGet
+      for(j in 1:length(target)) {
+        name <- keggGet(target[j])[[1]]$NAME[1]
+        #print(name)
+        #trim everything after first comma
+        name <- gsub(pattern = ",.*", replacement = "", x=name)
+        names <- c(names,name)
+        }
+    target <- paste(names, collapse = ",")
+    #print(target)
+    targets$drugTargetSymbol[i] <- target
+      
+    }
+
+}
+
+## drop rows where symbol is empty
+targets <- targets[targets$drugTargetSymbol != "",]
+
+## split drugTargetSymbol values on comma into new rows
+targets <- as.data.frame(cSplit(targets, "drugTargetSymbol", ",", direction = "long"))
+toc()
+
+```
+
+```{r join targets to targetMatches table}
+## note this is an inner join - any interventions not mapped to a target gene in KEGG will be lost in this join
+targetMatches <- merge(x=targetMatches, by.x = "PreferredTerm", y=targets, by.y = "PreferredTerm")
+
+## select and reorder columns again
+targetMatches <- dplyr::select(targetMatches,nct_id,brief_title,Link,TARGET.condition,condition,Interventions,Target = "drugTargetSymbol", Mechanism,Locations,investigators,Contacts,Refresh.date)
+
+## trim off asterisks from Target values
+targetMatches$Target <- gsub(pattern = "\\*", replacement = "", x=targetMatches$Target)
+
+```
+  
+**`r length(unique(targetMatches$Interventions))`** interventions in open UK cancer studies have been mapped to a molecular target based on KEGG.  
+
+```{r write targetMatches table to file}
+#dim(targetMatches)
+## for efficiency, just select unique features (get the rest from a join to cancerStudies)
+targetMatches <- unique(dplyr::select(targetMatches, nct_id, Interventions, Target, Mechanism ))
+#dim(targetMatches)
+
+## write table to tab-separated file
+write.table(targetMatches, file = "targetMatches.tsv", sep = "\t",
+            row.names = FALSE, col.names = names(targetMatches))
+```
+  
+Mappings between cancer trials, interventions and their molecular targets have been written to file targetMatches.tsv. First few rows are as follows:  
+  
+```{r preview targetMatches table}
+
+kable(head(targetMatches)) %>%
+  kable_styling(bootstrap_options = "striped") %>%
+  kable_styling(fixed_thead = T)
+
+```
+
+
+
+### **Map trial interventions to biological pathway based on their molecular target**  
+
+#### **Create cancerPathways table**  
+
+```{r get data from KEGG}
+
+## get all networks for Pathways in Cancer (hsa05200) from KEGG, and filter to retain only those targeted by an intervention in an open UK cancer study 
+## (i.e. of known cancer pathways, which ones are currently being targeted by UK studies?)
+## can't get it for all cancers, have to do it for each individual cancer type: 
+
+if(!file.exists("cancerPathways.tsv")) {
+## specify a table of network IDs for cancer pathways
+cancerPathways <- data.frame(network.name = character(0), 
+                             network.id = character(0))
+cancerPathways <- cancerPathways %>% add_row(network.name = "Colorectal cancer", 
+                           network.id = "hsa05210")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Gastric cancer", 
+                           network.id = "hsa05226")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Pancreatic cancer", 
+                           network.id = "hsa05212")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Hepatocellular carcinoma", 
+                           network.id = "hsa05225")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Renal cell carcinoma", 
+                           network.id = "hsa05211")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Bladder cancer", 
+                           network.id = "hsa05219")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Non-small cell lung cancer", 
+                           network.id = "hsa05223")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Small cell lung cancer", 
+                           network.id = "hsa05222")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Melanoma", 
+                           network.id = "hsa05218")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Basal cell carcinoma", 
+                           network.id = "hsa05217")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Breast cancer", 
+                           network.id = "hsa05224")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Endometrial cancer", 
+                           network.id = "hsa05213")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Prostate cancer", 
+                           network.id = "hsa05215")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Glioma", 
+                           network.id = "hsa05214")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Thyroid cancer", 
+                           network.id = "hsa05216")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Acute myeloid leukaemia", 
+                           network.id = "hsa05221")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Chronic myeloid leukaemia", 
+                           network.id = "hsa05220")
+
+
+## add a column that will hold a list of network elements for each network
+cancerPathways$network.elements <- NA
+
+tic("get KEGG networks")
+for(i in 1:length(cancerPathways$network.id)) {
+  network.id <- cancerPathways$network.id[i]
+  pathway.list <- keggGet(network.id)
+  cancerPathways$network.elements[i] <- list(pathway.list[[1]]$NETWORK$ELEMENT)
+}
+
+toc()
+
+## unnest the network.elements column to get a table with one row per network element per cancer type
+cancerPathways <- data.frame(unnest(cancerPathways, cols = "network.elements"))
+
+cancerPathways$network.element.id <- gsub(pattern = " .*", replacement = "", x=cancerPathways$network.elements)
+
+cancerPathways$network.element.name <- gsub(pattern = ".*  ", replacement = "", x=cancerPathways$network.elements)
+
+## add a column that will hold the network element "definition"
+cancerPathways$network.element.definition <- NA
+## add a column that will hold the "expanded" (i.e. gene IDs) definition
+cancerPathways$network.element.definition.expanded <- NA
+## add a column that will hold the names of genes in the elements
+cancerPathways$network.element.gene.names <- NA
+## add a column that will hold the IDs (minus hsa: prefix) of genes in the elements
+cancerPathways$network.element.gene.ids <- NA
+
+tic("get network element definitions")
+for(i in 1:length(cancerPathways$network.element.id)) {
+  element.id <- cancerPathways$network.element.id[i]
+  element.list <- keggGet(element.id)
+  cancerPathways$network.element.definition[i] <- element.list[[1]]$DEFINITION$DEFINITION
+  cancerPathways$network.element.definition.expanded[i] <- element.list[[1]]$DEFINITION$EXPANDED
+  element.genes <- element.list[[1]]$GENE
+  ## gene names are stored in even numbered elements
+  evens <- seq(from = 2, to=length(element.genes), by=2)
+  element.gene.names <- element.genes[evens]
+  ## trim off everything after semicolon
+  element.gene.names <- gsub(pattern = ";.*", replacement = "", x=element.gene.names)
+  cancerPathways$network.element.gene.names[i] <- list(element.gene.names)
+  
+  odds <- seq(from = 1, to=length(element.genes), by=2)
+  element.gene.ids <- element.genes[odds]
+  #element.gene.ids <- paste0("hsa:",element.gene.ids)
+  cancerPathways$network.element.gene.ids[i] <- list(element.gene.ids)
+}
+toc()
+## unnest the network.element.gene.names column to get a table with one row per gene per network element per cancer type
+cancerPathways <- unnest(cancerPathways, cols=c("network.element.gene.names", "network.element.gene.ids"))
+
+## THE GENE NAMES IN THE DEFINITION DON'T MATCH THOSE IN THE GENE LIST (!)
+## e.g. "SOS" in network element N00005 corresponds to gene names "SOS1" and "SOS2"
+## WE NEED TO REPLACE THE GENE IDS IN THE EXPANDED DEFINITIONS WITH THE CORRESPONDING GENE NAMES
+
+## first, make a lookup table of gene ids and names
+gene.lookup <- data.frame(unique(dplyr::select(cancerPathways, network.element.gene.names, network.element.gene.ids)))
+
+## need to trim off v suffixes from gene ids
+cancerPathways$network.element.definition.expanded <- gsub(pattern = "v.", replacement = "", x=cancerPathways$network.element.definition.expanded)
+
+tic("gene lookup")
+## loop through the lookup table and replace the gene ids in expanded definition column with gene names
+## need to do whole-word match using \\b ... \\b
+for(i in 1:nrow(gene.lookup)) {
+  pattern <- gene.lookup$network.element.gene.ids[i]
+  replacement <- gene.lookup$network.element.gene.names[i]
+  cancerPathways$network.element.definition.expanded <- gsub(pattern=paste0("\\b", pattern, "\\b"), replacement = replacement, x=cancerPathways$network.element.definition.expanded)
+}
+toc()
+## delete the brackets
+cancerPathways$network.element.definition.expanded <- gsub(pattern = "\\(|\\)", replacement = "", x=cancerPathways$network.element.definition.expanded)
+
+
+## add a column that will hold downstream pathway info
+cancerPathways$downstream <- NA
+
+tic("loop through cancer pathways")
+
+for(i in 1:nrow(cancerPathways)) {
+  pattern = paste0(".*",cancerPathways$network.element.gene.names[i])
+  replacement = cancerPathways$network.element.gene.names[i]
+  cancerPathways$downstream[i] <- gsub(pattern = pattern, replacement = replacement, x=cancerPathways$network.element.definition.expanded[i])
+}
+
+toc()
+
+## ultimately, we want to join to trial info on the basis of downstream gene name == target gene name for intervention
+## therefore we need a column that contains the names of genes downstream of every given gene in very pathway
+## currently downstream genes are stored in the "downstream" column, need to split first on spaces, then on commas
+
+## add a column that will hold names of downstream genes
+cancerPathways$downstream.genes <- cancerPathways$downstream
+## split on space
+cancerPathways$downstream.genes <- strsplit(cancerPathways$downstream.genes, split = " ")
+cancerPathways <- unnest(cancerPathways, cols = "downstream.genes")
+## now we need to filter out rows that contain only the edges (->, -|, //, =>, =| etc)
+cancerPathways <- cancerPathways[!cancerPathways$downstream.genes %in% c("->", "-|", "//", "=>", "--", "=|" ), ]
+
+## split again on comma or plus symbol
+cancerPathways$downstream.genes <- strsplit(cancerPathways$downstream.genes, split = ",|+ ")
+## unnest again
+cancerPathways <- unnest(cancerPathways, cols = "downstream.genes")
+
+
+## write to tsv
+write.table(cancerPathways, file = "cancerPathways.tsv", sep = "\t",
+            row.names = FALSE, col.names = names(cancerPathways)) } else  {cancerPathways <- read.table(file = "cancerPathways.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)}
+
+```
+
+```{r preprocess cancerPathways table}
+
+## Drop unwanted columns, save only unique combinations
+cancerPathways.trimmed <- unique(dplyr::select(cancerPathways, network.name, network.element.name, network.element.gene.names, downstream, downstream.genes))
+
+## Group by all except network.name - i.e. Aggregate cancer types into a single value
+cancerPathways.trimmed <-data.frame(cancerPathways.trimmed %>%
+               group_by_at(vars(-network.name))  %>%
+               summarise(network.name = paste(unique(network.name), collapse = ",")))
+
+```
+
+```{r preprocess targetMatches table}
+## Drop unwanted columns, save only unique combinations 
+pathwayMatches <- unique(dplyr::select(targetMatches, nct_id, Interventions, Target, Mechanism))
+
+```
+
+#### **Create pathwayMatches table**  
+
+```{r left join cancerpathways to targetmatches}
+## left join on cancerPathways.trimmed$downstream.genes = target.Matches$Target
+pathwayMatches <- merge(x=cancerPathways.trimmed, by.x = "downstream.genes", y=pathwayMatches, by.y = "Target")
+
+## drop rows where network.element.gene.names == downstream.genes
+pathwayMatches <- filter(pathwayMatches, downstream.genes!=network.element.gene.names)
+
+```
+
+```{r write pathway matches to tsv}
+#dim(pathwayMatches)
+
+## write full table of all pathway matches to tsv
+write.table(pathwayMatches, file = "pathwayMatches.tsv", sep = "\t",
+            row.names = FALSE, col.names = names(pathwayMatches))
+
+```
+  
+Mappings between cancer studies, interventions and biological pathways have been written to file pathwayMatches.tsv. First few rows are as follows:  
+  
+```{r preview pathwayMatches table}
+
+kable(head(pathwayMatches)) %>%
+  kable_styling(bootstrap_options = "striped") %>%
+  kable_styling(fixed_thead = T)
+
+```
+
+
+### **Score matches between genes and cancer trials**  
+  
+For a given gene of interest...  
+Score 5 if that gene is mentioned in inclusion criteria, and it is the molecular target of the study drug.  
+Score 4 if that gene is mentioned in inclusion criteria, and the study drug targets a downstream gene.  
+Score 3 if that gene is mentioned in inclusion criteria.  
+Score 2 if the study drug targets that gene.  
+Score 1 if the study drug targets a downstream gene.  
+  
+
+```{r create scoredMatches table}
+## create an empty table that will hold details of matches
+## a bit like a SQL view
+scoredMatches <- data.frame(gene.of.interest = character(0), 
+                                nct_id=character(0), 
+                                intervention.name = character(0),
+                                intervention.target=character(0),
+                                rationale=character(0), 
+                                confidence=numeric(0))
+
+## create a table of target matches that will ultimately be added as new rows
+temp.target.matches <- unique(dplyr::select(targetMatches, gene.of.interest="Target", nct_id, intervention.name="Interventions",intervention.target="Target"))
+## drop rows where Target is NA
+temp.target.matches <- temp.target.matches[!is.na(temp.target.matches$intervention.target),]
+## add a rationale column
+temp.target.matches$rationale <- paste0("Study drug (", temp.target.matches$intervention.name, ") targets ", temp.target.matches$intervention.target)
+## add confidence score of +2 for target matches
+temp.target.matches$confidence <- 2
+
+## bind as new rows onto scoredMatches table
+scoredMatches <- rbind(scoredMatches, temp.target.matches)
+
+## do the same for pathwayMatches
+## rename columns to match scoredMatches table
+temp.pathway.matches <- unique(dplyr::select(pathwayMatches, gene.of.interest="network.element.gene.names", nct_id, intervention.name="Interventions", intervention.target="downstream.genes"))
+## aggregate the downstream targets
+temp.pathway.matches <- temp.pathway.matches %>%
+            group_by_at(vars(-intervention.target)) %>%
+            summarize(intervention.target = toString(intervention.target) ) %>%
+            as.data.frame()
+## drop rows with any NA
+temp.pathway.matches <- temp.pathway.matches[complete.cases(temp.pathway.matches),]
+## add a rationale column
+temp.pathway.matches$rationale <- paste0("Study drug (", temp.pathway.matches$intervention.name, ") targets downstream gene(s) (", temp.pathway.matches$intervention.target, ")")
+## add confidence score of +1 for pathway matches
+temp.pathway.matches$confidence <- 1
+## bind as new rows onto big.gene.matches table
+scoredMatches <- rbind(scoredMatches, temp.pathway.matches)
+
+scoredMatches <- merge(x=scoredMatches, by.x=c("nct_id", "gene.of.interest"), all.x = TRUE, y=unique(dplyr::select(manualNLPmatches,nct_id, matching.symbol, criteria )), by.y = c("nct_id", "matching.symbol"), all.y=TRUE)
+
+## append rationale for studies matched on eligibility criteria
+for(i in 1:nrow(scoredMatches)) {
+   if(!is.na(scoredMatches$criteria[i])) {
+     ## add +3 to confidence score
+     if(!is.na(scoredMatches$confidence[i])) {
+       scoredMatches$confidence[i] <- scoredMatches$confidence[i]+3
+     } else scoredMatches$confidence[i] <- 3
+     ## indicate that gene of interest is mentioned in criteria
+     if(!is.na(scoredMatches$rationale[i])) {
+       scoredMatches$rationale[i] <- paste(scoredMatches$rationale[i], paste0(scoredMatches$gene.of.interest[i],  " is mentioned in inclusion criteria"), sep = ", ")} else {scoredMatches$rationale[i] <- paste0(scoredMatches$gene.of.interest[i],  " is mentioned in inclusion criteria")}
+   }
+}
+
+
+## write full table of all pathway matches to tsv
+write.table(scoredMatches, file = "scoredMatches.tsv", sep = "\t",
+            row.names = FALSE, col.names = names(scoredMatches))
+```
+  
+Scored matches between a gene and study have been written to file scoredMatches.tsv. First few rows are as follows:  
+  
+  
+```{r write scoredMatches to tsv}
+#dim(scoredMatches)
+
+kable(head(scoredMatches)) %>%
+  kable_styling(bootstrap_options = "striped") %>%
+  kable_styling(fixed_thead = T)
+
+```
+
+### **Exit script**  
+
+```{r delete big files from memory}
+rm(NCIt)
+rm(NCIthesaurus)
+rm(NCItPharmacologics)
+rm(humanGenes)
+rm(world.cities)
+```
+
+```{r disconnect from clinicaltrials}
+dbDisconnect(conn2)
+
+```
+
+```{r exit markdown}
+knitr::knit_exit()
+```
+
+
+  

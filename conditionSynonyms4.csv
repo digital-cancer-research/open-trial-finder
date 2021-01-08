@@ -1,0 +1,335 @@
+controlled.cancer.type,condition.synonyms
+Colorectal,Colorectal cancer
+Colorectal,Colorectal Neoplasm
+Colorectal,colo-rectal cancer
+Colorectal,Colorectal Carcinoma
+Colorectal,Colorectal Tumor
+Colorectal,colon rectal cancer
+Colorectal,Neoplasm of large intestine
+Colorectal,Large Bowel Cancer
+Colorectal,Carcinoma of the Large Intestine
+Colorectal,Cancer of the Large Bowel
+Colorectal,Large Intestine Cancer
+Cholangiocarcinoma,Cholangiocarcinoma
+Cholangiocarcinoma,Bile duct cancer
+Cholangiocarcinoma,Cholangiocellular carcinoma
+Prostate,prostate cancer
+Prostate,Prostatic Neoplasm
+Prostate,prostate carcinoma
+Prostate,Prostate Neoplasms
+Prostate,prostatic cancer
+Prostate,cancer of the prostate
+Prostate,Cancer of prostate
+Prostate,Carcinoma of the Prostate
+Prostate,prostate tumors
+Prostate,prostatic carcinoma
+Prostate,Neoplasm of prostate
+Prostate,carcinoma prostate
+Prostate,CARCINOMA OF PROSTATE
+Prostate,Prostate neoplasia
+Prostate,neoplasm of the prostate
+Prostate,Tumor of the Prostate
+Prostate,neoplasia prostate
+Prostate,Tumor of prostate
+CUP,Cancer of Unknown Primary Site
+CUP,unknown primary cancer
+CUP,Unknown Primary Neoplasm
+CUP,cancer of unknown primary origin
+CUP,Metastatic Malignant Neoplasm of Unknown Primary
+CUP,metastatic carcinoma of unknown primary
+Ovarian,ovarian cancer
+Ovarian,Ovarian Neoplasm
+Ovarian,Ovarian epithelial cancer
+Ovarian,Ovarian carcinoma
+Ovarian,Ovarian tumor
+Ovarian,ovary cancer
+Ovarian,cancer of the ovary
+Ovarian,Carcinoma of the Ovary
+Ovarian,Cancer of ovary
+Ovarian,ovary neoplasm
+Ovarian,Tumor of ovary
+Ovarian,Tumor of the Ovary
+Ovarian,Ovarian epithelial carcinoma
+Ovarian,Neoplasm of ovary
+Ovarian,carcinoma of ovary
+Ovarian,cancer ovaries
+Ovarian,carcinoma ovaries
+Ovarian,cancer ovarian
+Ovarian,ovary carcinoma
+Breast,breast cancer
+Breast,Breast Neoplasms
+Breast,breast carcinomas
+Breast,Breast tumor
+Breast,cancer of the breast
+Breast,Neoplasm of breast
+Breast,cancer of breast
+Breast,CARCINOMA OF BREAST
+Breast,Carcinoma of the Breast
+Breast,Mammary Carcinoma
+Breast,Mammary Cancer
+Breast,Mammary Neoplasms
+Breast,Tumor of breast
+Breast,Tumours of the breast
+Breast,Neoplasm of the breast
+Breast,mammary tumor
+Breast,Neoplasia of the breast
+Breast,breast malignant tumors
+SCLC,SCLC
+SCLC,Small cell lung cancer
+SCLC,small cell lung carcinoma
+SCLC,small cell carcinoma
+SCLC,Oat cell carcinoma of lung
+SCLC,Oat cell lung cancer
+SCLC,Small Cell Cancer Of The Lung
+Lung,lung cancer
+Lung,Lung Neoplasm
+Lung,Lung carcinoma
+Lung,lung tumors
+Lung,Carcinoma of the Lung
+Lung,Cancer of the Lung
+Lung,Neoplasm of lung
+Lung,Pulmonary Neoplasm
+Lung,CARCINOMA OF LUNG
+Lung,pulmonary cancer
+Lung,Cancer of Lung
+Lung,lung malignancies
+Lung,Tumor of the Lung
+Lung,cancers lungs
+Lung,Tumor of lung
+Lung,lung malignant tumors
+Lung,Neoplasm of the lung
+Lung,pulmonary carcinoma
+Lung,Pulmonary neoplasia
+Bladder,bladder cancer
+Bladder,Bladder Neoplasms
+Bladder,carcinoma of the bladder
+Bladder,bladder tumors
+Bladder,bladder carcinoma
+Bladder,cancer of the bladder
+Bladder,CARCINOMA OF BLADDER
+Bladder,Carcinoma of the Urinary Bladder
+Bladder,cancer of bladder
+Bladder,Carcinoma of Urinary Bladder
+Bladder,Tumor of urinary bladder
+Bladder,Neoplasm of Urinary Bladder
+Bladder,Tumor of Bladder
+Bladder,Tumor of the Bladder
+Bladder,Tumor of the Urinary Bladder
+Melanoma,melanoma
+NSCLC,NSCLC
+NSCLC,non-small cell lung cancer
+NSCLC,nonsmall cell lung cancer
+NSCLC,"lung cancer, non-small cell"
+NSCLC,Non Small Cell Lung Carcinoma
+NSCLC,Lung Non-Small Cell Carcinoma
+NSCLC,lung cancer non small cell
+NSCLC,Non-Small Cell Carcinoma of Lung
+Neuroendocrine,neuroendocrine tumour
+Neuroendocrine,Neuroendocrine neoplasm
+Neuroendocrine,Neuroendocrine neoplasia
+Bowel,bowel cancer
+Bowel,intestines cancer
+Bowel,Intestinal cancer
+Bowel,malignant neoplasm of intestinal tract
+Anal,anal cancer
+Anal,Anus Neoplasm
+Anal,Anal carcinoma
+Anal,Carcinoma of the Anus
+Anal,Cancer of the anus
+Anal,Anal Neoplasm
+Anal,anal tumor
+Anal,anus cancer
+Anal,Cancer of Anus
+Anal,Carcinoma of Anus
+GI,gastrointestinal cancer
+GI,gi cancer
+GI,digestive cancer
+GI,Malignant Digestive System Neoplasm
+GI,gastrointestinal tract cancer
+GI,Cancer of Gastrointestinal Tract
+GI,Cancer of the Gastrointestinal Tract
+GI,Malignant neoplasm of gastrointestinal tract
+GI,Malignant Gastrointestinal Neoplasm
+GI,Gastrointestinal system--Cancer
+Stomach,Stomach Cancer
+Stomach,Gastric cancer
+Stomach,Stomach Neoplasm
+Stomach,gastric carcinoma
+Stomach,gastric neoplasms
+Stomach,Cancer of stomach
+Stomach,cancer of the stomach
+Stomach,Neoplasm of stomach
+Stomach,gastric tumors
+Stomach,Tumor of stomach
+Stomach,stomach tumors
+Stomach,Gastric malignancy
+Stomach,Carcinoma of stomach
+Stomach,tumor gastric
+Stomach,Carcinoma of the Stomach
+Stomach,gastric mass
+Sarcoma,sarcoma
+Sarcoma,Malignant tumor of soft tissue
+Sarcoma,Malignant soft tissue neoplasm
+Sarcoma,Malignant mesenchymal tumor
+Sarcoma,Malignant Soft Tissue Tumor
+Sarcoma,Soft tissue cancer
+Malignant tumor of submandibular gland,Malignant tumor of submandibular gland
+Malignant tumor of submandibular gland,submandibular gland
+Urogenital,Urogenital Neoplasms
+Urogenital,urogenital cancer
+Urogenital,Genito urinary Cancer
+Urogenital,Genitourinary Neoplasm
+Adrenocortical,Adrenocortical carcinoma
+Adrenocortical,adrenal cortex carcinoma
+Adrenocortical,Adrenal carcinoma
+Adrenocortical,Adrenal cortical carcinoma
+Adrenocortical,cancer of the adrenal cortex
+GI - Other,small bowel cancer
+GI - Other,appendiceal cancer
+GI - Other,appendix cancer
+GI - Other,cancer of the appendix
+GI - Other,Pseudomyxoma peritonei
+Anogenital,anal cancer
+Anogenital,cancer of the anus
+Anogenital,anus neoplasm
+Anogenital,carcinoma of the anus
+Anogenital,anal carcinoma
+Anogenital,anal neoplasm
+Anogenital,anal tumour
+Anogenital,anal tumor
+Anogenital,penile cancer
+Anogenital,penis cancer
+Anogenital,cancer of the penis
+Anogenital,carcinoma of the penis
+Anogenital,penile carcinoma
+Anogenital,penile neoplasms
+Anogenital,vaginal cancer
+Anogenital,vaginal neoplasm
+Anogenital,vaginal carcinoma
+Anogenital,carcinoma of the vagina
+Urological,urological cancer
+Urological,urinary tract cancer
+Urological,malignant neoplasms of the urinary tract
+Urological,bladder cancer
+Urological,Bladder Neoplasms
+Urological,carcinoma of the bladder
+Urological,bladder tumors
+Urological,bladder carcinoma
+Urological,cancer of the bladder
+Urological,CARCINOMA OF BLADDER
+Urological,Carcinoma of the Urinary Bladder
+Urological,Carcinoma of Urinary Bladder
+Urological,cancer of bladder
+Urological,Tumor of urinary bladder
+Urological,Neoplasm of Urinary Bladder
+Urological,Tumor of the Bladder
+Urological,Tumor of the Urinary Bladder
+Urological,kidney cancer
+Urological,kidney neoplasm
+Urological,renal cell carcinoma
+Urological,renal cell cancer
+Urological,kidney tumor
+Urological,kidney tumour
+Urological,renal carcinoma
+Urological,tumor of the kidney
+Urological,renal neoplasm
+Urological,kidney carcinoma
+Urological,renal cancer
+Urological,prostate cancer
+Urological,prostatic neoplasm
+Urological,prostate carcinoma
+Urological,prostate neoplasms
+Urological,cancer of the prostate
+Urological,prostatic cancer
+Urological,cancer of prostate
+Urological,carcinoma of the prostate
+Urological,prostate tumours
+Urological,prostate tumors
+Urological,testicular cancer
+Urological,testicular neoplasm
+Urological,malignant testicular germ cell tumor
+Urological,cancer testis
+Urological,testis cancer
+Urological,testicular germ cell cancer
+Urological,testicular tumor
+Urological,testicle cancer
+Urological,malignant neoplasms of urinary tract
+Urological,urologic cancer
+Urological,cancer of the urinary tract
+Urological,malignant urinary system neoplasm
+Urological,cancer of urinary tract
+Female Reproductive Organs,ovarian neoplasm
+Female Reproductive Organs,ovarian epithelial cancer
+Female Reproductive Organs,ovarian cancer
+Female Reproductive Organs,ovarian carcinoma
+Female Reproductive Organs,ovarian tumor
+Female Reproductive Organs,ovary cancer
+Female Reproductive Organs,cancer of the ovary
+Female Reproductive Organs,ovary neoplasm
+Female Reproductive Organs,cancer of ovary
+Female Reproductive Organs,tumor of ovary
+Female Reproductive Organs,tumor of the ovary
+Female Reproductive Organs,endometrial cancer
+Female Reproductive Organs,endometrial carcinoma
+Female Reproductive Organs,endometrium cancer
+Female Reproductive Organs,cancer of the endometrium
+Female Reproductive Organs,cancer of endometrium
+Female Reproductive Organs,carcinoma of the endometrium
+Female Reproductive Organs,cervical cancer
+Female Reproductive Organs,cervical neoplasm
+Female Reproductive Organs,cervical carcinoma
+Female Reproductive Organs,cervix cancer
+Female Reproductive Organs,carcinoma of the cervix
+Female Reproductive Organs,cancer of the cervix
+Head and Neck,head neck cancer
+Head and Neck,head and neck cancer
+Head and Neck,cancer of the head and neck
+Head and Neck,head and neck tumor
+Head and Neck,malignant head and neck neoplasm
+Thymic,thymic cancer
+Thymic,thymus-cancer
+Thymic,thymus cancer
+Thyroid,thyroid cancer
+Thyroid,thyroid neoplasm
+Thyroid,thyroid carcinoma
+Thyroid,thyroid gland carcinoma
+Thyroid,thyroid tumor
+Thyroid,neoplasm of thyroid
+Thyroid,cancer of the thyroid
+Thyroid,carcinoma of the thyroid
+Hepatobiliary,hepatobiliary cancer
+Hepatobiliary,hepatobiliary tumour
+Hepatobiliary,liver cancer
+Hepatobiliary,liver neoplasm
+Hepatobiliary,liver tumors
+Hepatobiliary,hepatocellular cancers
+Hepatobiliary,hepatoma
+Hepatobiliary,hepatic tumor
+Hepatobiliary,hepatic cancer
+Hepatobiliary,cancer of liver
+Hepatobiliary,hepatic neoplasms
+Hepatobiliary,neoplasm of liver
+Hepatobiliary,pancreatic cancer
+Hepatobiliary,pancreatic neoplasm
+Hepatobiliary,pancreas cancer
+Hepatobiliary,pancreatic carcinoma
+Hepatobiliary,cancer of the pancreas
+Hepatobiliary,pancreatic tumors
+Hepatobiliary,cancer of pancreas
+Hepatobiliary,tumor of the pancreas
+Hepatobiliary,carcinoma of the pancreas
+Hepatobiliary,cholangiocarcinoma
+Hepatobiliary,bile duct cancer
+Hepatobiliary,Cholangiocellular carcinoma
+Hepatobiliary,gall bladder cancer
+Hepatobiliary,gall bladder carcinoma
+Hepatobiliary,carcinoma of the gallbladder
+Hepatobiliary,cancer of the gallbladder
+Hepatobiliary,carcinoma gallbladder
+Hepatobiliary,carcinoma of gallbladder
+Hepatobiliary,ampullary cancer
+Hepatobiliary,ampulla of Vater cancer
+Hepatobiliary,Ampullary carcinoma
+Solid,solid tumor
+Solid,solid tumour
+Solid,solid neoplasm

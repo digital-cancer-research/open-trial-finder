@@ -1,0 +1,311 @@
+---
+title: "digital ECMT cancer trial matching tool"
+output: 
+  flexdashboard::flex_dashboard:
+    source_code: embed
+    orientation: rows
+    logo: digitalECMTlogo48px.PNG
+    theme: spacelab
+runtime: shiny
+
+---
+```{r setup, include=FALSE}
+require(flexdashboard)
+require(dplyr)
+require(tidyr)
+require(kableExtra)
+require(shinyWidgets)
+require(leaflet)
+require(htmltools)
+require(rjson)
+
+
+## load configuration data from JSON file
+configuration <- fromJSON(file = "trialMatchConfiguration.json")
+```
+  
+  
+  
+```{r read cancer study data into memory}
+## read cancerStudies table into memory
+# contains study details, mapped to a controlled set of cancer types in the "TARGET.condition"  column
+# names are "locations, nct_id, brief_title, overall_status, condition, interventions, postcode, site_status, investigators, contacts, Refresh.date, matching.condition, TARGET.condition, Link, lat, long"
+# no columns are aggregated
+cancerStudies <- unique(read.table(file = "cancerStudies.tsv", header = TRUE, stringsAsFactors = FALSE))
+
+## filter and retain only studies with overall status of "Recruiting"
+cancerStudies <- dplyr::filter(cancerStudies, overall_status == "Recruiting")
+
+## filter out sites with status of not yet recruiting
+cancerStudies <- dplyr::filter(cancerStudies, site_status == "Recruiting")
+```
+
+```{r get a full set of all study locations}
+cancer.study.locations <- unique(dplyr::select(cancerStudies, nct_id, lat, long))
+## drop any rows with missing lat/long values
+## NOTE THAT THIS MEANS THESE STUDIES WILL NOT BE DISPLAYED ON MAP
+## (BUT WILL BE IN THE TABLE UNDERNEATH)
+cancer.study.locations <- cancer.study.locations[complete.cases(cancer.study.locations), ]
+```
+
+```{r get mechanisms}
+targetMatches <- unique(read.table(file = "targetMatches.tsv", header = TRUE, stringsAsFactors = FALSE))
+## drop unneeded columns
+targetMatches <- unique(dplyr::select(targetMatches, Interventions, Mechanism))
+
+## join to cancerStudies table
+cancerStudies <- merge(x=cancerStudies, by.x="interventions", all.x=TRUE, y=targetMatches, by.y="Interventions")
+```
+
+
+```{r aggregate cancerStudies into compact form}
+## aggregating interventions was causing some study:intervention combinations to be missed out
+cancerStudies <- cancerStudies %>%
+       group_by_at(vars(-c(locations, postcode, condition,  site_status, investigators, contacts, lat, long, Refresh.date))) %>%
+       summarize(locations = toString(sort(unique(na.omit(locations)))),
+                 conditions = toString(sort(unique(na.omit(condition)))),
+                 investigators = toString(sort(unique(na.omit(investigators)))),
+                 contacts = toString(sort(unique(na.omit(contacts))))) %>%
+       as.data.frame()
+```
+
+
+```{r read studies scored on match against genes of interest}
+## scoredMatches contains all possible matches of studies, their interventions and inclusion criteria against all possible genes of interest
+## column names are "nct_id, gene.of.interest, intervention.name, intervention.target, rationale, confidence, criteria"
+
+scoredMatches <- unique(read.table(file = "scoredMatches.tsv", header = TRUE, stringsAsFactors = FALSE))
+
+## sort on confidence decreasing
+#scoredMatches <- scoredMatches[order(scoredMatches$confidence, decreasing = TRUE), ]
+```
+
+Inputs {.sidebar}
+-----------------------------------------------------------------------
+
+**1. Filter on cancer type**    
+
+```{r  cancer type filter}
+## display filter for cancer type
+available.cancer.types <- sort(unique(cancerStudies$TARGET.condition))
+selectInput(inputId = "cancerTypeFilter", label=NULL, choices = available.cancer.types, selected = NULL, multiple = FALSE,  selectize = TRUE, width = NULL, size = NULL)
+```
+
+  
+```{r additional options}
+checkboxInput(inputId="solidTumourFilter", label="Include matches on solid tumour?", value = TRUE, width = NULL)
+# checkboxInput(inputId="notYetRecruitingFilter", label="Include sites not yet recruiting?", value = TRUE, width = NULL)
+```
+
+**2. Order results on genes of interest (optional)**    
+ 
+```{r define static gene filter}
+gene.list <- sort(unique(scoredMatches$gene.of.interest))
+selectInput(inputId = "geneFilter", label=NULL, choices = gene.list, selected = NULL, multiple = TRUE,  selectize = TRUE, width = NULL, size = NULL)
+```
+
+**3. Filter results on drug classes (optional)**    
+
+
+```{r define reactive mechanism filter}
+## define how filter values will be populated
+output$reactive.mechanism.filter <- renderUI({
+   if(input$solidTumourFilter==FALSE) {cancer.types <- input$cancerTypeFilter}
+   else {cancer.types <- c(input$cancerTypeFilter, "Solid")}
+   
+   table <- dplyr::filter(cancerStudies, TARGET.condition %in% cancer.types)   
+   mechanism.list <- sort(unique(table$Mechanism))
+
+   selectInput(inputId = "mechanismFilter", label=NULL, choices = mechanism.list, selected = NULL, multiple = TRUE,  selectize = TRUE, width = NULL, size = NULL)
+})
+# display filter
+shiny::renderUI({
+   uiOutput("reactive.mechanism.filter") 
+})
+```
+
+  
+```{r omit cancer type alone}
+checkboxInput(inputId="confidenceFilter", label="Hide matches on cancer type alone?", value = FALSE, width = NULL)
+```
+
+
+```{r filter scoredMatches table}
+reactiveScoredMatches <- reactive({
+   table <- scoredMatches
+   if(!is.null(input$geneFilter)) {
+      table <- dplyr::filter(table, gene.of.interest %in% input$geneFilter)
+   }
+   ## return table
+   unique(table)
+})
+```
+
+```{r filter cancerStudies table}
+reactiveCancerStudies <- reactive({
+   if(input$solidTumourFilter==FALSE) {cancer.types <- input$cancerTypeFilter}
+   else {cancer.types <- c(input$cancerTypeFilter, "Solid")}
+   table <- dplyr::filter(cancerStudies, TARGET.condition %in% cancer.types)
+   if(!is.null(input$geneFilter)) {
+      table <- merge(x=table, by.x=c("nct_id"), all.x=TRUE, 
+                     y=reactiveScoredMatches(), by.y=c("nct_id"))
+      ## sort on confidence decreasing
+      table <- table[order(table$confidence, decreasing = TRUE), ]
+   } else {table[ , c("gene.of.interest","intervention.name","intervention.target","rationale","confidence","criteria")] <- NA}  ## add empty columns so can select and rename for display...
+   if(!is.null(input$mechanismFilter)) {
+      table <- dplyr::filter(table, Mechanism %in% input$mechanismFilter)
+      table$rationale <- paste0("Match on drug class (", table$interventions, "; ", table$Mechanism, ")")
+   }
+   table$rationale[is.na(table$rationale)] <- "Match on cancer type alone"
+   if(input$confidenceFilter==TRUE) {table <- dplyr::filter(table, rationale != "Match on cancer type alone")}
+   
+   ## return table
+   unique(table)
+})
+```
+  
+   
+  
+Row {.tabset}
+-----------------------------------------------------------------------
+
+### Map view of sites
+
+```{r print a map with study sites indicated}
+
+## zoomed based on lat and long values in configuration file
+## NOTE: layerIds must be unique (i.e. one study would only appear once)
+## need to use combination of study ID and location to make layerIds unique
+output$studiesmap <- renderLeaflet({
+   studies <- unique(dplyr::select(reactiveCancerStudies(), nct_id, brief_title))
+   locations <- merge(x=studies,by.x="nct_id", y=cancer.study.locations, by.y="nct_id")
+   locations$uniqueId <- paste(locations$nct_id, locations$lat, locations$long, sep = "_")
+   if(nrow(locations)>0) {
+     leaflet() %>%
+         addProviderTiles(providers$OpenStreetMap.Mapnik) %>%
+         setView(lat = configuration$zoom.lat, lng = configuration$zoom.long, zoom = 5) %>%
+         addMarkers(data=locations, 
+                    lat = ~lat,
+                 lng = ~long,
+                 popup = ~brief_title,
+                 layerId = ~uniqueId, 
+                 clusterOptions = markerClusterOptions())
+  } else {
+     leaflet() %>%
+         addProviderTiles(providers$OpenStreetMap.Mapnik) %>%
+         setView(lat = 54.2361, lng = -4.5481, zoom = 6)
+  }
+})
+
+## render reactive map
+shiny::renderUI({
+   leafletOutput("studiesmap")
+   
+})
+
+## create a reactive variable that will hold ID of a study selected on map
+map.selection <- reactiveValues(id = NA)
+
+## detect clicks on markers and use them to get study ID for marker that was clicked
+observeEvent(input$studiesmap_marker_click, { 
+   map.selection$id <- input$studiesmap_marker_click$id
+   map.selection$id <- gsub(pattern = "_.*", replacement = "", x=map.selection$id)
+  })
+
+## detect click on map and use them to reset value of map.selection
+observeEvent(input$studiesmap_click, {
+   map.selection$id <- NA
+  })
+```
+  
+### Scoring details  
+
+  
+All studies are matched on cancer type.  
+  
+If a gene of interest, matching studies are ordered as follows:  
+
+1. Gene of interest is mentioned in inclusion criteria, and it is the molecular target of the study drug.  
+
+2. Gene of interest is mentioned in inclusion criteria, and the study drug targets a downstream gene.   
+  
+  
+3. Gene of interest is mentioned in inclusion criteria.  
+  
+  
+4. Study drug targets gene of interest.  
+  
+  
+5. Study drug targets a downstream gene.  
+  
+  
+6. Study matched on cancer type alone.  
+  
+### Acknowledgements
+  
+  
+This tool is a prototype, intended for research use by Medical Professionals. Please note that it is not a comprehensive source of information about clinical trials, and is not for use in clinical decision making. If you have any questions, please contact `r configuration$contact.email` for more information.  
+  
+    
+* Trial data are sourced from clinicaltrials.gov via the Clinical Trials Transformation Initiative: https://www.ctti-clinicaltrials.org/  
+  
+* Data regarding mechanisms of trial interventions are sourced from the NCI Thesaurus: https://ncithesaurus.nci.nih.gov/ncitbrowser/  
+  
+* Data regarding biological pathways are sourced from KEGG (https://www.kegg.jp/kegg/) using the R BioConductor package: https://www.bioconductor.org/  
+  
+  
+  
+
+  
+  
+  
+Row {.tabset}
+-----------------------------------------------------------------------
+
+### Study details  
+
+```{r render reactive cancerStudies table}
+## render table
+shiny::renderUI({
+   table <- reactiveCancerStudies()
+   table[is.na(table)] <- "-"
+   if(!is.na(map.selection$id )) {
+      table <- dplyr::filter(table, nct_id == map.selection$id )
+   }
+   if(nrow(table)>0) {
+   HTML(table %>%
+            mutate(nct_id = cell_spec(x=table$nct_id,format="html", link = table$Link)) %>%
+            dplyr::select(-c(Link, TARGET.condition, conditions)) %>%
+            mutate(locations = cell_spec(x=table$locations,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+           mutate(investigators = cell_spec(x=table$investigators,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+           mutate(contacts = cell_spec(x=table$contacts,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+           mutate(criteria = cell_spec(x=table$criteria,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+           dplyr::select("Study ID" = nct_id, 
+                         "Brief title" = "brief_title", 
+                         "Overall status" = "overall_status", 
+                         "Rationale" = "rationale",
+                         "Matching cancer type" = "matching.condition", 
+                         "Matching inclusion criterion" = "criteria",
+                         "Matching gene" = "gene.of.interest",
+   #                      "Interventions" = "interventions", 
+   #                      Mechanism, 
+                         "Recruiting sites" = "locations", 
+                         "Investigators" = "investigators", 
+                         "Contacts" = "contacts"
+                         ) %>% 
+            unique() %>%
+            kable("html", escape = FALSE) %>%
+            # kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+            kable_styling(bootstrap_options = c("hover", "condensed", "responsive")) %>%
+            collapse_rows(columns = 1:3, valign = "top") %>%
+            #row_spec(row=3, hline_after = TRUE) %>%
+            kable_styling(fixed_thead = T))
+            
+   } else print("Please click on map to display details of matching studies")
+})
+```
+
+```{r exit script }
+knitr::knit_exit()
+```
+  
