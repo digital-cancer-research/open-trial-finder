@@ -193,7 +193,7 @@ output$studiesmap <- renderLeaflet({
   } else {
      leaflet() %>%
          addProviderTiles(providers$OpenStreetMap.Mapnik) %>%
-         setView(lat = 54.2361, lng = -4.5481, zoom = 6)
+         setView(lat = configuration$zoom.lat, lng = configuration$zoom.long, zoom = 5)
   }
 })
 
