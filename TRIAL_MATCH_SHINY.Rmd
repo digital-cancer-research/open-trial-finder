@@ -183,7 +183,7 @@ output$studiesmap <- renderLeaflet({
    if(nrow(locations)>0) {
      leaflet() %>%
          addProviderTiles(providers$OpenStreetMap.Mapnik) %>%
-         setView(lat = configuration$zoom.lat, lng = configuration$zoom.long, zoom = 5) %>%
+         setView(lat = configuration$zoom.lat, lng = configuration$zoom.long, zoom = 6) %>%
          addMarkers(data=locations, 
                     lat = ~lat,
                  lng = ~long,
@@ -193,7 +193,7 @@ output$studiesmap <- renderLeaflet({
   } else {
      leaflet() %>%
          addProviderTiles(providers$OpenStreetMap.Mapnik) %>%
-         setView(lat = configuration$zoom.lat, lng = configuration$zoom.long, zoom = 5)
+         setView(lat = configuration$zoom.lat, lng = configuration$zoom.long, zoom = 6)
   }
 })
 
@@ -218,49 +218,7 @@ observeEvent(input$studiesmap_click, {
   })
 ```
   
-### Scoring details  
-
   
-All studies are matched on cancer type.  
-  
-If a gene of interest, matching studies are ordered as follows:  
-
-1. Gene of interest is mentioned in inclusion criteria, and it is the molecular target of the study drug.  
-
-2. Gene of interest is mentioned in inclusion criteria, and the study drug targets a downstream gene.   
-  
-  
-3. Gene of interest is mentioned in inclusion criteria.  
-  
-  
-4. Study drug targets gene of interest.  
-  
-  
-5. Study drug targets a downstream gene.  
-  
-  
-6. Study matched on cancer type alone.  
-  
-### Acknowledgements
-  
-  
-This tool is a prototype, intended for research use by Medical Professionals. Please note that it is not a comprehensive source of information about clinical trials, and is not for use in clinical decision making. If you have any questions, please contact `r configuration$contact.email` for more information.  
-  
-    
-* Trial data are sourced from clinicaltrials.gov via the Clinical Trials Transformation Initiative: https://www.ctti-clinicaltrials.org/  
-  
-* Data regarding mechanisms of trial interventions are sourced from the NCI Thesaurus: https://ncithesaurus.nci.nih.gov/ncitbrowser/  
-  
-* Data regarding biological pathways are sourced from KEGG (https://www.kegg.jp/kegg/) using the R BioConductor package: https://www.bioconductor.org/  
-  
-  
-  
-
-  
-  
-  
-Row {.tabset}
------------------------------------------------------------------------
 
 ### Study details  
 
@@ -304,6 +262,49 @@ shiny::renderUI({
    } else print("Please click on map to display details of matching studies")
 })
 ```
+
+  
+### Study ranking details  
+
+  
+All studies are matched on cancer type.  
+  
+If a gene of interest, matching studies are ordered as follows:  
+
+1. Gene of interest is mentioned in inclusion criteria, and it is the molecular target of the study drug.  
+
+2. Gene of interest is mentioned in inclusion criteria, and the study drug targets a downstream gene.   
+  
+  
+3. Gene of interest is mentioned in inclusion criteria.  
+  
+  
+4. Study drug targets gene of interest.  
+  
+  
+5. Study drug targets a downstream gene.  
+  
+  
+6. Study matched on cancer type alone.  
+  
+### Acknowledgements
+  
+  
+This tool is a prototype, intended for research use by Medical Professionals. Please note that it is not a comprehensive source of information about clinical trials, and is not for use in clinical decision making. If you have any questions, please contact `r configuration$contact.email` for more information.  
+  
+    
+* Trial data are sourced from clinicaltrials.gov via the Clinical Trials Transformation Initiative: https://www.ctti-clinicaltrials.org/  
+  
+* Data regarding mechanisms of trial interventions are sourced from the NCI Thesaurus: https://ncithesaurus.nci.nih.gov/ncitbrowser/  
+  
+* Data regarding biological pathways are sourced from KEGG (https://www.kegg.jp/kegg/) using the R BioConductor package: https://www.bioconductor.org/  
+  
+  
+  
+
+  
+  
+
 
 ```{r exit script }
 knitr::knit_exit()
