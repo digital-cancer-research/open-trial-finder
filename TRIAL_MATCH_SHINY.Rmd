@@ -38,6 +38,9 @@ cancerStudies <- dplyr::filter(cancerStudies, overall_status == "Recruiting")
 
 ## filter out sites with status of not yet recruiting
 cancerStudies <- dplyr::filter(cancerStudies, site_status == "Recruiting")
+
+## read conditions and synonyms into memory
+conditionSynonyms <- read.csv(file="conditionSynonyms4.csv", header = TRUE, stringsAsFactors = FALSE)
 ```
 
 ```{r get a full set of all study locations}
@@ -89,6 +92,23 @@ Inputs {.sidebar}
 ## display filter for cancer type
 available.cancer.types <- sort(unique(cancerStudies$TARGET.condition))
 selectInput(inputId = "cancerTypeFilter", label=NULL, choices = available.cancer.types, selected = NULL, multiple = FALSE,  selectize = TRUE, width = NULL, size = NULL)
+
+
+```
+
+**Cancer types included in search:**  
+
+```{r reactive label}
+synonymsLabel <- reactive({
+   synonyms <- paste(unique(conditionSynonyms$condition.synonyms[conditionSynonyms$controlled.cancer.type==input$cancerTypeFilter]), collapse = ", ")
+   synonyms
+})
+
+shiny::renderText({
+   paste(synonymsLabel(), collapse = "\n")
+})
+
+
 ```
 
   
