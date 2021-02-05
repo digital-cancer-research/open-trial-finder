@@ -79,8 +79,7 @@ cancerStudies <- cancerStudies %>%
 
 scoredMatches <- unique(read.table(file = "scoredMatches.tsv", header = TRUE, stringsAsFactors = FALSE))
 
-## sort on confidence decreasing
-#scoredMatches <- scoredMatches[order(scoredMatches$confidence, decreasing = TRUE), ]
+
 ```
 
 Inputs {.sidebar}
@@ -96,7 +95,7 @@ selectInput(inputId = "cancerTypeFilter", label=NULL, choices = available.cancer
 
 ```
 
-**Cancer types included in search:**  
+<!-- **Cancer types included in search:**   -->
 
 ```{r reactive label}
 synonymsLabel <- reactive({
@@ -104,9 +103,10 @@ synonymsLabel <- reactive({
    synonyms
 })
 
-shiny::renderText({
-   paste(synonymsLabel(), collapse = "\n")
-})
+## uncomment this line if you want to show synonyms included in matches for each cancer type
+# shiny::renderText({
+#    paste(synonymsLabel(), collapse = "\n")
+# })
 
 
 ```
