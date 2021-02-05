@@ -6,6 +6,8 @@ output:
     orientation: rows
     logo: digitalECMTlogo48px.PNG
     theme: spacelab
+    # includes:
+    #    in_header: JS/matomo.js
 runtime: shiny
 
 ---
