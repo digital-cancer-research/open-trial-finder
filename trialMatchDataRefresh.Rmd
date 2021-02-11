@@ -515,6 +515,7 @@ kable(head(manualNLPmatches)) %>%
   kable_styling(bootstrap_options = "striped") %>%
   kable_styling(fixed_thead = T)
 
+
 ```
 
   

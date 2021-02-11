@@ -311,6 +311,11 @@ If a gene of interest, matching studies are ordered as follows:
   
 ### Acknowledgements
   
+`r configuration$about.us`  
+   
+   
+`r configuration$privacy.statement`  
+
   
 This tool is a prototype, intended for research use by Medical Professionals. Please note that it is not a comprehensive source of information about clinical trials, and is not for use in clinical decision making. If you have any questions, please contact `r configuration$contact.email` for more information.  
   
