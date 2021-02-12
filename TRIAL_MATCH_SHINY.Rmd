@@ -317,9 +317,12 @@ If a gene of interest, matching studies are ordered as follows:
 `r configuration$privacy.statement`  
 
   
-This tool is a prototype, intended for research use by Medical Professionals. Please note that it is not a comprehensive source of information about clinical trials, and is not for use in clinical decision making. If you have any questions, please contact `r configuration$contact.email` for more information.  
+INTENDED USE: This tool is a prototype, intended for research use by Medical Professionals. Please note that it is not a comprehensive source of information about clinical trials, and is not for use in clinical decision making. If you have any questions, please contact `r configuration$contact.email` for more information.  
   
     
+DATA SOURCES:  
+  
+  
 * Trial data are sourced from clinicaltrials.gov via the Clinical Trials Transformation Initiative: https://www.ctti-clinicaltrials.org/  
   
 * Data regarding mechanisms of trial interventions are sourced from the NCI Thesaurus: https://ncithesaurus.nci.nih.gov/ncitbrowser/  
