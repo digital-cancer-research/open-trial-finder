@@ -3,3 +3,5 @@
 *.txt
 *.zip
 *.html
+*.gz
+.Rhistory

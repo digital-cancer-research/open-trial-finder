@@ -201,9 +201,11 @@ cancerStudies$longitude[is.na(cancerStudies$longitude)] <- cancerStudies$long[is
 ## drop lat and long columns
 cancerStudies <- dplyr::select(cancerStudies, -c(lat, long))
 
+#if("lat" %in% names(cancerStudies) & "long" %in% names(cancerStudies)) {
 ## rename latitude and longitude columns
 # use new_name = old_name syntax
-cancerStudies <- rename(cancerStudies, c("lat"="latitude" ,"long"="longitude"))
+cancerStudies <- dplyr::rename(cancerStudies, c("lat"="latitude" ,"long"="longitude"))
+#}
 
 ```
   
@@ -1064,7 +1066,7 @@ kable(head(scoredMatches)) %>%
 ```{r delete big files from memory}
 rm(NCIt)
 rm(NCIthesaurus)
-rm(NCItPharmacologics)
+#rm(NCItPharmacologics)
 rm(humanGenes)
 rm(world.cities)
 ```

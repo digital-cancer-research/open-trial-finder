@@ -1,0 +1,130 @@
+---
+title: "Gene variant level analysis"
+author: "digital ECMT cancer trial matching tool"
+date: "05/03/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+require(dplyr)
+require(formattable)
+```
+
+
+
+```{r download data}
+## download variant summaries from clinvar
+download.file(url="https://ftp.ncbi.nlm.nih.gov/pub/clinvar/tab_delimited/variant_summary.txt.gz",destfile = "variant_summary.txt.gz")
+clinvar <- read.table(gzfile("variant_summary.txt.gz"), sep="\t", quote="", fill = TRUE, stringsAsFactors = FALSE) 
+# V1 contains values for Allele ID
+# V2 gives nature (e.g. fusion, single nucleotide variant etc)
+# V7 contains values for clinical significance (inc whether pathogenic or not)
+# V25 gives a measure of confidence in assertion
+clinvar <- unique(dplyr::select(clinvar, "allele.id" = "V1", "nature"="V2", "significance"="V7", "confidence"="V25"))
+
+## variation_allele contains mappings from clinvar variation ID (clinvar ID) and allele ID
+download.file(url="https://ftp.ncbi.nlm.nih.gov/pub/clinvar/tab_delimited/variation_allele.txt.gz",destfile = "variation_allele.txt.gz")
+variationAllele <- read.table(gzfile("variation_allele.txt.gz"), sep="\t", quote="", fill = TRUE, stringsAsFactors = FALSE) 
+# V1 contains values for clinvar ID
+# V3 contains values for Allele ID
+variationAllele <- unique(dplyr::select(variationAllele, "clinvar.id"="V1", "allele.id"="V3"))
+
+## join tables
+clinvar <- merge(x=clinvar, by.x="allele.id", y=variationAllele, by.y="allele.id")
+
+
+
+
+# variants contains mappings from variant_id to clinvar_ids
+variants <- read.csv(file = "https://civicdb.org/downloads/nightly/nightly-VariantSummaries.tsv", sep = "\t", quote = "", stringsAsFactors = FALSE)
+# variants$gene contains gene name (Entrez symbol)
+# variants$variant contains amino acid change
+# variants$summary contains a useful summary of evidence for each variant
+# variants$clinvar_ids contains (comma-separated) clinvar IDs that can be mapped to the clinvar table to get info whether pathogenic or not... 
+
+## drop unwanted columns
+variants <- unique(dplyr::select(variants, variant_id, gene, variant, summary, variant_groups,civic_variant_evidence_score,clinvar_ids ))
+
+## split and unnest the clinvar_ids column
+variants$clinvar_ids <- strsplit(as.character(variants$clinvar_ids), split = ",")
+variants <- unnest(data = variants, clinvar_ids)
+
+
+## join significance from clinvar
+variants <- unique(merge(x=variants, by.x="clinvar_ids", all.x=TRUE, y=clinvar, by.y="clinvar.id"))
+
+
+## download evidence from civicDB
+# evidence contains mappings from variant_id to gene (gene name) and variant (amino acid change) to drugs etc
+evidence <- read.csv(file = "https://civicdb.org/downloads/nightly/nightly-ClinicalEvidenceSummaries.tsv", sep = "\t", quote="", stringsAsFactors = FALSE)
+# evidence contains more detailed data re: drugs, sensitivity etc
+
+## drop unwanted columns
+evidence <- unique(dplyr::select(evidence, variant_id, gene, variant,disease, drugs, drug_interaction_type, evidence_type, evidence_direction,evidence_level,clinical_significance,evidence_statement, source_type))
+
+
+## merge with variants
+#evidence <- unique(merge(x=evidence, by.x="variant_id", all.x=TRUE, y=unique(dplyr::select(variants, variant_id, clinvar_ids, nature, significance, confidence)),by.y="variant_id" ))
+```
+  
+### **Example data from civicDB variants table**  
+  
+#### **For specific variant**  
+  
+```{r specific variant}
+
+formattable(filter(variants, gene=="NRAS" & variant=="Q61R"))
+
+
+```
+
+
+#### **For amino acid position**  
+  
+```{r amino acid position}
+
+formattable(filter(variants, gene=="NRAS" & variant=="Q61"))
+
+
+```
+  
+#### **For any mutation**  
+  
+```{r any mutation}  
+
+
+formattable(filter(variants, gene=="NRAS" & variant=="Mutation"))
+
+```
+
+
+### **Example data from civicDB evidence table**  
+  
+#### **For specific variant**  
+  
+```{r evidence for specific variant}
+
+formattable(filter(evidence, gene=="NRAS" & variant=="Q61R"))
+
+
+```
+
+
+#### **For amino acid position**  
+  
+```{r evidence for amino acid position}
+
+formattable(filter(evidence, gene=="NRAS" & variant=="Q61"))
+
+
+```
+  
+#### **For any mutation**  
+  
+```{r evidence for any mutation}  
+
+
+formattable(filter(evidence, gene=="NRAS" & variant=="Mutation"))
+
+```
