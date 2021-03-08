@@ -9,6 +9,10 @@ output: html_document
 knitr::opts_chunk$set(echo = FALSE)
 require(dplyr)
 require(formattable)
+require(tidyr)
+require(ggraph)
+require(igraph)
+require(networkD3)
 ```
 
 
@@ -59,10 +63,17 @@ variants <- unique(merge(x=variants, by.x="clinvar_ids", all.x=TRUE, y=clinvar, 
 # evidence contains mappings from variant_id to gene (gene name) and variant (amino acid change) to drugs etc
 evidence <- read.csv(file = "https://civicdb.org/downloads/nightly/nightly-ClinicalEvidenceSummaries.tsv", sep = "\t", quote="", stringsAsFactors = FALSE)
 # evidence contains more detailed data re: drugs, sensitivity etc
+# evidence$evidence_level contains details of nature of evidence: 
+# A = validated
+# B = clinical
+# C = case study
+# D = preclinical
+
 
 ## drop unwanted columns
 evidence <- unique(dplyr::select(evidence, variant_id, gene, variant,disease, drugs, drug_interaction_type, evidence_type, evidence_direction,evidence_level,clinical_significance,evidence_statement, source_type))
 
+evidence <- as.data.frame(evidence)
 
 ## merge with variants
 #evidence <- unique(merge(x=evidence, by.x="variant_id", all.x=TRUE, y=unique(dplyr::select(variants, variant_id, clinvar_ids, nature, significance, confidence)),by.y="variant_id" ))
@@ -128,3 +139,238 @@ formattable(filter(evidence, gene=="NRAS" & variant=="Q61"))
 formattable(filter(evidence, gene=="NRAS" & variant=="Mutation"))
 
 ```
+  
+### **What proportion of drugs listed in civicDB evidence are found in NCI thesaurus?**  
+  
+
+```{r download and create NCIthesaurus table}
+
+## specify URL for NCI thesaurus - this should always be the most recent? 
+NCItURL <- "https://evs.nci.nih.gov/ftp1/NCI_Thesaurus/Thesaurus.FLAT.zip"
+
+destFlatFilename <- "NCIt_FLAT.zip"
+download.file(url=NCItURL,destfile = destFlatFilename)
+unzip(zipfile = paste0(getwd(),"/",destFlatFilename))
+
+NCIt <- read.table("Thesaurus.txt",header = FALSE, sep = "\t", comment.char = "", fill = TRUE, stringsAsFactors = FALSE, quote = "")
+names(NCIt) <- c("ID","URL","ParentID","Synonyms","Description","PreferredTerm","Type","Class")
+
+## a drug may have more than one class, so need to multiply rows
+## split and unnest the Class column of NCIt
+NCIt$Class <- strsplit(NCIt$Class, split = "\\|")
+NCIt <- unnest(data = NCIt, Class)
+
+## subset to retain only relevant classes
+NCItPharmacologics <- NCIt[which(NCIt$Class %in% c("Pharmacologic Substance","Amino Acid, Peptide, or Protein","Immunologic Factor")), ]
+
+## one drug can have more than one parent, so need to split into multiple rows...
+## split ParentID column on pipe symbol
+NCItPharmacologics$ParentID <- strsplit(NCItPharmacologics$ParentID, split = "\\|")
+## unnest the ID column to multiply rows
+NCItPharmacologics <- unnest(data=NCItPharmacologics,ParentID)
+
+## join parent synonyms
+## first, get the synonyms and IDs for parents
+NCItParents <- NCIt[which(NCIt$ID %in% NCItPharmacologics$ParentID), which(names(NCIt) %in% c("ID", "Synonyms"))]
+
+## each parent term may have more than one synonym
+## for simplicity, we will retain only the first synonym for each parent term
+NCItParents$Synonyms <- gsub("\\|.*","",NCItParents$Synonyms)
+
+## merge parents on entity ID = parent ID
+NCItPharmacologics <- merge(x=NCItPharmacologics,y=NCItParents,by.x="ParentID",by.y="ID",all.x=TRUE)
+## reorder and rename
+NCItPharmacologics <- dplyr::select(NCItPharmacologics,ID,Class,PreferredTerm,Synonyms="Synonyms.x",Description,ParentTerm="Synonyms.y",ParentID)
+
+## split the Synonyms column on pipe symbol
+NCItPharmacologics$Synonyms <- strsplit(NCItPharmacologics$Synonyms, split="\\|")
+## unnest the Synonyms column to multiply rows
+NCItPharmacologics <- unnest(data = NCItPharmacologics,Synonyms)
+
+## add a column with lower case drug synonyms for joining
+NCItPharmacologics$SynonymsLower <- tolower(NCItPharmacologics$Synonyms)
+
+## convert from tibble to data frame
+NCIthesaurus <- as.data.frame(NCItPharmacologics)
+NCItPharmacologics <- as.data.frame(NCItPharmacologics)
+
+
+## add a column to indicate date downloaded
+NCIthesaurus$downloaded <- Sys.Date()
+
+## write to comma separated file
+#write.csv(x=NCIthesaurus,file="NCIthesaurus.csv",row.names=FALSE)
+
+
+## check written correctly
+#dim(read.csv("NCIthesaurus.csv", header = TRUE, stringsAsFactors = FALSE))
+#names(read.csv("NCIthesaurus.csv", header = TRUE, stringsAsFactors = FALSE))
+
+```
+   
+```{r unnest evidence drugs, echo=TRUE}
+## split and unnest the clinvar_ids column
+evidence$drugs <- strsplit(evidence$drugs, split=",")
+evidence <- unnest(data=evidence, drugs)
+# variants$clinvar_ids <- strsplit(as.character(variants$clinvar_ids), split = ",")
+# variants <- unnest(data = variants, clinvar_ids)
+
+## how many drugs listed?
+drugsInEvidence <- unique(tolower(evidence$drugs))
+length(drugsInEvidence)
+
+
+## how many drug synonyms listed in NCI thesaurus?
+drugsInNCIt <- unique(NCItPharmacologics$SynonymsLower)
+length(drugsInNCIt)
+
+
+## how many drugs are in evidence$drugs but not NCItPharmacologics$synonyms?
+drugsNotInNCIt <- setdiff(drugsInEvidence, drugsInNCIt)
+length(drugsNotInNCIt)
+
+## what proportion of drugs in evidence$drugs are not in NCItPharmacologics?
+length(drugsNotInNCIt)/length(drugsInEvidence)
+
+## how many "drugs" not in NCIt are actually mechanisms, and which are in NCIt parent terms?
+NCItParentTerms <- unique(tolower(NCItPharmacologics$ParentTerm))
+
+setdiff(drugsNotInNCIt,NCItParentTerms  )
+
+```
+
+### **Graph visualisation**  
+  
+```{r load tables from output of trialMatchDataRefresh}  
+## read cancerStudies table into memory
+# contains study details, mapped to a controlled set of cancer types in the "TARGET.condition"  column
+# names are "locations, nct_id, brief_title, overall_status, condition, interventions, postcode, site_status, investigators, contacts, Refresh.date, matching.condition, TARGET.condition, Link, lat, long"
+# no columns are aggregated
+cancerStudies <- unique(read.table(file = "cancerStudies.tsv", header = TRUE, stringsAsFactors = FALSE))
+
+## filter and retain only studies with overall status of "Recruiting"
+cancerStudies <- dplyr::filter(cancerStudies, overall_status == "Recruiting")
+
+## filter out sites with status of not yet recruiting
+cancerStudies <- dplyr::filter(cancerStudies, site_status == "Recruiting")
+
+
+
+targetMatches <- unique(read.table(file = "targetMatches.tsv", header = TRUE, stringsAsFactors = FALSE))
+
+
+manualNLPmatches <- unique(read.table(file = "manualNLPmatches.tsv", header = TRUE, stringsAsFactors = FALSE))
+
+pathwayMatches <- unique(read.table(file = "pathwayMatches.tsv", header = TRUE, stringsAsFactors = FALSE))
+
+```
+
+
+
+
+```{r create edge lists, echo=TRUE}
+## gene to drug edges from targetMatches
+gene.target.edges <- unique(dplyr::select(targetMatches, "from" = "Target", "to"="Interventions"))
+gene.target.edges <- gene.target.edges[complete.cases(gene.target.edges), ]
+gene.target.edges$label <- "targeted.by"
+formattable(head(gene.target.edges))
+
+## gene to study edges from manualNLPmatches
+gene.study.edges <- unique(dplyr::select(manualNLPmatches, "from" = "matching.symbol", "to"="nct_id", "label"="criteria"))
+formattable(head(gene.study.edges))
+
+## gene to downstream gene edges from pathwayMatches
+gene.downstream.edges <- unique(dplyr::select(pathwayMatches, "from" = "network.element.gene.names", "to"="downstream.genes", "label"="downstream"))
+formattable(head(gene.downstream.edges))
+
+## interventions to studies from cancerStudies
+drug.study.edges <- unique(dplyr::select(cancerStudies, "from" = "interventions", "to"="nct_id"))
+drug.study.edges$label <- "included.in"
+formattable(head(drug.study.edges))
+
+## variant to drug edges from evidence
+# subset evidence
+evidence.edges <- unique(dplyr::select(evidence, gene, variant, drugs, evidence_direction, clinical_significance, evidence_statement))
+# concatenate evidence direction and clinical_significance
+evidence.edges$evidence_statement <- paste(toupper(evidence.edges$evidence_direction), toupper(evidence.edges$clinical_significance), evidence.edges$evidence_statement, sep="; ")
+
+# create gene_variant column
+evidence.edges$gene_variant <- paste(evidence.edges$gene, evidence.edges$variant, sep="_")
+# create edge lists
+variant.drug.edges <- unique(dplyr::select(evidence.edges, "from"="gene_variant", "to"="drugs", "label"="evidence_statement"))
+formattable(head(variant.drug.edges))
+
+## variant to gene from variants
+# create a copy 
+variant.edges <- unique(dplyr::select(variants, gene, variant, significance))
+variant.edges$gene_variant <- paste(variant.edges$gene, variant.edges$variant, sep="_")
+variant.gene.edges <- unique(dplyr::select(variant.edges, "from"="gene_variant", "to"="gene"))
+variant.gene.edges$label <- NA
+formattable(head(variant.gene.edges))
+
+## combine into a single edge list
+edgeList <- rbind(gene.target.edges, gene.study.edges, gene.downstream.edges, drug.study.edges, variant.drug.edges, variant.gene.edges)
+```
+
+
+```{r create node lists, echo=T}
+## gene nodes 
+gene.nodes <- data.frame(id=unique(c(targetMatches$Target, gene.downstream.edges$from, gene.downstream.edges$to, evidence$edges$gene, manualNLPmatches$matching.symbol, variant.gene.edges$to)))
+gene.nodes$class <- "gene"
+gene.nodes$popup <- NA
+formattable(head(gene.nodes))
+## variant nodes from variant.edges
+# need to account for redundanc in significance column
+variant.nodes <- as.data.frame(variant.edges %>%
+                  group_by(id=gene_variant) %>%
+                  summarise(
+                            popup = paste(unique(significance), collapse = "; "), 
+                            class = "variant"))
+formattable(head(variant.nodes))
+## drug nodes
+drug.nodes <- data.frame(id=unique(cancerStudies$interventions))
+drug.nodes$popup <- NA
+drug.nodes$class <- "drug"
+formattable(head(drug.nodes))
+## study nodes <- 
+study.nodes <- unique(dplyr::select(cancerStudies, "id" = "nct_id", "popup"="brief_title"))
+study.nodes$class <- "study"
+formattable(head(study.nodes))
+## combine into a single node list
+nodeList <- unique(rbind(gene.nodes, variant.nodes, drug.nodes, study.nodes))
+```
+
+
+
+
+
+
+```{r create graphs, echo=T}
+basic.igraph <- graph_from_data_frame(d=edgeList, directed=T, vertices = nodeList)
+class(basic.igraph)
+
+## subset for nodes downstream of NRAS
+# first, get a list of all nodes reachable from (i.e downstream of) NRAS
+downstreamNodes <- subcomponent(basic.igraph, "NRAS", mode = c("out"))
+downstreamNodes
+# second, create a subgraph of basic.graph, containing only the specified vertices and all the edges among them
+downstreamGraph <- induced_subgraph(graph=basic.igraph, vids = downstreamNodes, impl = "auto")
+# third, plot downstream subgraph
+plot(downstreamGraph, layout = layout_with_graphopt, edge.arrow.size = 0.2)
+# layout as tree
+plot(downstreamGraph, layout=layout_as_tree(downstreamGraph, root=which(V(downstreamGraph)$name == "NRAS"),mode="out"))
+
+## networkD3 graph
+# simple.graph <- simpleNetwork(edgeList, height="100px", width="100px")
+# class(simple.graph)
+
+
+```
+
+
+
+
+
+```
+
+
