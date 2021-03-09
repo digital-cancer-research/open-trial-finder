@@ -6,13 +6,16 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(echo = T)
 require(dplyr)
 require(formattable)
 require(tidyr)
 require(ggraph)
 require(igraph)
 require(networkD3)
+require(tidygraph)
+require(ggraph)
+require(visNetwork)
 ```
 
 
@@ -268,25 +271,53 @@ pathwayMatches <- unique(read.table(file = "pathwayMatches.tsv", header = TRUE, 
 
 
 
-```{r create edge lists, echo=TRUE}
+```{r create node and edge lists, echo=TRUE}
 ## gene to drug edges from targetMatches
 gene.target.edges <- unique(dplyr::select(targetMatches, "from" = "Target", "to"="Interventions"))
 gene.target.edges <- gene.target.edges[complete.cases(gene.target.edges), ]
 gene.target.edges$label <- "targeted.by"
-formattable(head(gene.target.edges))
+## get gene and drug nodes
+gene.nodes <- unique(dplyr::select(targetMatches, "id" = "Target"))
+drug.nodes <- unique(dplyr::select(targetMatches, "id"="Interventions"))
+
+
+
+## preview last few rows of tables
+formattable(tail(gene.target.edges))
+formattable(tail(gene.nodes))
+formattable(tail(drug.nodes))
+
+
 
 ## gene to study edges from manualNLPmatches
 gene.study.edges <- unique(dplyr::select(manualNLPmatches, "from" = "matching.symbol", "to"="nct_id", "label"="criteria"))
-formattable(head(gene.study.edges))
+gene.nodes <- rbind(gene.nodes, unique(dplyr::select(manualNLPmatches, "id" = "matching.symbol")))
+study.nodes <- unique(dplyr::select(manualNLPmatches, "id"="nct_id"))
+
+formattable(tail(gene.study.edges))
+formattable(tail(gene.nodes))
+formattable(tail(study.nodes))
 
 ## gene to downstream gene edges from pathwayMatches
 gene.downstream.edges <- unique(dplyr::select(pathwayMatches, "from" = "network.element.gene.names", "to"="downstream.genes", "label"="downstream"))
-formattable(head(gene.downstream.edges))
+gene.nodes <- rbind(gene.nodes, unique(dplyr::select(pathwayMatches, "id" = "network.element.gene.names")), unique(dplyr::select(pathwayMatches, "id" = "downstream.genes")))
+formattable(tail(gene.downstream.edges))
+formattable(tail(gene.nodes))
+
+
+
 
 ## interventions to studies from cancerStudies
 drug.study.edges <- unique(dplyr::select(cancerStudies, "from" = "interventions", "to"="nct_id"))
 drug.study.edges$label <- "included.in"
-formattable(head(drug.study.edges))
+drug.nodes <- rbind(drug.nodes, unique(dplyr::select(cancerStudies, "id" = "interventions")))
+study.nodes <- rbind(study.nodes, unique(dplyr::select(cancerStudies, "id" = "nct_id")))
+
+formattable(tail(drug.study.edges))
+formattable(tail(drug.nodes))
+formattable(tail(study.nodes))
+
+
 
 ## variant to drug edges from evidence
 # subset evidence
@@ -298,7 +329,16 @@ evidence.edges$evidence_statement <- paste(toupper(evidence.edges$evidence_direc
 evidence.edges$gene_variant <- paste(evidence.edges$gene, evidence.edges$variant, sep="_")
 # create edge lists
 variant.drug.edges <- unique(dplyr::select(evidence.edges, "from"="gene_variant", "to"="drugs", "label"="evidence_statement"))
-formattable(head(variant.drug.edges))
+variant.nodes <- unique(dplyr::select(evidence.edges, "id"="gene_variant"))
+drug.nodes <- rbind(drug.nodes, unique(dplyr::select(evidence.edges, "id" = "drugs")))
+
+formattable(tail(variant.drug.edges))
+formattable(tail(variant.nodes))
+formattable(tail(drug.nodes))
+
+
+
+
 
 ## variant to gene from variants
 # create a copy 
@@ -306,38 +346,64 @@ variant.edges <- unique(dplyr::select(variants, gene, variant, significance))
 variant.edges$gene_variant <- paste(variant.edges$gene, variant.edges$variant, sep="_")
 variant.gene.edges <- unique(dplyr::select(variant.edges, "from"="gene_variant", "to"="gene"))
 variant.gene.edges$label <- NA
-formattable(head(variant.gene.edges))
+variant.nodes <- rbind(variant.nodes, unique(dplyr::select(variants, "id" = "gene")))
+gene.nodes <- rbind(gene.nodes, unique(dplyr::select(variants, "id" = "gene")))
+
+formattable(tail(variant.gene.edges))
+formattable(tail(variant.nodes))
+formattable(tail(gene.nodes))
+
+variant.nodes$group <- "variant"
+gene.nodes$group <- "gene"
+drug.nodes$group <- "drug"
+study.nodes$group <- "study"
+
+variant.nodes$node.colour <- "red"
+gene.nodes$node.colour <- "blue"
+drug.nodes$node.colour <- "green"
+study.nodes$node.colour <- "black"
+
 
 ## combine into a single edge list
-edgeList <- rbind(gene.target.edges, gene.study.edges, gene.downstream.edges, drug.study.edges, variant.drug.edges, variant.gene.edges)
+edgeList <- unique(rbind(gene.target.edges, gene.study.edges, gene.downstream.edges, drug.study.edges, variant.drug.edges, variant.gene.edges))
+
+nodeList <- unique(rbind(variant.nodes, gene.nodes, drug.nodes, study.nodes))     
+## take out any redundancy
+nodeList <- as.data.frame(nodeList %>% 
+                  group_by(id) %>%
+                  summarise(
+                      group=paste(unique(group), collapse = "; ")
+                  ))
+nodeList <- nodeList[complete.cases(nodeList), ]
+edgeList <- edgeList[complete.cases(edgeList), ]
 ```
 
 
 ```{r create node lists, echo=T}
-## gene nodes 
-gene.nodes <- data.frame(id=unique(c(targetMatches$Target, gene.downstream.edges$from, gene.downstream.edges$to, evidence$edges$gene, manualNLPmatches$matching.symbol, variant.gene.edges$to)))
-gene.nodes$class <- "gene"
-gene.nodes$popup <- NA
-formattable(head(gene.nodes))
-## variant nodes from variant.edges
-# need to account for redundanc in significance column
-variant.nodes <- as.data.frame(variant.edges %>%
-                  group_by(id=gene_variant) %>%
-                  summarise(
-                            popup = paste(unique(significance), collapse = "; "), 
-                            class = "variant"))
-formattable(head(variant.nodes))
-## drug nodes
-drug.nodes <- data.frame(id=unique(cancerStudies$interventions))
-drug.nodes$popup <- NA
-drug.nodes$class <- "drug"
-formattable(head(drug.nodes))
-## study nodes <- 
-study.nodes <- unique(dplyr::select(cancerStudies, "id" = "nct_id", "popup"="brief_title"))
-study.nodes$class <- "study"
-formattable(head(study.nodes))
+# ## gene nodes 
+# gene.nodes <- data.frame(id=unique(c(targetMatches$Target, gene.downstream.edges$from, gene.downstream.edges$to, evidence$edges$gene, manualNLPmatches$matching.symbol, variant.gene.edges$to)))
+# gene.nodes$class <- "gene"
+# gene.nodes$popup <- NA
+# formattable(head(gene.nodes))
+# ## variant nodes from variant.edges
+# # need to account for redundanc in significance column
+# variant.nodes <- as.data.frame(variant.edges %>%
+#                   group_by(id=gene_variant) %>%
+#                   summarise(
+#                             popup = paste(unique(significance), collapse = "; "), 
+#                             class = "variant"))
+# formattable(head(variant.nodes))
+# ## drug nodes
+# drug.nodes <- data.frame(id=unique(cancerStudies$interventions))
+# drug.nodes$popup <- NA
+# drug.nodes$class <- "drug"
+# formattable(head(drug.nodes))
+# ## study nodes <- 
+# study.nodes <- unique(dplyr::select(cancerStudies, "id" = "nct_id", "popup"="brief_title"))
+# study.nodes$class <- "study"
+# formattable(head(study.nodes))
 ## combine into a single node list
-nodeList <- unique(rbind(gene.nodes, variant.nodes, drug.nodes, study.nodes))
+#nodeList <- unique(rbind(gene.nodes, variant.nodes, drug.nodes, study.nodes))
 ```
 
 
@@ -358,19 +424,167 @@ downstreamGraph <- induced_subgraph(graph=basic.igraph, vids = downstreamNodes, 
 # third, plot downstream subgraph
 plot(downstreamGraph, layout = layout_with_graphopt, edge.arrow.size = 0.2)
 # layout as tree
-plot(downstreamGraph, layout=layout_as_tree(downstreamGraph, root=which(V(downstreamGraph)$name == "NRAS"),mode="out"))
+# create layout object
+l <- layout_as_tree(downstreamGraph, root=which(V(downstreamGraph)$name == "NRAS"),mode="out")
 
+
+plot(downstreamGraph, layout=l)
+
+## hide edge labels
+plot(downstreamGraph, layout=l, edge.label = NA)
+
+
+
+```
+
+
+see https://www.jessesadler.com/post/network-analysis-with-r/ for more info on graph layouts and options,   
+also https://kateto.net/network-visualization  
+  
+  
+
+
+
+```{r tidygraph visualisations, warning=F}
+
+
+
+## convert to tidygraph
+downstreamGraph_tidy <- as_tbl_graph(downstreamGraph)
+## can now configure similar to ggplot
+ggraph(downstreamGraph_tidy, l) + 
+    geom_node_point(aes(size=2, alpha=0.5, color=V(downstreamGraph)$class)) +
+    geom_edge_link(aes(width = 1), alpha = 0.8,show.legend = FALSE) + 
+    scale_edge_width(range = c(0.2, 2)) +
+    geom_node_text(label=V(downstreamGraph)$name, repel = TRUE) +
+    guides(alpha = FALSE, size = FALSE) +
+    theme_graph()
+
+
+
+
+
+```
+
+
+
+
+```{r visNetwork visualisations}
+#library(visNetwork)
+visIgraph(downstreamGraph)
+
+
+
+
+## size nodes based on degree centrality (more links -> larger node) We will also change the width of the edges based on their weight.
+# Compute node degrees (#links) and use that to set node size:
+deg <- degree(downstreamGraph, mode="all")
+V(downstreamGraph)$size <- deg*3
+
+
+visIgraph(downstreamGraph)
+
+visIgraph(downstreamGraph) %>%
+    visIgraphLayout(layout = "layout_with_fr") %>%
+    visEdges(arrows = "middle")
+
+
+
+## layout as tree, with root nodes at the top
+visIgraph(downstreamGraph) %>%
+    visHierarchicalLayout(sortMethod = "directed", direction = "UD")%>%
+    visEdges(arrows = "middle")
+
+
+## show labels on hover
+visIgraph(downstreamGraph) %>%
+  visHierarchicalLayout(sortMethod = "directed", direction = "UD")%>%
+  visEdges(arrows = "middle") %>%
+  visInteraction(hover = T) %>%
+  visEvents(hoverEdge = "function(e){
+    this.body.data.edges.update({id: e.edge, font: {size : 14}});
+  }", hoverNode = "function(f){
+    this.body.data.nodes.update({id: f.node, font: {size : 14}});
+  }") %>%
+  visEvents(blurEdge = "function(e){
+    this.body.data.edges.update({id: e.edge, font: {size : 0}});
+  }", blurNode = "function(f){
+    this.body.data.nodes.update({id: f.node, font: {size : 0}});
+  }")
+
+
+
+visIgraph(downstreamGraph) %>%
+    visHierarchicalLayout(sortMethod = "directed", direction = "UD")%>%
+    visInteraction(hover = T) %>%
+    visEvents(hoverEdge = "function(e){
+    this.body.data.edges.update({id: e.edge, font: {size : 14}});
+  }") %>%
+    visEvents(blurEdge = "function(e){
+    this.body.data.edges.update({id: e.edge, font: {size : 0}});
+  }") %>%
+    visEvents(hoverNode = "function(e){
+    this.body.data.nodes.update({id: e.node, font: {size : 14}});
+  }") %>%
+    visEvents(blurNode = "function(e){
+    this.body.data.nodes.update({id: e.node, font: {size : 0}});
+  }")
+
+
+
+## add selectable nodes 
+visIgraph(downstreamGraph) %>%
+    visHierarchicalLayout(sortMethod = "directed", direction = "UD")%>%
+    visOptions(highlightNearest = TRUE, nodesIdSelection = TRUE) %>%
+    visInteraction(hover = T) %>%
+    visEvents(hoverEdge = "function(e){
+    this.body.data.edges.update({id: e.edge, font: {size : 14}});
+  }") %>%
+    visEvents(blurEdge = "function(e){
+    this.body.data.edges.update({id: e.edge, font: {size : 0}});
+  }") %>%
+    visEvents(hoverNode = "function(e){
+    this.body.data.nodes.update({id: e.node, font: {size : 14}});
+  }") %>%
+    visEvents(blurNode = "function(e){
+    this.body.data.nodes.update({id: e.node, font: {size : 0}});
+  }")
+
+## colour nodes by group
+visIgraph(downstreamGraph) %>%
+    visHierarchicalLayout(sortMethod = "directed", direction = "UD")%>%
+    visOptions(highlightNearest = TRUE, nodesIdSelection = TRUE) %>%
+    visGroups(groupname = "gene", color = "red", shape = "square", 
+              shadow = list(enabled = TRUE)) %>%
+    visInteraction(hover = T) %>%
+    visEvents(hoverEdge = "function(e){
+    this.body.data.edges.update({id: e.edge, font: {size : 14}});
+  }") %>%
+    visEvents(blurEdge = "function(e){
+    this.body.data.edges.update({id: e.edge, font: {size : 0}});
+  }") %>%
+    visEvents(hoverNode = "function(e){
+    this.body.data.nodes.update({id: e.node, font: {size : 14}});
+  }") %>%
+    visEvents(blurNode = "function(e){
+    this.body.data.nodes.update({id: e.node, font: {size : 0}});
+  }")
+
+
+## probably better to use visNodes(title=) 
+# String or Element. Default to undefined. Title to be displayed when the user hovers over the node. The title can be an HTML element or a string containing plain text or HTML. 
+# for details on how to implement, see https://stackoverflow.com/questions/48914686/remove-node-and-edge-label-from-visnetwork-visualiztion-and-display-info-when-cl 
+
+```
+
+
+```{r networkD3 visualisations}
 ## networkD3 graph
 # simple.graph <- simpleNetwork(edgeList, height="100px", width="100px")
 # class(simple.graph)
 
 
-```
-
-
-
 
 
 ```
-
 
