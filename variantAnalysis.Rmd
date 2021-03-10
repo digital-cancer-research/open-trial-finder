@@ -274,8 +274,10 @@ pathwayMatches <- unique(read.table(file = "pathwayMatches.tsv", header = TRUE, 
 ```{r create node and edge lists, echo=TRUE}
 ## gene to drug edges from targetMatches
 gene.target.edges <- unique(dplyr::select(targetMatches, "from" = "Target", "to"="Interventions"))
+gene.target.edges$to <- tolower(gene.target.edges$to)
+
 gene.target.edges <- gene.target.edges[complete.cases(gene.target.edges), ]
-gene.target.edges$label <- "targeted.by"
+gene.target.edges$title <- "targeted.by"
 ## get gene and drug nodes
 gene.nodes <- unique(dplyr::select(targetMatches, "id" = "Target"))
 drug.nodes <- unique(dplyr::select(targetMatches, "id"="Interventions"))
@@ -290,7 +292,7 @@ formattable(tail(drug.nodes))
 
 
 ## gene to study edges from manualNLPmatches
-gene.study.edges <- unique(dplyr::select(manualNLPmatches, "from" = "matching.symbol", "to"="nct_id", "label"="criteria"))
+gene.study.edges <- unique(dplyr::select(manualNLPmatches, "from" = "matching.symbol", "to"="nct_id", "title"="criteria"))
 gene.nodes <- rbind(gene.nodes, unique(dplyr::select(manualNLPmatches, "id" = "matching.symbol")))
 study.nodes <- unique(dplyr::select(manualNLPmatches, "id"="nct_id"))
 
@@ -299,7 +301,7 @@ formattable(tail(gene.nodes))
 formattable(tail(study.nodes))
 
 ## gene to downstream gene edges from pathwayMatches
-gene.downstream.edges <- unique(dplyr::select(pathwayMatches, "from" = "network.element.gene.names", "to"="downstream.genes", "label"="downstream"))
+gene.downstream.edges <- unique(dplyr::select(pathwayMatches, "from" = "network.element.gene.names", "to"="downstream.genes", "title"="downstream"))
 gene.nodes <- rbind(gene.nodes, unique(dplyr::select(pathwayMatches, "id" = "network.element.gene.names")), unique(dplyr::select(pathwayMatches, "id" = "downstream.genes")))
 formattable(tail(gene.downstream.edges))
 formattable(tail(gene.nodes))
@@ -309,7 +311,8 @@ formattable(tail(gene.nodes))
 
 ## interventions to studies from cancerStudies
 drug.study.edges <- unique(dplyr::select(cancerStudies, "from" = "interventions", "to"="nct_id"))
-drug.study.edges$label <- "included.in"
+drug.study.edges$from <- tolower(drug.study.edges$from)
+drug.study.edges$title <- "included.in"
 drug.nodes <- rbind(drug.nodes, unique(dplyr::select(cancerStudies, "id" = "interventions")))
 study.nodes <- rbind(study.nodes, unique(dplyr::select(cancerStudies, "id" = "nct_id")))
 
@@ -328,7 +331,9 @@ evidence.edges$evidence_statement <- paste(toupper(evidence.edges$evidence_direc
 # create gene_variant column
 evidence.edges$gene_variant <- paste(evidence.edges$gene, evidence.edges$variant, sep="_")
 # create edge lists
-variant.drug.edges <- unique(dplyr::select(evidence.edges, "from"="gene_variant", "to"="drugs", "label"="evidence_statement"))
+variant.drug.edges <- unique(dplyr::select(evidence.edges, "from"="gene_variant", "to"="drugs", "title"="evidence_statement"))
+variant.drug.edges$to <- tolower(variant.drug.edges$to)
+
 variant.nodes <- unique(dplyr::select(evidence.edges, "id"="gene_variant"))
 drug.nodes <- rbind(drug.nodes, unique(dplyr::select(evidence.edges, "id" = "drugs")))
 
@@ -345,7 +350,7 @@ formattable(tail(drug.nodes))
 variant.edges <- unique(dplyr::select(variants, gene, variant, significance))
 variant.edges$gene_variant <- paste(variant.edges$gene, variant.edges$variant, sep="_")
 variant.gene.edges <- unique(dplyr::select(variant.edges, "from"="gene_variant", "to"="gene"))
-variant.gene.edges$label <- NA
+variant.gene.edges$title <- NA
 variant.nodes <- rbind(variant.nodes, unique(dplyr::select(variant.edges, "id" = "gene_variant")))
 gene.nodes <- rbind(gene.nodes, unique(dplyr::select(variants, "id" = "gene")))
 
@@ -358,22 +363,24 @@ gene.nodes$group <- "gene"
 drug.nodes$group <- "drug"
 study.nodes$group <- "study"
 
-variant.nodes$node.colour <- "red"
-gene.nodes$node.colour <- "blue"
-drug.nodes$node.colour <- "green"
-study.nodes$node.colour <- "black"
+variant.nodes$color <- "red"
+gene.nodes$color <- "blue"
+drug.nodes$color <- "green"
+study.nodes$color <- "black"
 
+## convert all drug names to lower case to remove redundancy
+drug.nodes$id <- tolower(drug.nodes$id)
 
 ## combine into a single edge list
 edgeList <- unique(rbind(gene.target.edges, gene.study.edges, gene.downstream.edges, drug.study.edges, variant.drug.edges, variant.gene.edges))
 
 nodeList <- unique(rbind(variant.nodes, gene.nodes, drug.nodes, study.nodes))     
 ## take out any redundancy
-nodeList <- as.data.frame(nodeList %>% 
-                  group_by(id) %>%
-                  summarise(
-                      group=paste(unique(group), collapse = "; ")
-                  ))
+# nodeList <- as.data.frame(nodeList %>% 
+#                   group_by(id) %>%
+#                   summarise(
+#                       group=paste(unique(group), collapse = "; ")
+#                   ))
 nodeList <- nodeList[complete.cases(nodeList), ]
 edgeList <- edgeList[complete.cases(edgeList), ]
 ```
@@ -430,7 +437,7 @@ l <- layout_as_tree(downstreamGraph, root=which(V(downstreamGraph)$name == "NRAS
 
 plot(downstreamGraph, layout=l)
 
-## hide edge labels
+## hide edge titles
 plot(downstreamGraph, layout=l, edge.label = NA)
 
 
@@ -496,79 +503,85 @@ visIgraph(downstreamGraph) %>%
     visEdges(arrows = "middle")
 
 
-## show labels on hover
-visIgraph(downstreamGraph) %>%
-  visHierarchicalLayout(sortMethod = "directed", direction = "UD")%>%
-  visEdges(arrows = "middle") %>%
-  visInteraction(hover = T) %>%
-  visEvents(hoverEdge = "function(e){
-    this.body.data.edges.update({id: e.edge, font: {size : 14}});
-  }", hoverNode = "function(f){
-    this.body.data.nodes.update({id: f.node, font: {size : 14}});
-  }") %>%
-  visEvents(blurEdge = "function(e){
-    this.body.data.edges.update({id: e.edge, font: {size : 0}});
-  }", blurNode = "function(f){
-    this.body.data.nodes.update({id: f.node, font: {size : 0}});
-  }")
-
-
-
+## selectable nodes
 visIgraph(downstreamGraph) %>%
     visHierarchicalLayout(sortMethod = "directed", direction = "UD")%>%
-    visInteraction(hover = T) %>%
-    visEvents(hoverEdge = "function(e){
-    this.body.data.edges.update({id: e.edge, font: {size : 14}});
-  }") %>%
-    visEvents(blurEdge = "function(e){
-    this.body.data.edges.update({id: e.edge, font: {size : 0}});
-  }") %>%
-    visEvents(hoverNode = "function(e){
-    this.body.data.nodes.update({id: e.node, font: {size : 14}});
-  }") %>%
-    visEvents(blurNode = "function(e){
-    this.body.data.nodes.update({id: e.node, font: {size : 0}});
-  }")
+    visOptions(highlightNearest = TRUE, nodesIdSelection = TRUE) %>%
+    visEdges(arrows = "middle")
+
+## show labels on hover
+# visIgraph(downstreamGraph) %>%
+#   visHierarchicalLayout(sortMethod = "directed", direction = "UD")%>%
+#   visEdges(arrows = "middle") %>%
+#   visInteraction(hover = T) %>%
+#   visEvents(hoverEdge = "function(e){
+#     this.body.data.edges.update({id: e.edge, font: {size : 14}});
+#   }", hoverNode = "function(f){
+#     this.body.data.nodes.update({id: f.node, font: {size : 14}});
+#   }") %>%
+#   visEvents(blurEdge = "function(e){
+#     this.body.data.edges.update({id: e.edge, font: {size : 0}});
+#   }", blurNode = "function(f){
+#     this.body.data.nodes.update({id: f.node, font: {size : 0}});
+#   }")
+
+
+
+# visIgraph(downstreamGraph) %>%
+#     visHierarchicalLayout(sortMethod = "directed", direction = "UD")%>%
+#     visInteraction(hover = T) %>%
+#     visEvents(hoverEdge = "function(e){
+#     this.body.data.edges.update({id: e.edge, font: {size : 14}});
+#   }") %>%
+#     visEvents(blurEdge = "function(e){
+#     this.body.data.edges.update({id: e.edge, font: {size : 0}});
+#   }") %>%
+#     visEvents(hoverNode = "function(e){
+#     this.body.data.nodes.update({id: e.node, font: {size : 14}});
+#   }") %>%
+#     visEvents(blurNode = "function(e){
+#     this.body.data.nodes.update({id: e.node, font: {size : 0}});
+#   }")
 
 
 
 ## add selectable nodes 
-visIgraph(downstreamGraph) %>%
-    visHierarchicalLayout(sortMethod = "directed", direction = "UD")%>%
-    visOptions(highlightNearest = TRUE, nodesIdSelection = TRUE) %>%
-    visInteraction(hover = T) %>%
-    visEvents(hoverEdge = "function(e){
-    this.body.data.edges.update({id: e.edge, font: {size : 14}});
-  }") %>%
-    visEvents(blurEdge = "function(e){
-    this.body.data.edges.update({id: e.edge, font: {size : 0}});
-  }") %>%
-    visEvents(hoverNode = "function(e){
-    this.body.data.nodes.update({id: e.node, font: {size : 14}});
-  }") %>%
-    visEvents(blurNode = "function(e){
-    this.body.data.nodes.update({id: e.node, font: {size : 0}});
-  }")
+# visIgraph(downstreamGraph) %>%
+#     visHierarchicalLayout(sortMethod = "directed", direction = "UD")%>%
+#     visOptions(highlightNearest = TRUE, nodesIdSelection = TRUE) %>%
+#     visInteraction(hover = T) %>%
+#     visEvents(hoverEdge = "function(e){
+#     this.body.data.edges.update({id: e.edge, font: {size : 14}});
+#   }") %>%
+#     visEvents(blurEdge = "function(e){
+#     this.body.data.edges.update({id: e.edge, font: {size : 0}});
+#   }") %>%
+#     visEvents(hoverNode = "function(e){
+#     this.body.data.nodes.update({id: e.node, font: {size : 14}});
+#   }") %>%
+#     visEvents(blurNode = "function(e){
+#     this.body.data.nodes.update({id: e.node, font: {size : 0}});
+#   }")
 
 ## colour nodes by group
-visIgraph(downstreamGraph) %>%
-    visHierarchicalLayout(sortMethod = "directed", direction = "UD")%>%
-    visOptions(highlightNearest = TRUE, nodesIdSelection = TRUE) %>%
-    visGroups(groupname = "gene", color = "red", shape = "square", 
-              shadow = list(enabled = TRUE)) %>%
-    visInteraction(hover = T) %>%
-    visEvents(hoverEdge = "function(e){
-    this.body.data.edges.update({id: e.edge, font: {size : 14}});
-  }") %>%
-    visEvents(blurEdge = "function(e){
-    this.body.data.edges.update({id: e.edge, font: {size : 0}});
-  }") %>%
-    visEvents(hoverNode = "function(e){
-    this.body.data.nodes.update({id: e.node, font: {size : 14}});
-  }") %>%
-    visEvents(blurNode = "function(e){
-    this.body.data.nodes.update({id: e.node, font: {size : 0}});
-  }")
+# visIgraph(downstreamGraph) %>%
+#     visHierarchicalLayout(sortMethod = "directed", direction = "UD")%>%
+#     visOptions(highlightNearest = TRUE, nodesIdSelection = TRUE) %>%
+#     # visGroups(groupname = "gene", color = "red", shape = "square", 
+#     #           shadow = list(enabled = TRUE)) %>%
+#     visInteraction(hover = T) %>%
+#     visEvents(hoverEdge = "function(e){
+#     this.body.data.edges.update({id: e.edge, font: {size : 14}});
+#   }") %>%
+#     visEvents(blurEdge = "function(e){
+#     this.body.data.edges.update({id: e.edge, font: {size : 0}});
+#   }") %>%
+#     visEvents(hoverNode = "function(e){
+#     this.body.data.nodes.update({id: e.node, font: {size : 14}});
+#   }") %>%
+#     visEvents(blurNode = "function(e){
+#     this.body.data.nodes.update({id: e.node, font: {size : 0}});
+#   }")
 
 
 ## probably better to use visNodes(title=) 
