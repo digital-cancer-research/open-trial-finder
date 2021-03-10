@@ -346,7 +346,7 @@ variant.edges <- unique(dplyr::select(variants, gene, variant, significance))
 variant.edges$gene_variant <- paste(variant.edges$gene, variant.edges$variant, sep="_")
 variant.gene.edges <- unique(dplyr::select(variant.edges, "from"="gene_variant", "to"="gene"))
 variant.gene.edges$label <- NA
-variant.nodes <- rbind(variant.nodes, unique(dplyr::select(variants, "id" = "gene")))
+variant.nodes <- rbind(variant.nodes, unique(dplyr::select(variant.edges, "id" = "gene_variant")))
 gene.nodes <- rbind(gene.nodes, unique(dplyr::select(variants, "id" = "gene")))
 
 formattable(tail(variant.gene.edges))
