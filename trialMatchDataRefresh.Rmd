@@ -34,15 +34,212 @@ require(maps)
 require(leaflet)
 require(PostcodesioR)
 require(rjson)
+require(RSQLite)
+
+## clean up first
+rm(list=ls())
 
 ##get today's date
 today <- format(Sys.Date(), format = "%d %B %Y")
+
+
 
 ```
 
 **Date of data refresh: `r today`**  
   
   
+```{r create empty SQLite DB} 
+# Create an RSQLite database
+con <- dbConnect(RSQLite::SQLite(), "trialMatchData.sqlite")
+
+dbListTables(con)
+
+```
+  
+  
+```{r create table of cancer types}
+## conditionSynonyms specifies which cancer types are of interest, and which condition names (as used by clinicaltrials.gov) will be considered as matches for each
+
+## synonyms define on basis of those in clinicaltrials.gov
+conditionSynonyms <- read.csv(file = "conditionSynonyms4.csv", stringsAsFactors = FALSE)
+
+## remove redundancy, if any
+conditionSynonyms <- unique(conditionSynonyms)
+
+## display conditions and synonyms used
+# formattable(as.data.frame(conditionSynonyms %>% 
+#                   group_by(controlled.cancer.type) %>%
+#                   summarise(
+#                   synonyms = paste(condition.synonyms, collapse = ", "))))
+
+## preview
+formattable(head(conditionSynonyms))
+
+## create as a table in database
+dbWriteTable(conn = con,name = "cancers", value = conditionSynonyms, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+
+```
+  
+  
+```{r download and process a list of all human genes and their synonyms}
+
+## start timer
+tic("download a list of all human genes and their synonyms")
+
+
+humanGenes <- read.table(file = "humanGenes.tsv", header = TRUE, quote = "", sep = "\t", fill = TRUE, stringsAsFactors = FALSE)
+
+humanGenes <- dplyr::select(humanGenes, Symbol, Aliases)## drop everything except Symbol and Aliases columns
+
+
+humanGenes$Aliases <- strsplit(x=humanGenes$Aliases, split = ",")## split the aliases on comma 
+humanGenes <- unnest(data = humanGenes, cols = Aliases, keep_empty = TRUE) ## unnest to multiply rows, keep any rows with no aliases
+humanGenes <- as.data.frame(humanGenes) ## convert to data frame
+
+humanGenes$Aliases <- str_squish(string = humanGenes$Aliases) ## trim excess whitespace from Aliases values
+
+## Symbol values are not represented among Aliases
+# create a data frame with unique Symbol values
+symbols <- data.frame("Symbol"=unique(humanGenes$Symbol), "Aliases"=unique(humanGenes$Symbol))
+# bind this onto bottom of humanGenes data frame
+humanGenes <- rbind(humanGenes,symbols)
+# remove duplicated values, if any
+humanGenes <- unique(humanGenes)
+# sort on Symbol values
+humanGenes <- humanGenes[order(humanGenes$Symbol), ] 
+
+# drop any rows where Aliases is NA
+humanGenes <- humanGenes[!is.na(humanGenes$Aliases), ]
+
+## drop any rows where Aliases value is only a single character
+
+## NOW humanGenes TABLE CONTAINS ALL HUMAN GENES AND THEIR SYNONYMS
+## (61,593 unique symbols, 130,978 rows)
+
+## stop timer
+toc()
+```
+  
+```{r create table of human genes}
+## preview
+formattable(head(humanGenes))
+
+## create as a table in database
+dbWriteTable(conn = con,name = "genes", value = humanGenes, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+
+```
+  
+```{r download and process variants from clinvar}
+## download variant summaries from clinvar
+download.file(url="https://ftp.ncbi.nlm.nih.gov/pub/clinvar/tab_delimited/variant_summary.txt.gz",destfile = "variant_summary.txt.gz")
+clinvar <- read.table(gzfile("variant_summary.txt.gz"), sep="\t", quote="", fill = TRUE, stringsAsFactors = FALSE) 
+# V1 contains values for Allele ID
+# V2 gives nature (e.g. fusion, single nucleotide variant etc)
+# V7 contains values for clinical significance (inc whether pathogenic or not)
+# V25 gives a measure of confidence in assertion
+clinvar <- unique(dplyr::select(clinvar, "allele.id" = "V1", "nature"="V2", "significance"="V7", "confidence"="V25"))
+
+## variation_allele contains mappings from clinvar variation ID (clinvar ID) and allele ID
+download.file(url="https://ftp.ncbi.nlm.nih.gov/pub/clinvar/tab_delimited/variation_allele.txt.gz",destfile = "variation_allele.txt.gz")
+variationAllele <- read.table(gzfile("variation_allele.txt.gz"), sep="\t", quote="", fill = TRUE, stringsAsFactors = FALSE) 
+# V1 contains values for clinvar ID
+# V3 contains values for Allele ID
+variationAllele <- unique(dplyr::select(variationAllele, "clinvar.id"="V1", "allele.id"="V3"))
+
+## join tables
+clinvar <- merge(x=clinvar, by.x="allele.id", y=variationAllele, by.y="allele.id")
+
+
+# variants contains mappings from variant_id to clinvar_ids
+variants <- read.csv(file = "https://civicdb.org/downloads/nightly/nightly-VariantSummaries.tsv", sep = "\t", quote = "", stringsAsFactors = FALSE)
+# variants$gene contains gene name (Entrez symbol)
+# variants$variant contains amino acid change
+# variants$summary contains a useful summary of evidence for each variant
+# variants$clinvar_ids contains (comma-separated) clinvar IDs that can be mapped to the clinvar table to get info whether pathogenic or not... 
+
+
+## drop unwanted columns
+variants <- unique(dplyr::select(variants, variant_id, gene, variant, summary, variant_groups,civic_variant_evidence_score,clinvar_ids ))
+
+## split and unnest the clinvar_ids column
+variants$clinvar_ids <- strsplit(as.character(variants$clinvar_ids), split = ",")
+variants <- unnest(data = variants, clinvar_ids)
+
+
+## join significance from clinvar
+variants <- unique(merge(x=variants, by.x="clinvar_ids", all.x=TRUE, y=clinvar, by.y="clinvar.id"))
+
+
+
+## drop unwanted columns 
+variants <- unique(dplyr::select(variants,variant_id, clinvar_ids,gene,variant,summary,variant_groups, significance,confidence))
+
+## split on the word "and"
+variants$variant <- strsplit(x=variants$variant, split = " and ") 
+variants <- unnest(data = variants, cols = variant, keep_empty = TRUE) ## unnest to multiply rows, keep any rows with no aliases
+variants <- as.data.frame(variants) ## convert to datack a frame
+
+
+## trim everything after first space in variants$variant
+variants$variant <- gsub(pattern = " .*", replacement = "", x=variants$variant)
+
+```
+
+ 
+```{r create table of variants}
+## preview
+formattable(head(variants))
+
+## create as a table in database
+dbWriteTable(conn = con,name = "variants", value = variants, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+
+```
+    
+```{r download and process evidence from civic DB}
+## download evidence from civicDB
+# evidence contains mappings from variant_id to gene (gene name) and variant (amino acid change) to drugs etc
+evidence <- read.csv(file = "https://civicdb.org/downloads/nightly/nightly-ClinicalEvidenceSummaries.tsv", sep = "\t", quote="", stringsAsFactors = FALSE)
+# evidence contains more detailed data re: drugs, sensitivity etc
+# evidence$evidence_level contains details of nature of evidence: 
+# A = validated
+# B = clinical
+# C = case study
+# D = preclinical
+
+
+## drop unwanted columns
+evidence <- unique(dplyr::select(evidence, variant_id, disease, drugs,  evidence_type, evidence_direction,evidence_level,clinical_significance,evidence_statement))
+
+evidence <- as.data.frame(evidence)
+
+```
+
+ 
+```{r create table of evidence}
+## preview
+formattable(head(evidence))
+
+## create as a table in database
+dbWriteTable(conn = con,name = "evidence", value = evidence, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+
+
+## print a list of disease in evidence table, but not represented among condition synonyms
+setdiff(x=unique(evidence$disease), y=unique(conditionSynonyms$condition.synonyms))
+```
+
   
 ```{r connect to clinicaltrialsgov}  
 ## specify user name and password for AACT account
@@ -56,30 +253,7 @@ aact.password <- configuration$aact.password
 drv <- dbDriver("PostgreSQL")
 conn2 <- dbConnect(drv, dbname="aact",host="aact-db.ctti-clinicaltrials.org", port=5432, user=aact.username, password=aact.password )
 ```
-   
-### **Specify mappings between cancer types and synonyms based on csv file**  
-  
-Mappings between synonyms (cancer types specified in clinicaltrials.gov condition.name field) and controlled cancer types are specified by the file conditionSynonyms4.csv. The following mappings between have been used:  
-  
-  
-```{r read conditionSynonyms table}
-## conditionSynonyms specifies which cancer types are of interest, and which condition names (as used by clinicaltrials.gov) will be considered as matches for each
-
-## synonyms define on basis of those in clinicaltrials.gov
-conditionSynonyms <- read.csv(file = "conditionSynonyms4.csv", stringsAsFactors = FALSE)
-
-## remove redundancy, if any
-conditionSynonyms <- unique(conditionSynonyms)
-
-## display conditions and synonyms used
-formattable(as.data.frame(conditionSynonyms %>% 
-                  group_by(controlled.cancer.type) %>%
-                  summarise(
-                  synonyms = paste(condition.synonyms, collapse = ", "))))
-```
-  
-  
-### **Index studies on cancer type**  
+ 
  
 ```{r get study data}
 
@@ -115,6 +289,7 @@ openStudies <- dbGetQuery(conn2,openStudiesQ)
 openStudies$Refresh.date <- today
 
 ```
+ 
 
 ```{r loop through synonyms and look for matches against condition name}
 ## add a column to hold matching condition
@@ -151,6 +326,228 @@ cancerStudies <- unique(cancerStudies)
 cancerStudies$Link <- paste0("https://clinicaltrials.gov/ct2/show/", cancerStudies$nct_id)
 
 ```
+
+
+```{r create table of studies}
+
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+      
+
+```{r download and create NCIthesaurus table}
+
+tic("download, parse and write NCI thesaurus to file")
+
+## specify URL for NCI thesaurus - this should always be the most recent? 
+NCItURL <- "https://evs.nci.nih.gov/ftp1/NCI_Thesaurus/Thesaurus.FLAT.zip"
+
+destFlatFilename <- "NCIt_FLAT.zip"
+download.file(url=NCItURL,destfile = destFlatFilename)
+unzip(zipfile = paste0(getwd(),"/",destFlatFilename))
+
+NCIt <- read.table("Thesaurus.txt",header = FALSE, sep = "\t", comment.char = "", fill = TRUE, stringsAsFactors = FALSE, quote = "")
+names(NCIt) <- c("ID","URL","ParentID","Synonyms","Description","PreferredTerm","Type","Class")
+
+## a drug may have more than one class, so need to multiply rows
+## split and unnest the Class column of NCIt
+NCIt$Class <- strsplit(NCIt$Class, split = "\\|")
+NCIt <- unnest(data = NCIt, Class)
+
+## subset to retain only relevant classes
+NCItPharmacologics <- NCIt[which(NCIt$Class %in% c("Pharmacologic Substance","Amino Acid, Peptide, or Protein","Immunologic Factor","Clinical Drug")), ]
+
+## one drug can have more than one parent, so need to split into multiple rows...
+## split ParentID column on pipe symbol
+NCItPharmacologics$ParentID <- strsplit(NCItPharmacologics$ParentID, split = "\\|")
+## unnest the ID column to multiply rows
+NCItPharmacologics <- unnest(data=NCItPharmacologics,ParentID)
+
+## join parent synonyms
+## first, get the synonyms and IDs for parents
+NCItParents <- NCIt[which(NCIt$ID %in% NCItPharmacologics$ParentID), which(names(NCIt) %in% c("ID", "Synonyms"))]
+
+## each parent term may have more than one synonym
+## for simplicity, we will retain only the first synonym for each parent term
+NCItParents$Synonyms <- gsub("\\|.*","",NCItParents$Synonyms)
+
+## merge parents on entity ID = parent ID
+NCItPharmacologics <- merge(x=NCItPharmacologics,y=NCItParents,by.x="ParentID",by.y="ID",all.x=TRUE)
+## reorder and rename
+NCItPharmacologics <- dplyr::select(NCItPharmacologics,ID,Class,PreferredTerm,Synonyms="Synonyms.x",Description,ParentTerm="Synonyms.y",ParentID)
+
+## split the Synonyms column on pipe symbol
+NCItPharmacologics$Synonyms <- strsplit(NCItPharmacologics$Synonyms, split="\\|")
+## unnest the Synonyms column to multiply rows
+NCItPharmacologics <- unnest(data = NCItPharmacologics,Synonyms)
+
+## add a column with lower case drug synonyms for joining
+NCItPharmacologics$SynonymsLower <- tolower(NCItPharmacologics$Synonyms)
+
+## convert from tibble to data frame
+NCIthesaurus <- as.data.frame(NCItPharmacologics)
+
+## add a column to indicate date downloaded
+NCIthesaurus$downloaded <- Sys.Date()
+
+## drop redundant rows, if any
+NCIthesaurus <- unique(NCIthesaurus)
+
+toc()
+
+```
+      
+```{r get molecular targets for NCIthesaurus drugs}
+## first, subset NCIthesaurus table and only retain rows where Synonyms matches a trial interventions
+
+
+
+
+
+# targets <- data.frame(drugSynonym = unique(NCIthesaurus$Synonyms),
+#                       drugID = NA, 
+#                       drugTargetSymbol = NA)
+# 
+# 
+# tic("get IDs for drugs")
+# 
+# ## get IDs for drugs from KEGG
+# for(i in 1:nrow(targets)) {
+#   drugid <- NA  
+#   drugSynonym <- as.character(targets$drugSynonym[i])
+#   ## get (onlY) first drug ID
+#   tryCatch({drugid <- names(keggFind(database = "drug", query = drugSynonym))[1]}, 
+#              error=function(cond) {return(NA)})
+#   if(length(drugid)>0 ) targets$drugID[i] <- drugid
+# }
+
+# ## drop rows without a drugID
+# targets <- targets[!is.na(targets$drugID),]
+# 
+# toc()
+# 
+# ## use drug IDs to get names (Entrez Symbols) for target genes
+# for(i in 1:nrow(targets)) {
+#   #print(i)
+#     ##target variable will hold IDs of target gene(s) listed for each drug
+#     target <- NA
+#     # names variable will hold names of target gene(s)
+#     names <- character(0)
+#     id <- targets$drugID[i]
+#     #print(id)    
+#   
+#     tryCatch({target <- keggGet(id)[[1]]$TARGET$TARGET}, 
+#              error=function(cond) {return(NA)})
+#     #print(target)
+#     ## parse the TARGET value to get the target id(s)
+#     if(length(target)>0 && !is.na(target)) {
+#       #trim everything up to "HSA:"
+#       target <- gsub(pattern = ".*\\HSA:", replacement = "", x=target)
+#       # trim everything after square bracket
+#       target <- gsub(pattern = "\\].*", replacement = "", x=target)
+#       # split into individual ids, where applicable
+#       target <- unlist(strsplit(x=target, split=" "))
+#       # paste on a "hsa:"
+#       target <- paste0("hsa:",target)
+#       #print(target)
+#       # make an empty vector that will hold names
+#       #names <- character(0)
+#       # make calls to keggGet
+#       for(j in 1:length(target)) {
+#         name <- keggGet(target[j])[[1]]$NAME[1]
+#         #print(name)
+#         #trim everything after first comma
+#         name <- gsub(pattern = ",.*", replacement = "", x=name)
+#         names <- c(names,name)
+#         }
+#     target <- paste(names, collapse = ",")
+#     #print(target)
+#     targets$drugTargetSymbol[i] <- target
+#       
+#     }
+# 
+# }
+# 
+# ## drop rows where symbol is empty
+# targets <- targets[targets$drugTargetSymbol != "",]
+# 
+# ## split drugTargetSymbol values on comma into new rows
+# targets <- as.data.frame(cSplit(targets, "drugTargetSymbol", ",", direction = "long"))
+# toc()
+
+
+
+
+
+```
+
+
+
+```{r disconnect from  database}
+
+# disconnect from clincialtrials.gov
+dbDisconnect(conn2)
+
+# Disconnect from SQLite database
+dbDisconnect(con)
+
+
+```
+  
+
+     
+`r knitr::knit_exit()`
+
+  
+
+```{r delete big files from memory}
+# rm(NCIt)
+# rm(NCIthesaurus)
+# rm(NCItPharmacologics)
+# rm(humanGenes)
+# rm(world.cities)
+```
+
+  
+### **Specify mappings between cancer types and synonyms based on csv file**  
+  
+Mappings between synonyms (cancer types specified in clinicaltrials.gov condition.name field) and controlled cancer types are specified by the file conditionSynonyms4.csv. The following mappings between have been used:  
+  
+  
+```{r read conditionSynonyms table}
+## conditionSynonyms specifies which cancer types are of interest, and which condition names (as used by clinicaltrials.gov) will be considered as matches for each
+
+## synonyms define on basis of those in clinicaltrials.gov
+conditionSynonyms <- read.csv(file = "conditionSynonyms4.csv", stringsAsFactors = FALSE)
+
+## remove redundancy, if any
+conditionSynonyms <- unique(conditionSynonyms)
+
+## display conditions and synonyms used
+formattable(as.data.frame(conditionSynonyms %>% 
+                  group_by(controlled.cancer.type) %>%
+                  summarise(
+                  synonyms = paste(condition.synonyms, collapse = ", "))))
+```
+  
+  
+### **Index studies on cancer type**  
 
 ```{r get latitude and longitude values for sites based on postcode}
 ## get lat and long for UK cities
@@ -367,45 +764,6 @@ search Gene using the term (Homo sapiens) AND "Homo sapiens"[porgn:__txid9606]
 download using Send to/File/Create File  
 save as flat text file called humanGenes.tsv  
 
- 
-```{r download a list of all human genes and their synonyms}
-
-## start timer
-tic("download a list of all human genes and their synonyms")
-
-
-humanGenes <- read.table(file = "humanGenes.tsv", header = TRUE, quote = "", sep = "\t", fill = TRUE, stringsAsFactors = FALSE)
-
-humanGenes <- dplyr::select(humanGenes, Symbol, Aliases)## drop everything except Symbol and Aliases columns
-
-
-humanGenes$Aliases <- strsplit(x=humanGenes$Aliases, split = ",")## split the aliases on comma 
-humanGenes <- unnest(data = humanGenes, cols = Aliases, keep_empty = TRUE) ## unnest to multiply rows, keep any rows with no aliases
-humanGenes <- as.data.frame(humanGenes) ## convert to data frame
-
-humanGenes$Aliases <- str_squish(string = humanGenes$Aliases) ## trim excess whitespace from Aliases values
-
-## Symbol values are not represented among Aliases
-# create a data frame with unique Symbol values
-symbols <- data.frame("Symbol"=unique(humanGenes$Symbol), "Aliases"=unique(humanGenes$Symbol))
-# bind this onto bottom of humanGenes data frame
-humanGenes <- rbind(humanGenes,symbols)
-# remove duplicated values, if any
-humanGenes <- unique(humanGenes)
-# sort on Symbol values
-humanGenes <- humanGenes[order(humanGenes$Symbol), ] 
-
-# drop any rows where Aliases is NA
-humanGenes <- humanGenes[!is.na(humanGenes$Aliases), ]
-
-## drop any rows where Aliases value is only a single character
-
-## NOW humanGenes TABLE CONTAINS ALL HUMAN GENES AND THEIR SYNONYMS
-## (61,593 unique symbols, 130,978 rows)
-
-## stop timer
-toc()
-```
    
 ```{r look for gene names among words in criteria}
 
@@ -522,73 +880,7 @@ kable(head(manualNLPmatches)) %>%
 ### **Tag trial interventions with their mechanism**  
 
 #### **Create NCIthesaurus table**  
-
-```{r download and create NCIthesaurus table}
-
-tic("download, parse and write NCI thesaurus to file")
-
-## specify URL for NCI thesaurus - this should always be the most recent? 
-NCItURL <- "https://evs.nci.nih.gov/ftp1/NCI_Thesaurus/Thesaurus.FLAT.zip"
-
-destFlatFilename <- "NCIt_FLAT.zip"
-download.file(url=NCItURL,destfile = destFlatFilename)
-unzip(zipfile = paste0(getwd(),"/",destFlatFilename))
-
-NCIt <- read.table("Thesaurus.txt",header = FALSE, sep = "\t", comment.char = "", fill = TRUE, stringsAsFactors = FALSE, quote = "")
-names(NCIt) <- c("ID","URL","ParentID","Synonyms","Description","PreferredTerm","Type","Class")
-
-## a drug may have more than one class, so need to multiply rows
-## split and unnest the Class column of NCIt
-NCIt$Class <- strsplit(NCIt$Class, split = "\\|")
-NCIt <- unnest(data = NCIt, Class)
-
-## subset to retain only relevant classes
-NCItPharmacologics <- NCIt[which(NCIt$Class %in% c("Pharmacologic Substance","Amino Acid, Peptide, or Protein","Immunologic Factor")), ]
-
-## one drug can have more than one parent, so need to split into multiple rows...
-## split ParentID column on pipe symbol
-NCItPharmacologics$ParentID <- strsplit(NCItPharmacologics$ParentID, split = "\\|")
-## unnest the ID column to multiply rows
-NCItPharmacologics <- unnest(data=NCItPharmacologics,ParentID)
-
-## join parent synonyms
-## first, get the synonyms and IDs for parents
-NCItParents <- NCIt[which(NCIt$ID %in% NCItPharmacologics$ParentID), which(names(NCIt) %in% c("ID", "Synonyms"))]
-
-## each parent term may have more than one synonym
-## for simplicity, we will retain only the first synonym for each parent term
-NCItParents$Synonyms <- gsub("\\|.*","",NCItParents$Synonyms)
-
-## merge parents on entity ID = parent ID
-NCItPharmacologics <- merge(x=NCItPharmacologics,y=NCItParents,by.x="ParentID",by.y="ID",all.x=TRUE)
-## reorder and rename
-NCItPharmacologics <- dplyr::select(NCItPharmacologics,ID,Class,PreferredTerm,Synonyms="Synonyms.x",Description,ParentTerm="Synonyms.y",ParentID)
-
-## split the Synonyms column on pipe symbol
-NCItPharmacologics$Synonyms <- strsplit(NCItPharmacologics$Synonyms, split="\\|")
-## unnest the Synonyms column to multiply rows
-NCItPharmacologics <- unnest(data = NCItPharmacologics,Synonyms)
-
-## add a column with lower case drug synonyms for joining
-NCItPharmacologics$SynonymsLower <- tolower(NCItPharmacologics$Synonyms)
-
-## convert from tibble to data frame
-NCIthesaurus <- as.data.frame(NCItPharmacologics)
-
-## add a column to indicate date downloaded
-NCIthesaurus$downloaded <- Sys.Date()
-
-## write to comma separated file
-#write.csv(x=NCIthesaurus,file="NCIthesaurus.csv",row.names=FALSE)
-
-toc()
-
-## check written correctly
-#dim(read.csv("NCIthesaurus.csv", header = TRUE, stringsAsFactors = FALSE))
-#names(read.csv("NCIthesaurus.csv", header = TRUE, stringsAsFactors = FALSE))
-
-```
-    
+  
 #### **Join to cancerStudies table**  
 
 ```{r join thesaurus to cancerStudies table}
@@ -1060,19 +1352,6 @@ kable(head(scoredMatches)) %>%
 ```
 
 ### **Exit script**  
-
-```{r delete big files from memory}
-rm(NCIt)
-rm(NCIthesaurus)
-rm(NCItPharmacologics)
-rm(humanGenes)
-rm(world.cities)
-```
-
-```{r disconnect from clinicaltrials}
-dbDisconnect(conn2)
-
-```
 
 ```{r exit markdown}
 knitr::knit_exit()
