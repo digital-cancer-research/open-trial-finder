@@ -399,6 +399,13 @@ toc()
 ## how many synonyms were mapped to a drug ID?
 nrow(targets2)
 
+## combine both tables
+targets <- rbind(targets,targets2)
+## convert synonyms to lower case
+targets$drugSynonym <- tolower(targets$drugSynonym)
+## drop redundant rows
+targets <- unique(targets)
+
 
 
 ```
