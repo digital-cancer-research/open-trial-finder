@@ -264,7 +264,7 @@ country <- configuration$country
 ## with sites in specified country that have a status of "Recruiting" or "Not yet recruiting"
 
 # form query
-openStudiesQ <- paste0("SELECT s.nct_id, s.brief_title, s.overall_status, c.name AS condition, i.name AS interventions, 
+openStudiesQ <- paste0("SELECT s.nct_id, s.brief_title, s.overall_status, c.name AS condition, i.name AS interventions, f.name AS site_name,
 f.city AS locations, f.zip AS postcode, f.status AS site_status,
 fi.name as investigators,
 fc.email AS contacts
@@ -324,6 +324,8 @@ cancerStudies <- unique(cancerStudies)
 
 ## add a column to hold link
 cancerStudies$Link <- paste0("https://clinicaltrials.gov/ct2/show/", cancerStudies$nct_id)
+
+
 
 ```
 
