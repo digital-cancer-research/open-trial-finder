@@ -325,20 +325,83 @@ cancerStudies <- unique(cancerStudies)
 ## add a column to hold link
 cancerStudies$Link <- paste0("https://clinicaltrials.gov/ct2/show/", cancerStudies$nct_id)
 
-
-
 ```
 
 
 ```{r create table of studies}
-
-
+# unique(tolower(cancerStudies$interventions))
+# unique(tolower(NCIthesaurus$Synonyms))
+# intersect(unique(tolower(cancerStudies$interventions)), unique(tolower(NCIthesaurus$Synonyms)))
 
 
 
 
 ```
 
+```{r get molecular targets for cancerStudies interventions}
+targets <- data.frame(drugSynonym = unique(cancerStudies$interventions),
+                      drugID = NA,
+                      drugTargetSymbol = NA)
+
+tic("get IDs for drugs")
+
+## get IDs for drugs from KEGG
+for(i in 1:nrow(targets)) {
+  drugid <- NA
+  drugSynonym <- as.character(targets$drugSynonym[i])
+  ## get (onlY) first drug ID
+  tryCatch({drugid <- names(keggFind(database = "drug", query = drugSynonym))[1]},
+             error=function(cond) {return(NA)})
+  if(length(drugid)>0 ) targets$drugID[i] <- drugid
+}
+## drop rows without a drugID
+targets <- targets[!is.na(targets$drugID),]
+
+toc()
+
+## how many unique interventions were there?
+length(unique(cancerStudies$interventions))
+
+## how many were mapped to a drug ID?
+nrow(targets)
+
+
+## try including all the synonyms from NCI thesaurus
+# how many rows from NCI thesaurus map to cancerStudies interventions?
+nrow(unique(filter(NCIthesaurus, tolower(Synonyms) %in% unique(tolower(cancerStudies$interventions)))))
+
+interventionSynonyms <- unique(filter(NCIthesaurus, tolower(Synonyms) %in% unique(tolower(cancerStudies$interventions))))
+
+
+## how many synonyms?
+length(unique(interventionSynonyms$Synonyms))
+
+targets2 <- data.frame(drugSynonym = unique(interventionSynonyms$Synonyms),
+                      drugID = NA,
+                      drugTargetSymbol = NA)
+
+tic("get IDs for drug synonyms")
+
+## get IDs for drugs from KEGG
+for(i in 1:nrow(targets2)) {
+  drugid <- NA
+  drugSynonym <- as.character(targets2$drugSynonym[i])
+  ## get (onlY) first drug ID
+  tryCatch({drugid <- names(keggFind(database = "drug", query = drugSynonym))[1]},
+             error=function(cond) {return(NA)})
+  if(length(drugid)>0 ) targets2$drugID[i] <- drugid
+}
+## drop rows without a drugID
+targets2 <- targets2[!is.na(targets2$drugID),]
+
+toc()
+
+## how many synonyms were mapped to a drug ID?
+nrow(targets2)
+
+
+
+```
 
 
 
