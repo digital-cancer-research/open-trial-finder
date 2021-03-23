@@ -328,100 +328,19 @@ cancerStudies$Link <- paste0("https://clinicaltrials.gov/ct2/show/", cancerStudi
 ```
 
 
+ 
 ```{r create table of studies}
-# unique(tolower(cancerStudies$interventions))
-# unique(tolower(NCIthesaurus$Synonyms))
-# intersect(unique(tolower(cancerStudies$interventions)), unique(tolower(NCIthesaurus$Synonyms)))
+## preview
+formattable(head(cancerStudies))
 
+## create as a table in database
+dbWriteTable(conn = con,name = "cancerStudies", value = cancerStudies, overwrite=TRUE)
 
-
-
-```
-
-```{r get molecular targets for cancerStudies interventions}
-targets <- data.frame(drugSynonym = unique(cancerStudies$interventions),
-                      drugID = NA,
-                      drugTargetSymbol = NA)
-
-tic("get IDs for drugs")
-
-## get IDs for drugs from KEGG
-for(i in 1:nrow(targets)) {
-  drugid <- NA
-  drugSynonym <- as.character(targets$drugSynonym[i])
-  ## get (onlY) first drug ID
-  tryCatch({drugid <- names(keggFind(database = "drug", query = drugSynonym))[1]},
-             error=function(cond) {return(NA)})
-  if(length(drugid)>0 ) targets$drugID[i] <- drugid
-}
-## drop rows without a drugID
-targets <- targets[!is.na(targets$drugID),]
-
-toc()
-
-## how many unique interventions were there?
-length(unique(cancerStudies$interventions))
-
-## how many were mapped to a drug ID?
-nrow(targets)
-
-
-## try including all the synonyms from NCI thesaurus
-# how many rows from NCI thesaurus map to cancerStudies interventions?
-nrow(unique(filter(NCIthesaurus, tolower(Synonyms) %in% unique(tolower(cancerStudies$interventions)))))
-
-interventionSynonyms <- unique(filter(NCIthesaurus, tolower(Synonyms) %in% unique(tolower(cancerStudies$interventions))))
-
-
-## how many synonyms?
-length(unique(interventionSynonyms$Synonyms))
-
-targets2 <- data.frame(drugSynonym = unique(interventionSynonyms$Synonyms),
-                      drugID = NA,
-                      drugTargetSymbol = NA)
-
-tic("get IDs for drug synonyms")
-
-## get IDs for drugs from KEGG
-for(i in 1:nrow(targets2)) {
-  drugid <- NA
-  drugSynonym <- as.character(targets2$drugSynonym[i])
-  ## get (onlY) first drug ID
-  tryCatch({drugid <- names(keggFind(database = "drug", query = drugSynonym))[1]},
-             error=function(cond) {return(NA)})
-  if(length(drugid)>0 ) targets2$drugID[i] <- drugid
-}
-## drop rows without a drugID
-targets2 <- targets2[!is.na(targets2$drugID),]
-
-toc()
-
-## how many synonyms were mapped to a drug ID?
-nrow(targets2)
-
-## combine both tables
-targets <- rbind(targets,targets2)
-## convert synonyms to lower case
-targets$drugSynonym <- tolower(targets$drugSynonym)
-## drop redundant rows
-targets <- unique(targets)
-
-
+## check it has saved
+dbListTables(con)
 
 ```
 
-
-
-
-
-
-
-
-
-
-
-
-      
 
 ```{r download and create NCIthesaurus table}
 
@@ -484,91 +403,355 @@ NCIthesaurus <- unique(NCIthesaurus)
 toc()
 
 ```
-      
-```{r get molecular targets for NCIthesaurus drugs}
-## first, subset NCIthesaurus table and only retain rows where Synonyms matches a trial interventions
+
+
+```{r get molecular targets for cancerStudies interventions}
+## first, get all interventions (note that there will be some redundancy due to case)
+drugs.targets <- unique(dplyr::select(cancerStudies,interventions))
+## keep interventions column as verbatim so can join later
+## make a duplicate column
+drugs.targets$interventions.processed <- drugs.targets$interventions
+
+
+## split and unnest on " + "
+drugs.targets$interventions.processed <- strsplit(drugs.targets$interventions.processed, split = " \\+ ")
+drugs.targets <- unnest(data = drugs.targets, interventions.processed)
+
+# also split and unneston the word " plus "
+drugs.targets$interventions.processed <- strsplit(drugs.targets$interventions.processed, split = " plus ")
+drugs.targets <- unnest(data = drugs.targets, interventions.processed)
+
+# also split and unneston the word " and "
+drugs.targets$interventions.processed <- strsplit(drugs.targets$interventions.processed, split = " and ")
+drugs.targets <- unnest(data = drugs.targets, interventions.processed)
+
+# also split and unnest on  " & "
+drugs.targets$interventions.processed <- strsplit(drugs.targets$interventions.processed, split = " \\& ")
+drugs.targets <- unnest(data = drugs.targets, interventions.processed)
+
+# also split and unnest on  " or "
+drugs.targets$interventions.processed <- strsplit(drugs.targets$interventions.processed, split = " or ")
+drugs.targets <- unnest(data = drugs.targets, interventions.processed)
+
+# also split and unnest on  " (+) "
+drugs.targets$interventions.processed <- strsplit(drugs.targets$interventions.processed, split = " \\(\\+\\) ")
+drugs.targets <- unnest(data = drugs.targets, interventions.processed)
+
+# also split and unnest on  " with "
+drugs.targets$interventions.processed <- strsplit(drugs.targets$interventions.processed, split = " with ")
+drugs.targets <- unnest(data = drugs.targets, interventions.processed)
+
+## also split on brackets
+drugs.targets$interventions.processed <- strsplit(drugs.targets$interventions.processed, split = " \\(")
+drugs.targets <- unnest(data = drugs.targets, interventions.processed)
+# remove closing bracket
+drugs.targets$interventions.processed <- gsub(pattern = "\\)", replacement = "", x=drugs.targets$interventions.processed)
+
+
+## trim off anything related to dose
+# pattern is (a number, with or without a decimal point) with/without a space, followed by "mg", anything after "mg is removed
+drugs.targets$interventions.processed <- gsub(pattern = " \\d+\\.?\\d+ ?mg.*", replacement = "", x=drugs.targets$interventions.processed, ignore.case = T)
+
+
+## join to NCIthesaurus so that any intervention not represented in the thesaurus is dropped
+drugs.targets <- merge(x=drugs.targets, 
+      by.x = "interventions.processed", 
+      y= unique(dplyr::select(NCIthesaurus, Synonyms, Description, ParentTerm)), 
+      by.y = "Synonyms")
+
+## try to map each processed intervention to a Drug IDs from KEGG
+## add an empty column to hold drug ID
+drugs.targets$drugID <- NA
+tic("get IDs for drugs")
+for(i in 1:nrow(drugs.targets)) {
+  drugid <- NA
+  drugSynonym <- as.character(drugs.targets$interventions.processed[i])
+  print(drugSynonym)
+  ## get (onlY) first drug ID
+  tryCatch({drugid <- names(keggFind(database = "drug", query = drugSynonym))[1]},
+             error=function(cond) {return(NA)})
+  if(length(drugid)>0 ) {
+    print(drugid)
+    drugs.targets$drugID[i] <- drugid}
+}
+toc()
+
+## separate off drug IDs
+targets <- as.data.frame(unique(dplyr::select(drugs.targets, drugID)))
+## add a column to hold drug target ID
+targets$drugTargetID <- NA
+## add a column to hold Entrez symbol for drug target
+targets$drugTargetSymbol <- NA
+## drop rows without a drugID
+targets <- targets[!is.na(targets$drugID),]
+
+## use drug IDs to get gene IDs for target genes
+for(i in 1:nrow(targets)) {
+  drugid <- targets$drugID[i]
+  geneid <- NA
+  tryCatch({geneid <- keggGet(drugid)[[1]]$TARGET$TARGET},
+             error=function(cond) {return(NA)})
+  print(geneid)
+  if(length(geneid)>0) targets$drugTargetID[i] <- geneid
+}
+
+## parse the drugTargetID values - trim off extra characters and unnest where multiple targets per drug
+## drop any columns that don't contain "HSA:"
+
+#trim everything up to "HSA:"
+targets$drugTargetID <- gsub(pattern = ".*\\HSA:", replacement = "", x=targets$drugTargetID)
+# trim everything after square bracket
+targets$drugTargetID  <- gsub(pattern = "\\].*", replacement = "", x=targets$drugTargetID )
+# split on space into individual ids, where applicable
+targets$drugTargetID <- strsplit(targets$drugTargetID, split = " ")
+targets <- unnest(data = targets, drugTargetID)
+targets <- as.data.frame(targets)
+## drop rows where drugTargetID is NA
+targets <- targets[!is.na(targets$drugTargetID), ]
+
+# paste on a "hsa:"
+targets$drugTargetID <- paste0("hsa:",targets$drugTargetID)
+
+## use drugTargetId to get names (Entrez Symbols) for target genes
+for(i in 1:nrow(targets)) {
+  targetId <- targets$drugTargetID[i]
+  print(paste0("i= ", i, "; ID = ", targetId))
+  name <- NA
+  tryCatch({name <- keggGet(targetId)[[1]]$NAME[1]},
+             error=function(cond) {return(NA)})
+  if(length(targetId)>0) {
+    #name <- keggGet(targetId)[[1]]$NAME[1]
+    print(name)
+    targets$drugTargetSymbol[i] <- name
+  }
+}
+
+## drugTargetSymbol may hold several comma separated values
+## first value appears to be Entrez symbol
+## trim off everything after first comma
+targets$drugTargetSymbol <- gsub(pattern = ",.*", replacement = "", x=targets$drugTargetSymbol )
+
+## join drugTargetSymbol values to drugs.targets table
+drugs.targets <- merge(x=drugs.targets, by.x="drugID", all.x=TRUE,
+                       y=unique(dplyr::select(targets, drugID, drugTargetSymbol)), by.y = "drugID")
+
+## reorder columns
+drugs.targets <- unique(dplyr::select(drugs.targets,"interventions.verbatim"= "interventions", interventions.processed, Description, ParentTerm, drugTargetSymbol))
+```
+
+
+
+ 
+```{r create table of drugs and targets}
+## preview
+formattable(head(drugs.targets))
+
+## create as a table in database
+dbWriteTable(conn = con,name = "drugsTargets", value = drugs.targets, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+
+```
+
+  
+```{r get eligibility criteria for cancer studies}
+studyIDs <- unique(cancerStudies$nct_id)
+
+## form SQL query
+studyIDsForSQL <- paste0("\'",paste(studyIDs, collapse = "\',\'"), "\'")
+getEligibilities <- paste0("select e.nct_id, e.criteria 
+from eligibilities e
+where e.nct_id in (",
+"", studyIDsForSQL,
+")")
+
+## get criteria from clinicaltrials.gov
+eligibilities <- dbGetQuery(conn2,getEligibilities)
+
+```
+
+```{r retain individual eligibility criteria containing mutant pattern}
+
+
+## add a column to indicate criterion type
+eligibilities$criterion.type <- NA
+
+
+
+## split into individual criteria
+for(i in 1:length(eligibilities$criteria)) {
+  criteria <- as.character(eligibilities$criteria[i])
+  #criteria <- unlist(strsplit(criteria, split = "\n\n"))## split on double line breaks (DEPRECATED)
+  criteria <- unlist(strsplit(criteria, split = "\r\n\r\n"))## split on double newline/carriage return
+  criteria <- trimws(x=criteria, which = "both")## trim whitespace from start and end
+  criteria <- gsub(pattern = "\n", replacement = "", x= criteria)## remove single line breaks from each criterion
+  criteria <- str_squish(string = criteria) ## squish repeated spaces within each criterion
+  #criteria <- as.list(criteria)
+  eligibilities$criteria[i] <- list(criteria)
+}
+
+
+## unnest
+eligibilities <- as.data.frame(unnest(data = eligibilities, cols = criteria))
+eligibilities$criterion.type[1] <- "INCLUSION"
+```
+
+
+```{r classify eligibility criteria}
+## classify as either inclusion or exclusion
+## tag start of inclusion criteria
+eligibilities$criterion.type[grep(pattern = "inclusion criteria:?$", x=eligibilities$criteria, ignore.case = TRUE)] <- "INCLUSION"
+
+## tag start of exclusion criteria
+eligibilities$criterion.type[grep(pattern = "exclusion criteria:?$", x=eligibilities$criteria, ignore.case = TRUE)] <- "EXCLUSION"
+
+## fill "down" using the tdiyr::fill() function
+eligibilities <- tidyr::fill(data=eligibilities, criterion.type, .direction="down")
+```
 
 
 
 
+```{r index criteria on mutant gene pattern}
+## add a column to indicate nature of genetic changes
+eligibilities$change <- NA
 
-# targets <- data.frame(drugSynonym = unique(NCIthesaurus$Synonyms),
-#                       drugID = NA, 
-#                       drugTargetSymbol = NA)
-# 
-# 
-# tic("get IDs for drugs")
-# 
-# ## get IDs for drugs from KEGG
-# for(i in 1:nrow(targets)) {
-#   drugid <- NA  
-#   drugSynonym <- as.character(targets$drugSynonym[i])
-#   ## get (onlY) first drug ID
-#   tryCatch({drugid <- names(keggFind(database = "drug", query = drugSynonym))[1]}, 
-#              error=function(cond) {return(NA)})
-#   if(length(drugid)>0 ) targets$drugID[i] <- drugid
-# }
+## define a pattern of word stems to filter for mutation-related criteria
+#mutantPattern <- "mutat|mutant|positiv|defect|deficien|alter|loss"
+## (OPTIONAL) drop matches containing "positive" as these tend to be IHC, not mutation
+mutantPattern <- "mutat|mutant|defect|deficien|alter|loss"
+fusionPattern <- " fusion"
 
-# ## drop rows without a drugID
-# targets <- targets[!is.na(targets$drugID),]
-# 
-# toc()
-# 
-# ## use drug IDs to get names (Entrez Symbols) for target genes
-# for(i in 1:nrow(targets)) {
-#   #print(i)
-#     ##target variable will hold IDs of target gene(s) listed for each drug
-#     target <- NA
-#     # names variable will hold names of target gene(s)
-#     names <- character(0)
-#     id <- targets$drugID[i]
-#     #print(id)    
-#   
-#     tryCatch({target <- keggGet(id)[[1]]$TARGET$TARGET}, 
-#              error=function(cond) {return(NA)})
-#     #print(target)
-#     ## parse the TARGET value to get the target id(s)
-#     if(length(target)>0 && !is.na(target)) {
-#       #trim everything up to "HSA:"
-#       target <- gsub(pattern = ".*\\HSA:", replacement = "", x=target)
-#       # trim everything after square bracket
-#       target <- gsub(pattern = "\\].*", replacement = "", x=target)
-#       # split into individual ids, where applicable
-#       target <- unlist(strsplit(x=target, split=" "))
-#       # paste on a "hsa:"
-#       target <- paste0("hsa:",target)
-#       #print(target)
-#       # make an empty vector that will hold names
-#       #names <- character(0)
-#       # make calls to keggGet
-#       for(j in 1:length(target)) {
-#         name <- keggGet(target[j])[[1]]$NAME[1]
-#         #print(name)
-#         #trim everything after first comma
-#         name <- gsub(pattern = ",.*", replacement = "", x=name)
-#         names <- c(names,name)
-#         }
-#     target <- paste(names, collapse = ",")
-#     #print(target)
-#     targets$drugTargetSymbol[i] <- target
-#       
-#     }
-# 
-# }
-# 
-# ## drop rows where symbol is empty
-# targets <- targets[targets$drugTargetSymbol != "",]
-# 
-# ## split drugTargetSymbol values on comma into new rows
-# targets <- as.data.frame(cSplit(targets, "drugTargetSymbol", ",", direction = "long"))
-# toc()
+## indicate which criteria relate to mutations, fusions
+eligibilities$change[grep(pattern = mutantPattern, x=eligibilities$criteria, ignore.case = T)] <- "MUTATION"
+eligibilities$change[grep(pattern = fusionPattern, x=eligibilities$criteria, ignore.case = T)] <- "FUSION"
 
+ 
+# ## NOW eligibilities TABLE JUST CONTAINS INDIVIDUAL  CRITERIA (1 CRITERION PER ROW), INDEXED BASED ON PATTERNS SPECIFIED
 
+```
+  
+  
+```{r index criteria with gene names}
+## add a column that will hold matching gene names
+eligibilities$gene <- NA
+# create a variable that will hold matching substring
+#eligibilities$substring <- NA
+    
+    
+## specify word range - mutantPattern must occur within this many words of a gene name
+wordRange <- 6
+
+## loop through each criterion that contains a mutant/fusion pattern
+for(i in 1:nrow(eligibilities)) {
+  if(!is.na(eligibilities$change[i]) & eligibilities$change[i]=="MUTATION") {
+    criterion <- eligibilities$criteria[i]
+    # also create an alternative criterion for patterns such as "BRCA1/2"
+    alternative.criterion <- gsub(pattern = "./", replacement = "", x=criterion)
+    # now do the same and trim off the first character after the slash
+    criterion <- gsub(pattern = "/.", replacement = "", x=criterion)
+    # concatenate
+    criterion <- paste(criterion,alternative.criterion, sep = " " )
+    # split into tokens
+    criterion <- unlist(strsplit(x=criterion, split = " |\\(|\\)|,|-"))
+    
+    
+    ## get indices of match(es) against mutantPattern
+    indices <- grep(pattern = mutantPattern, x = criterion, ignore.case = TRUE)
+    ## specify start and end point(s) based on specified word range
+    starts <- indices - wordRange
+    ends <- indices + wordRange
+    range <- numeric(0)
+    for(j in 1:length(starts)) { ## because there may be more than one match
+      if(starts[j] <1) {starts[j] <- 1}
+      range <- append(range,starts[j]:ends[j])
+    } ## now range contains the indices of the words either side of the     mutantPattern, within specified word range
+    range <- unique(range) ## if the ranges overlap, just get the unique elements
+    ## range is the indices of words within the criterion that are within the specified wordRange from mutantPattern... (i.e. the ones we want to keep)
+    ## subset the criterion retain only words within specified range
+    criterion <- criterion[range]
+    ## omit any NA values (i.e. where match is less than wordRange from end of sentence)
+    criterion <- criterion[!is.na(criterion)]
+    ## now subset and retain only words that are a valid gene alias
+    criterion <- unique(criterion[criterion %in% humanGenes$Aliases])
+    ## drop any aliases that are a single character
+    criterion <- criterion[nchar(criterion)>1]
+    if(length(criterion)>0) eligibilities$gene[i] <- list(criterion)
+  
+  }
+}
 
 
 
 ```
 
+  
+  
+  
+  
+```{r split criteria into substrings based on word range}
+# # first, add a new column that will hold the words within specified wordRange of specified mutantPattern
+# eligibilities$substring <- NA
+# wordRange <- 6
+# 
+# ## start timer
+# tic("split criteria into substrings")
+# 
+# for(i in 1:nrow(eligibilities)) {
+#   criterion <- eligibilities$criteria[i]
+#   ## split into words (on space) and store as a vector
+#   criterion <- unlist(strsplit(criterion, split = " "))
+#   ## get indices of match(es) against mutantPattern
+#   indices <- grep(pattern = mutantPattern, x = criterion, ignore.case = TRUE)
+#   ## specify start and end point(s) based on specified word range
+#   starts <- indices - wordRange
+#   ends <- indices + wordRange
+#   range <- numeric(0)
+#   for(j in 1:length(starts)) { ## because there may be more than one match
+#     if(starts[j] <1) {starts[j] <- 1}
+#     range <- append(range,starts[j]:ends[j])
+#   } ## now range contains the indices of the words either side of the mutantPattern, within specified word range
+#   range <- unique(range) ## if the ranges overlap, just get the unique elements
+#   ## range is the indices of words within the criterion that are within the specified wordRange from mutantPattern... (i.e. the ones we want to keep)
+#   ## subset the criterion retain only words within specified range
+#   criterion <- criterion[range]
+#   ## omit any NA values (i.e. where match is less than wordRange from end of sentence)
+#   criterion <- criterion[!is.na(criterion)]
+#   ## get alternative words as well (e.g. "BRCA2" from "BRCA1/2")
+#   alternatives <- grep(pattern = "/", x=criterion, value = TRUE)
+#   alternatives <- gsub(pattern = "./", replacement = "",x=alternatives)
+#   
+#   ## collapse into a string
+#   criterion <- paste(c(criterion,alternatives), collapse = " ")
+#   ## set the value of eligibilities$substring[i]
+#   eligibilities$substring[i] <- criterion
+# } ## stop looping through eligibilities table
+# 
+# toc()
+```
+
+```{r split substrings into words}
+
+# tic("split substrings into words")
+# ## add another column that will hold individual words from substring
+# 
+# # second, split on space or slash or comma or parentheses
+# eligibilities$words <- strsplit(x=eligibilities$substring, split = " |/|,|\\(|\\)")
+# #eligibilities$words <- strsplit(x=eligibilities$substring, split = " ")
+# # # third, unnest to multiply rows
+# eligibilities <- unnest(data = eligibilities, cols = words) 
+# # # finally, convert back to data frame
+# eligibilities <- as.data.frame(eligibilities)
+# 
+# toc()
+```
+  
+
+
+
+
+      
 
 
 ```{r disconnect from  database}
@@ -723,113 +906,7 @@ studyIDs <- unique(cancerStudies$nct_id)
 ```
 
 ### **Index inclusion criteria for cancer studies on human gene name**
-  
-```{r get eligibility criteria for cancer studies}
 
-## form SQL query
-studyIDsForSQL <- paste0("\'",paste(studyIDs, collapse = "\',\'"), "\'")
-getEligibilities <- paste0("select e.nct_id, e.criteria 
-from eligibilities e
-where e.nct_id in (",
-"", studyIDsForSQL,
-")")
-
-## get criteria from clinicaltrials.gov
-eligibilities <- dbGetQuery(conn2,getEligibilities)
-
-```
-
-```{r retain individual eligibility criteria containing mutant pattern}
-
-## define a pattern of word stems to filter for mutation-related criteria
-#mutantPattern <- "mutat|mutant|positiv|defect|deficien|alter|loss"
-## (OPTIONAL) drop matches containing "positive" as these tend to be IHC, not mutation
-mutantPattern <- "mutat|mutant|defect|deficien|alter|loss"
-
-
-for(i in 1:length(eligibilities$criteria)) {
-  criteria <- as.character(eligibilities$criteria[i])
-  #criteria <- unlist(strsplit(criteria, split = "\n\n"))## split on double line breaks (DEPRECATED)
-  criteria <- unlist(strsplit(criteria, split = "\r\n\r\n"))## split on double newline/carriage return
-  criteria <- trimws(x=criteria, which = "both")## trim whitespace from start and end
-  criteria <- gsub(pattern = "\n", replacement = "", x= criteria)## remove single line breaks from each criterion
-  criteria <- str_squish(string = criteria) ## squish repeated spaces within each criterion
-
-  index <- grep(pattern = "^Exclusion|^Major exclusion criteria|^Main exclusion criteria|^Key Exclusion Criteria", x = criteria, ignore.case = TRUE)## get index of element that starts with "exclusion criteria" (case-insensitive)
-  if(length(index)>0) {criteria <- criteria[1:index[1]-1]}## remove all criteria from first index onwards
-  
-  mutantIndices <- grep(pattern = mutantPattern, x=criteria, ignore.case = TRUE)## get indices of criteria matching mutant pattern
-  criteria <- criteria[mutantIndices]## filter and retain only criteria matching mutantPattern
-  
-  if(length(criteria)>0) {eligibilities$criteria[i] <- I(list(criteria))} else {eligibilities$criteria[i] <- NA} ## reset value of criteria in eligibilities, call to I keeps it as a list
-     
-  }
-
-eligibilities <- eligibilities[!is.na(eligibilities$criteria),] ## remove rows where criteria is NA
-
-eligibilities <- unnest(eligibilities, criteria) ## criteria is a list, so unnest it so each element gets its own row
-
-## NOW eligibilities TABLE JUST CONTAINS INDIVIDUAL INCLUSION CRITERIA (1 CRITERION PER ROW) THAT INCLUDE THE MUTANT PATTERN SPECIFIED
-
-```
-  
-```{r split criteria into substrings based on word range}
-# first, add a new column that will hold the words within specified wordRange of specified mutantPattern
-eligibilities$substring <- NA
-wordRange <- 6
-
-## start timer
-tic("split criteria into substrings")
-
-for(i in 1:nrow(eligibilities)) {
-  criterion <- eligibilities$criteria[i]
-  ## split into words (on space) and store as a vector
-  criterion <- unlist(strsplit(criterion, split = " "))
-  ## get indices of match(es) against mutantPattern
-  indices <- grep(pattern = mutantPattern, x = criterion, ignore.case = TRUE)
-  ## specify start and end point(s) based on specified word range
-  starts <- indices - wordRange
-  ends <- indices + wordRange
-  range <- numeric(0)
-  for(j in 1:length(starts)) { ## because there may be more than one match
-    if(starts[j] <1) {starts[j] <- 1}
-    range <- append(range,starts[j]:ends[j])
-  } ## now range contains the indices of the words either side of the mutantPattern, within specified word range
-  range <- unique(range) ## if the ranges overlap, just get the unique elements
-  ## range is the indices of words within the criterion that are within the specified wordRange from mutantPattern... (i.e. the ones we want to keep)
-  ## subset the criterion retain only words within specified range
-  criterion <- criterion[range]
-  ## omit any NA values (i.e. where match is less than wordRange from end of sentence)
-  criterion <- criterion[!is.na(criterion)]
-  ## get alternative words as well (e.g. "BRCA2" from "BRCA1/2")
-  alternatives <- grep(pattern = "/", x=criterion, value = TRUE)
-  alternatives <- gsub(pattern = "./", replacement = "",x=alternatives)
-  
-  ## collapse into a string
-  criterion <- paste(c(criterion,alternatives), collapse = " ")
-  ## set the value of eligibilities$substring[i]
-  eligibilities$substring[i] <- criterion
-} ## stop looping through eligibilities table
-
-toc()
-```
-
-```{r split substrings into words}
-
-tic("split substrings into words")
-## add another column that will hold individual words from substring
-
-# second, split on space or slash or comma or parentheses
-eligibilities$words <- strsplit(x=eligibilities$substring, split = " |/|,|\\(|\\)")
-#eligibilities$words <- strsplit(x=eligibilities$substring, split = " ")
-# # third, unnest to multiply rows
-eligibilities <- unnest(data = eligibilities, cols = words) 
-# # finally, convert back to data frame
-eligibilities <- as.data.frame(eligibilities)
-
-toc()
-```
-  
 This code requires a list of all human genes and their synonyms, accessible from https://www.ncbi.nlm.nih.gov/gene  
 Once only, download and save as follows:  
 search Gene using the term (Homo sapiens) AND "Homo sapiens"[porgn:__txid9606]  
