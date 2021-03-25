@@ -57,6 +57,8 @@ dbListTables(con)
 
 ```
   
+#### **Define controlled terms and synonyms for cancer types**  
+  
   
 ```{r create table of cancer types}
 ## conditionSynonyms specifies which cancer types are of interest, and which condition names (as used by clinicaltrials.gov) will be considered as matches for each
@@ -84,6 +86,8 @@ dbListTables(con)
 
 ```
   
+#### **List human gene names and their synonyms**  
+    
   
 ```{r download and process a list of all human genes and their synonyms}
 
@@ -135,6 +139,9 @@ dbWriteTable(conn = con,name = "genes", value = humanGenes, overwrite=TRUE)
 dbListTables(con)
 
 ```
+  
+#### **Download variant info from clinVar and civicDB**  
+    
   
 ```{r download and process variants from clinvar}
 ## download variant summaries from clinvar
@@ -205,6 +212,9 @@ dbListTables(con)
 
 ```
     
+#### **Download variant:drug evidence from clinVar**  
+    
+    
 ```{r download and process evidence from civic DB}
 ## download evidence from civicDB
 # evidence contains mappings from variant_id to gene (gene name) and variant (amino acid change) to drugs etc
@@ -237,9 +247,16 @@ dbListTables(con)
 
 
 ## print a list of disease in evidence table, but not represented among condition synonyms
-setdiff(x=unique(evidence$disease), y=unique(conditionSynonyms$condition.synonyms))
+# setdiff(x=unique(evidence$disease), y=unique(conditionSynonyms$condition.synonyms))
 ```
 
+**The following disease are listed in the evidence table, but are not represented among the cancer types and synonyms defined above:**  
+  
+  
+`r setdiff(x=unique(evidence$disease), y=unique(conditionSynonyms$condition.synonyms))`  
+  
+#### **Download cancer study data from clinicaltrials.gov**  
+     
   
 ```{r connect to clinicaltrialsgov}  
 ## specify user name and password for AACT account
@@ -340,7 +357,11 @@ dbWriteTable(conn = con,name = "cancerStudies", value = cancerStudies, overwrite
 dbListTables(con)
 
 ```
-
+  
+#### **Get drug:mechanism and drug:target data**  
+      
+##### **Get mechanisms from NCI thesaurus**  
+     
 
 ```{r download and create NCIthesaurus table}
 
@@ -403,7 +424,9 @@ NCIthesaurus <- unique(NCIthesaurus)
 toc()
 
 ```
-
+  
+##### **Get targets from KEGG**  
+     
 
 ```{r get molecular targets for cancerStudies interventions}
 ## first, get all interventions (note that there will be some redundancy due to case)
@@ -466,12 +489,12 @@ tic("get IDs for drugs")
 for(i in 1:nrow(drugs.targets)) {
   drugid <- NA
   drugSynonym <- as.character(drugs.targets$interventions.processed[i])
-  print(drugSynonym)
+  #print(drugSynonym)
   ## get (onlY) first drug ID
   tryCatch({drugid <- names(keggFind(database = "drug", query = drugSynonym))[1]},
              error=function(cond) {return(NA)})
   if(length(drugid)>0 ) {
-    print(drugid)
+    #print(drugid)
     drugs.targets$drugID[i] <- drugid}
 }
 toc()
@@ -491,7 +514,7 @@ for(i in 1:nrow(targets)) {
   geneid <- NA
   tryCatch({geneid <- keggGet(drugid)[[1]]$TARGET$TARGET},
              error=function(cond) {return(NA)})
-  print(geneid)
+  #print(geneid)
   if(length(geneid)>0) targets$drugTargetID[i] <- geneid
 }
 
@@ -515,13 +538,13 @@ targets$drugTargetID <- paste0("hsa:",targets$drugTargetID)
 ## use drugTargetId to get names (Entrez Symbols) for target genes
 for(i in 1:nrow(targets)) {
   targetId <- targets$drugTargetID[i]
-  print(paste0("i= ", i, "; ID = ", targetId))
+  #print(paste0("i= ", i, "; ID = ", targetId))
   name <- NA
   tryCatch({name <- keggGet(targetId)[[1]]$NAME[1]},
              error=function(cond) {return(NA)})
   if(length(targetId)>0) {
     #name <- keggGet(targetId)[[1]]$NAME[1]
-    print(name)
+    #print(name)
     targets$drugTargetSymbol[i] <- name
   }
 }
@@ -539,7 +562,8 @@ drugs.targets <- merge(x=drugs.targets, by.x="drugID", all.x=TRUE,
 drugs.targets <- unique(dplyr::select(drugs.targets,"interventions.verbatim"= "interventions", interventions.processed, Description, ParentTerm, drugTargetSymbol))
 ```
 
-
+##### **Write drugsTargets table to database**  
+     
 
  
 ```{r create table of drugs and targets}
@@ -554,6 +578,8 @@ dbListTables(con)
 
 ```
 
+#### **Index eligibility criteria for cancer studies**  
+      
   
 ```{r get eligibility criteria for cancer studies}
 studyIDs <- unique(cancerStudies$nct_id)
@@ -615,9 +641,9 @@ eligibilities$feature <- NA
 ## add a column that will hold matching term (e.g. gene names)
 eligibilities$match <- NA
 ```
-
-
-
+  
+##### **Index on mutations**  
+     
   
 ```{r index criteria on mutations}
 ## create a copy of eligibilities table
@@ -686,12 +712,12 @@ mutation.eligibilities <- merge(x=mutation.eligibilities, by.x="match", y=humanG
 ## rename Symbol to "controlled.match"
 mutation.eligibilities <- rename(mutation.eligibilities, "controlled.match"="Symbol")
 
-
+## preview
+formattable(head(mutation.eligibilities))
 ```
-
-
-
-
+  
+##### **Index on fusions**  
+     
   
 ```{r index criteria on fusions}
 ## create a copy of eligibilities
@@ -759,9 +785,12 @@ fusion.eligibilities <- merge(x=fusion.eligibilities, by.x="match", y=humanGenes
 ## rename Symbol to "controlled.match"
 fusion.eligibilities <- rename(fusion.eligibilities, "controlled.match"="Symbol")
 
-
+## preview
+formattable(head(fusion.eligibilities))
 ```
-
+  
+##### **Index on amplifications**  
+     
   
 ```{r index criteria on amplifications}
 ## create a copy of eligibilities
@@ -829,23 +858,22 @@ amplification.eligibilities <- merge(x=amplification.eligibilities, by.x="match"
 ## rename Symbol to "controlled.match"
 amplification.eligibilities <- rename(amplification.eligibilities, "controlled.match"="Symbol")
 
+## preview
+formattable(head(amplification.eligibilities))
 ```
 
 
-
-
-
+##### **Write indexedEligibility table to database**  
+  
+  
 ```{r row bind indexed eligbility tables}
 indexed.eligibilities <- unique(rbind(mutation.eligibilities, fusion.eligibilities,amplification.eligibilities))
 
-
-
 ```
 
- 
 ```{r create table of indexed eligibility criteria}
 ## preview
-formattable(head(indexed.eligibilities))
+#formattable(head(indexed.eligibilities))
 
 ## create as a table in database
 dbWriteTable(conn = con,name = "indexedEligibility", value = indexed.eligibilities, overwrite=TRUE)
@@ -855,7 +883,9 @@ dbListTables(con)
 
 ```
 
-
+#### **Get pathway graph data from KEGG**  
+  
+  
 
 
 
@@ -874,9 +904,282 @@ dbDisconnect(con)
 
 ```
   
+`r knitr::knit_exit()`  
+  
+```{r kgml analysis}
+# BiocManager::install("hgu133a.db")
+library(KEGGlincs)
+library(KEGGgraph)
 
-     
-`r knitr::knit_exit()`
+#knitr::include_graphics("image_files/hsa04068.png")
+## download KGML file for Fox0 signaling pathway
+pathwaysInCancer_KGML <- get_KGML("hsa05200")
+class(pathwaysInCancer_KGML)
+
+
+pathwaysInCancer_mappings <- expand_KEGG_mappings(pathwaysInCancer_KGML, convert_KEGG_IDs = FALSE)
+pathwaysInCancer_mappings <- expand_KEGG_mappings(pathwaysInCancer_KGML)
+pathwaysInCancer_edges <- expand_KEGG_edges(pathwaysInCancer_KGML, pathwaysInCancer_mappings)
+
+
+#Modify existing data sets; specify as nodes and edges
+pathwaysInCancer_node_mapping_info <- node_mapping_info(pathwaysInCancer_mappings)
+
+pathwaysInCancer_edge_mapping_info <- edge_mapping_info(pathwaysInCancer_edges)
+
+#Create an igraph object
+pathwaysInCancer.igraph <- get_graph_object(pathwaysInCancer_node_mapping_info, pathwaysInCancer_edge_mapping_info)
+class(GO)
+
+
+library(igraph)
+
+shapes <- setdiff(shapes(), "")
+
+```
+
+
+### **Map trial interventions to biological pathway based on their molecular target**  
+
+#### **Create cancerPathways table**  
+
+```{r get data from KEGG}
+
+## get all networks for Pathways in Cancer (hsa05200) from KEGG, and filter to retain only those targeted by an intervention in an open UK cancer study 
+## (i.e. of known cancer pathways, which ones are currently being targeted by UK studies?)
+## can't get it for all cancers, have to do it for each individual cancer type: 
+
+if(!file.exists("cancerPathways.tsv")) {
+## specify a table of network IDs for cancer pathways
+cancerPathways <- data.frame(network.name = character(0), 
+                             network.id = character(0))
+cancerPathways <- cancerPathways %>% add_row(network.name = "Colorectal cancer", 
+                           network.id = "hsa05210")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Gastric cancer", 
+                           network.id = "hsa05226")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Pancreatic cancer", 
+                           network.id = "hsa05212")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Hepatocellular carcinoma", 
+                           network.id = "hsa05225")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Renal cell carcinoma", 
+                           network.id = "hsa05211")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Bladder cancer", 
+                           network.id = "hsa05219")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Non-small cell lung cancer", 
+                           network.id = "hsa05223")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Small cell lung cancer", 
+                           network.id = "hsa05222")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Melanoma", 
+                           network.id = "hsa05218")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Basal cell carcinoma", 
+                           network.id = "hsa05217")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Breast cancer", 
+                           network.id = "hsa05224")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Endometrial cancer", 
+                           network.id = "hsa05213")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Prostate cancer", 
+                           network.id = "hsa05215")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Glioma", 
+                           network.id = "hsa05214")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Thyroid cancer", 
+                           network.id = "hsa05216")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Acute myeloid leukaemia", 
+                           network.id = "hsa05221")
+cancerPathways <- cancerPathways %>% add_row(network.name = "Chronic myeloid leukaemia", 
+                           network.id = "hsa05220")
+
+
+## add a column that will hold a list of network elements for each network
+cancerPathways$network.elements <- NA
+
+tic("get KEGG networks")
+for(i in 1:length(cancerPathways$network.id)) {
+  network.id <- cancerPathways$network.id[i]
+  pathway.list <- keggGet(network.id)
+  cancerPathways$network.elements[i] <- list(pathway.list[[1]]$NETWORK$ELEMENT)
+}
+
+toc()
+
+## unnest the network.elements column to get a table with one row per network element per cancer type
+cancerPathways <- data.frame(unnest(cancerPathways, cols = "network.elements"))
+
+cancerPathways$network.element.id <- gsub(pattern = " .*", replacement = "", x=cancerPathways$network.elements)
+
+cancerPathways$network.element.name <- gsub(pattern = ".*  ", replacement = "", x=cancerPathways$network.elements)
+
+## add a column that will hold the network element "definition"
+cancerPathways$network.element.definition <- NA
+## add a column that will hold the "expanded" (i.e. gene IDs) definition
+cancerPathways$network.element.definition.expanded <- NA
+## add a column that will hold the names of genes in the elements
+cancerPathways$network.element.gene.names <- NA
+## add a column that will hold the IDs (minus hsa: prefix) of genes in the elements
+cancerPathways$network.element.gene.ids <- NA
+
+tic("get network element definitions")
+for(i in 1:length(cancerPathways$network.element.id)) {
+  element.id <- cancerPathways$network.element.id[i]
+  element.list <- keggGet(element.id)
+  cancerPathways$network.element.definition[i] <- element.list[[1]]$DEFINITION$DEFINITION
+  cancerPathways$network.element.definition.expanded[i] <- element.list[[1]]$DEFINITION$EXPANDED
+  element.genes <- element.list[[1]]$GENE
+  ## gene names are stored in even numbered elements
+  evens <- seq(from = 2, to=length(element.genes), by=2)
+  element.gene.names <- element.genes[evens]
+  ## trim off everything after semicolon
+  element.gene.names <- gsub(pattern = ";.*", replacement = "", x=element.gene.names)
+  cancerPathways$network.element.gene.names[i] <- list(element.gene.names)
+  
+  odds <- seq(from = 1, to=length(element.genes), by=2)
+  element.gene.ids <- element.genes[odds]
+  #element.gene.ids <- paste0("hsa:",element.gene.ids)
+  cancerPathways$network.element.gene.ids[i] <- list(element.gene.ids)
+}
+toc()
+## unnest the network.element.gene.names column to get a table with one row per gene per network element per cancer type
+cancerPathways <- unnest(cancerPathways, cols=c("network.element.gene.names", "network.element.gene.ids"))
+
+## THE GENE NAMES IN THE DEFINITION DON'T MATCH THOSE IN THE GENE LIST (!)
+## e.g. "SOS" in network element N00005 corresponds to gene names "SOS1" and "SOS2"
+## WE NEED TO REPLACE THE GENE IDS IN THE EXPANDED DEFINITIONS WITH THE CORRESPONDING GENE NAMES
+
+## first, make a lookup table of gene ids and names
+gene.lookup <- data.frame(unique(dplyr::select(cancerPathways, network.element.gene.names, network.element.gene.ids)))
+
+## need to trim off v suffixes from gene ids
+cancerPathways$network.element.definition.expanded <- gsub(pattern = "v.", replacement = "", x=cancerPathways$network.element.definition.expanded)
+
+tic("gene lookup")
+## loop through the lookup table and replace the gene ids in expanded definition column with gene names
+## need to do whole-word match using \\b ... \\b
+for(i in 1:nrow(gene.lookup)) {
+  pattern <- gene.lookup$network.element.gene.ids[i]
+  replacement <- gene.lookup$network.element.gene.names[i]
+  cancerPathways$network.element.definition.expanded <- gsub(pattern=paste0("\\b", pattern, "\\b"), replacement = replacement, x=cancerPathways$network.element.definition.expanded)
+}
+toc()
+## delete the brackets
+cancerPathways$network.element.definition.expanded <- gsub(pattern = "\\(|\\)", replacement = "", x=cancerPathways$network.element.definition.expanded)
+
+
+## add a column that will hold downstream pathway info
+cancerPathways$downstream <- NA
+
+tic("loop through cancer pathways")
+
+for(i in 1:nrow(cancerPathways)) {
+  pattern = paste0(".*",cancerPathways$network.element.gene.names[i])
+  replacement = cancerPathways$network.element.gene.names[i]
+  cancerPathways$downstream[i] <- gsub(pattern = pattern, replacement = replacement, x=cancerPathways$network.element.definition.expanded[i])
+}
+
+toc()
+
+## ultimately, we want to join to trial info on the basis of downstream gene name == target gene name for intervention
+## therefore we need a column that contains the names of genes downstream of every given gene in very pathway
+## currently downstream genes are stored in the "downstream" column, need to split first on spaces, then on commas
+
+## add a column that will hold names of downstream genes
+cancerPathways$downstream.genes <- cancerPathways$downstream
+## split on space
+cancerPathways$downstream.genes <- strsplit(cancerPathways$downstream.genes, split = " ")
+cancerPathways <- unnest(cancerPathways, cols = "downstream.genes")
+## now we need to filter out rows that contain only the edges (->, -|, //, =>, =| etc)
+cancerPathways <- cancerPathways[!cancerPathways$downstream.genes %in% c("->", "-|", "//", "=>", "--", "=|" ), ]
+
+## split again on comma or plus symbol
+cancerPathways$downstream.genes <- strsplit(cancerPathways$downstream.genes, split = ",|+ ")
+## unnest again
+cancerPathways <- unnest(cancerPathways, cols = "downstream.genes")
+
+
+## write to tsv
+write.table(cancerPathways, file = "cancerPathways.tsv", sep = "\t",
+            row.names = FALSE, col.names = names(cancerPathways)) } else  {cancerPathways <- read.table(file = "cancerPathways.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)}
+
+```
+
+```{r preprocess cancerPathways table}
+
+## Drop unwanted columns, save only unique combinations
+cancerPathways.trimmed <- unique(dplyr::select(cancerPathways, network.name, network.element.name, network.element.gene.names, downstream, downstream.genes))
+
+## Group by all except network.name - i.e. Aggregate cancer types into a single value
+cancerPathways.trimmed <-data.frame(cancerPathways.trimmed %>%
+               group_by_at(vars(-network.name))  %>%
+               summarise(network.name = paste(unique(network.name), collapse = ",")))
+
+```
+
+```{r preprocess targetMatches table}
+## Drop unwanted columns, save only unique combinations 
+pathwayMatches <- unique(dplyr::select(targetMatches, nct_id, Interventions, Target, Mechanism))
+
+```
+
+#### **Create pathwayMatches table**  
+
+```{r left join cancerpathways to targetmatches}
+## left join on cancerPathways.trimmed$downstream.genes = target.Matches$Target
+pathwayMatches <- merge(x=cancerPathways.trimmed, by.x = "downstream.genes", y=pathwayMatches, by.y = "Target")
+
+## drop rows where network.element.gene.names == downstream.genes
+pathwayMatches <- filter(pathwayMatches, downstream.genes!=network.element.gene.names)
+
+```
+
+```{r write pathway matches to tsv}
+#dim(pathwayMatches)
+
+## write full table of all pathway matches to tsv
+write.table(pathwayMatches, file = "pathwayMatches.tsv", sep = "\t",
+            row.names = FALSE, col.names = names(pathwayMatches))
+
+```
+  
+Mappings between cancer studies, interventions and biological pathways have been written to file pathwayMatches.tsv. First few rows are as follows:  
+  
+```{r preview pathwayMatches table}
+
+kable(head(pathwayMatches)) %>%
+  kable_styling(bootstrap_options = "striped") %>%
+  kable_styling(fixed_thead = T)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   
 
@@ -1316,215 +1619,6 @@ kable(head(targetMatches)) %>%
 ```
 
 
-
-### **Map trial interventions to biological pathway based on their molecular target**  
-
-#### **Create cancerPathways table**  
-
-```{r get data from KEGG}
-
-## get all networks for Pathways in Cancer (hsa05200) from KEGG, and filter to retain only those targeted by an intervention in an open UK cancer study 
-## (i.e. of known cancer pathways, which ones are currently being targeted by UK studies?)
-## can't get it for all cancers, have to do it for each individual cancer type: 
-
-if(!file.exists("cancerPathways.tsv")) {
-## specify a table of network IDs for cancer pathways
-cancerPathways <- data.frame(network.name = character(0), 
-                             network.id = character(0))
-cancerPathways <- cancerPathways %>% add_row(network.name = "Colorectal cancer", 
-                           network.id = "hsa05210")
-cancerPathways <- cancerPathways %>% add_row(network.name = "Gastric cancer", 
-                           network.id = "hsa05226")
-cancerPathways <- cancerPathways %>% add_row(network.name = "Pancreatic cancer", 
-                           network.id = "hsa05212")
-cancerPathways <- cancerPathways %>% add_row(network.name = "Hepatocellular carcinoma", 
-                           network.id = "hsa05225")
-cancerPathways <- cancerPathways %>% add_row(network.name = "Renal cell carcinoma", 
-                           network.id = "hsa05211")
-cancerPathways <- cancerPathways %>% add_row(network.name = "Bladder cancer", 
-                           network.id = "hsa05219")
-cancerPathways <- cancerPathways %>% add_row(network.name = "Non-small cell lung cancer", 
-                           network.id = "hsa05223")
-cancerPathways <- cancerPathways %>% add_row(network.name = "Small cell lung cancer", 
-                           network.id = "hsa05222")
-cancerPathways <- cancerPathways %>% add_row(network.name = "Melanoma", 
-                           network.id = "hsa05218")
-cancerPathways <- cancerPathways %>% add_row(network.name = "Basal cell carcinoma", 
-                           network.id = "hsa05217")
-cancerPathways <- cancerPathways %>% add_row(network.name = "Breast cancer", 
-                           network.id = "hsa05224")
-cancerPathways <- cancerPathways %>% add_row(network.name = "Endometrial cancer", 
-                           network.id = "hsa05213")
-cancerPathways <- cancerPathways %>% add_row(network.name = "Prostate cancer", 
-                           network.id = "hsa05215")
-cancerPathways <- cancerPathways %>% add_row(network.name = "Glioma", 
-                           network.id = "hsa05214")
-cancerPathways <- cancerPathways %>% add_row(network.name = "Thyroid cancer", 
-                           network.id = "hsa05216")
-cancerPathways <- cancerPathways %>% add_row(network.name = "Acute myeloid leukaemia", 
-                           network.id = "hsa05221")
-cancerPathways <- cancerPathways %>% add_row(network.name = "Chronic myeloid leukaemia", 
-                           network.id = "hsa05220")
-
-
-## add a column that will hold a list of network elements for each network
-cancerPathways$network.elements <- NA
-
-tic("get KEGG networks")
-for(i in 1:length(cancerPathways$network.id)) {
-  network.id <- cancerPathways$network.id[i]
-  pathway.list <- keggGet(network.id)
-  cancerPathways$network.elements[i] <- list(pathway.list[[1]]$NETWORK$ELEMENT)
-}
-
-toc()
-
-## unnest the network.elements column to get a table with one row per network element per cancer type
-cancerPathways <- data.frame(unnest(cancerPathways, cols = "network.elements"))
-
-cancerPathways$network.element.id <- gsub(pattern = " .*", replacement = "", x=cancerPathways$network.elements)
-
-cancerPathways$network.element.name <- gsub(pattern = ".*  ", replacement = "", x=cancerPathways$network.elements)
-
-## add a column that will hold the network element "definition"
-cancerPathways$network.element.definition <- NA
-## add a column that will hold the "expanded" (i.e. gene IDs) definition
-cancerPathways$network.element.definition.expanded <- NA
-## add a column that will hold the names of genes in the elements
-cancerPathways$network.element.gene.names <- NA
-## add a column that will hold the IDs (minus hsa: prefix) of genes in the elements
-cancerPathways$network.element.gene.ids <- NA
-
-tic("get network element definitions")
-for(i in 1:length(cancerPathways$network.element.id)) {
-  element.id <- cancerPathways$network.element.id[i]
-  element.list <- keggGet(element.id)
-  cancerPathways$network.element.definition[i] <- element.list[[1]]$DEFINITION$DEFINITION
-  cancerPathways$network.element.definition.expanded[i] <- element.list[[1]]$DEFINITION$EXPANDED
-  element.genes <- element.list[[1]]$GENE
-  ## gene names are stored in even numbered elements
-  evens <- seq(from = 2, to=length(element.genes), by=2)
-  element.gene.names <- element.genes[evens]
-  ## trim off everything after semicolon
-  element.gene.names <- gsub(pattern = ";.*", replacement = "", x=element.gene.names)
-  cancerPathways$network.element.gene.names[i] <- list(element.gene.names)
-  
-  odds <- seq(from = 1, to=length(element.genes), by=2)
-  element.gene.ids <- element.genes[odds]
-  #element.gene.ids <- paste0("hsa:",element.gene.ids)
-  cancerPathways$network.element.gene.ids[i] <- list(element.gene.ids)
-}
-toc()
-## unnest the network.element.gene.names column to get a table with one row per gene per network element per cancer type
-cancerPathways <- unnest(cancerPathways, cols=c("network.element.gene.names", "network.element.gene.ids"))
-
-## THE GENE NAMES IN THE DEFINITION DON'T MATCH THOSE IN THE GENE LIST (!)
-## e.g. "SOS" in network element N00005 corresponds to gene names "SOS1" and "SOS2"
-## WE NEED TO REPLACE THE GENE IDS IN THE EXPANDED DEFINITIONS WITH THE CORRESPONDING GENE NAMES
-
-## first, make a lookup table of gene ids and names
-gene.lookup <- data.frame(unique(dplyr::select(cancerPathways, network.element.gene.names, network.element.gene.ids)))
-
-## need to trim off v suffixes from gene ids
-cancerPathways$network.element.definition.expanded <- gsub(pattern = "v.", replacement = "", x=cancerPathways$network.element.definition.expanded)
-
-tic("gene lookup")
-## loop through the lookup table and replace the gene ids in expanded definition column with gene names
-## need to do whole-word match using \\b ... \\b
-for(i in 1:nrow(gene.lookup)) {
-  pattern <- gene.lookup$network.element.gene.ids[i]
-  replacement <- gene.lookup$network.element.gene.names[i]
-  cancerPathways$network.element.definition.expanded <- gsub(pattern=paste0("\\b", pattern, "\\b"), replacement = replacement, x=cancerPathways$network.element.definition.expanded)
-}
-toc()
-## delete the brackets
-cancerPathways$network.element.definition.expanded <- gsub(pattern = "\\(|\\)", replacement = "", x=cancerPathways$network.element.definition.expanded)
-
-
-## add a column that will hold downstream pathway info
-cancerPathways$downstream <- NA
-
-tic("loop through cancer pathways")
-
-for(i in 1:nrow(cancerPathways)) {
-  pattern = paste0(".*",cancerPathways$network.element.gene.names[i])
-  replacement = cancerPathways$network.element.gene.names[i]
-  cancerPathways$downstream[i] <- gsub(pattern = pattern, replacement = replacement, x=cancerPathways$network.element.definition.expanded[i])
-}
-
-toc()
-
-## ultimately, we want to join to trial info on the basis of downstream gene name == target gene name for intervention
-## therefore we need a column that contains the names of genes downstream of every given gene in very pathway
-## currently downstream genes are stored in the "downstream" column, need to split first on spaces, then on commas
-
-## add a column that will hold names of downstream genes
-cancerPathways$downstream.genes <- cancerPathways$downstream
-## split on space
-cancerPathways$downstream.genes <- strsplit(cancerPathways$downstream.genes, split = " ")
-cancerPathways <- unnest(cancerPathways, cols = "downstream.genes")
-## now we need to filter out rows that contain only the edges (->, -|, //, =>, =| etc)
-cancerPathways <- cancerPathways[!cancerPathways$downstream.genes %in% c("->", "-|", "//", "=>", "--", "=|" ), ]
-
-## split again on comma or plus symbol
-cancerPathways$downstream.genes <- strsplit(cancerPathways$downstream.genes, split = ",|+ ")
-## unnest again
-cancerPathways <- unnest(cancerPathways, cols = "downstream.genes")
-
-
-## write to tsv
-write.table(cancerPathways, file = "cancerPathways.tsv", sep = "\t",
-            row.names = FALSE, col.names = names(cancerPathways)) } else  {cancerPathways <- read.table(file = "cancerPathways.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)}
-
-```
-
-```{r preprocess cancerPathways table}
-
-## Drop unwanted columns, save only unique combinations
-cancerPathways.trimmed <- unique(dplyr::select(cancerPathways, network.name, network.element.name, network.element.gene.names, downstream, downstream.genes))
-
-## Group by all except network.name - i.e. Aggregate cancer types into a single value
-cancerPathways.trimmed <-data.frame(cancerPathways.trimmed %>%
-               group_by_at(vars(-network.name))  %>%
-               summarise(network.name = paste(unique(network.name), collapse = ",")))
-
-```
-
-```{r preprocess targetMatches table}
-## Drop unwanted columns, save only unique combinations 
-pathwayMatches <- unique(dplyr::select(targetMatches, nct_id, Interventions, Target, Mechanism))
-
-```
-
-#### **Create pathwayMatches table**  
-
-```{r left join cancerpathways to targetmatches}
-## left join on cancerPathways.trimmed$downstream.genes = target.Matches$Target
-pathwayMatches <- merge(x=cancerPathways.trimmed, by.x = "downstream.genes", y=pathwayMatches, by.y = "Target")
-
-## drop rows where network.element.gene.names == downstream.genes
-pathwayMatches <- filter(pathwayMatches, downstream.genes!=network.element.gene.names)
-
-```
-
-```{r write pathway matches to tsv}
-#dim(pathwayMatches)
-
-## write full table of all pathway matches to tsv
-write.table(pathwayMatches, file = "pathwayMatches.tsv", sep = "\t",
-            row.names = FALSE, col.names = names(pathwayMatches))
-
-```
-  
-Mappings between cancer studies, interventions and biological pathways have been written to file pathwayMatches.tsv. First few rows are as follows:  
-  
-```{r preview pathwayMatches table}
-
-kable(head(pathwayMatches)) %>%
-  kable_styling(bootstrap_options = "striped") %>%
-  kable_styling(fixed_thead = T)
-
-```
 
 
 ### **Score matches between genes and cancer trials**  

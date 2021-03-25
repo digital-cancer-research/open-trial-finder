@@ -5,3 +5,4 @@
 *.html
 *.gz
 *.sqlite
+.Rhistory
