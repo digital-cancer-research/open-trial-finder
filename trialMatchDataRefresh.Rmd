@@ -383,7 +383,11 @@ NCIt$Class <- strsplit(NCIt$Class, split = "\\|")
 NCIt <- unnest(data = NCIt, Class)
 
 ## subset to retain only relevant classes
-NCItPharmacologics <- NCIt[which(NCIt$Class %in% c("Pharmacologic Substance","Amino Acid, Peptide, or Protein","Immunologic Factor","Clinical Drug")), ]
+NCItPharmacologics <- NCIt[which(NCIt$Class %in% c("Pharmacologic Substance","Amino Acid, Peptide, or Protein","Immunologic Factor","Clinical Drug","Therapeutic or Preventive Procedure", "Health Care Activity")), ]
+
+## additional classes related to prior therapy
+#  "Therapeutic or Preventive Procedure", "Health Care Activity"
+
 
 ## one drug can have more than one parent, so need to split into multiple rows...
 ## split ParentID column on pipe symbol
@@ -861,13 +865,43 @@ amplification.eligibilities <- rename(amplification.eligibilities, "controlled.m
 ## preview
 formattable(head(amplification.eligibilities))
 ```
+  
 
+##### **Index on performance status**  
+
+
+  
+##### **Index on prior therapies**  
+     
+  
+```{r index criteria on prior therapies}
+## create a copy of eligibilities
+therapy.eligibilities <- eligibilities
+
+## filter to retain criteria with mention of "previous|prior"
+# define pattern
+therapyFilter <- "previous therapy|prior therapy|previous treatment|prior treatment"
+# filter
+therapy.eligibilities <- therapy.eligibilities[grep(pattern = therapyFilter, ignore.case = TRUE, x=therapy.eligibilities$criteria), ]
+# set value for feature
+therapy.eligibilities$feature <- "PRIOR_THERAPY"
+
+## drop redundant rows, if any
+therapy.eligibilities <- unique(therapy.eligibilities)
+
+## since prior therapies tend to be a mixture of 2-word synonyms, 3-word synonyms etc, plus parent terms, best approach for now is to not try and match against a therapy
+
+## instead, in the UI, just show inclusion and exclusion criteria (separately) related to prior therapies
+
+formattable(head(therapy.eligibilities))
+```
+      
 
 ##### **Write indexedEligibility table to database**  
   
   
 ```{r row bind indexed eligbility tables}
-indexed.eligibilities <- unique(rbind(mutation.eligibilities, fusion.eligibilities,amplification.eligibilities))
+indexed.eligibilities <- unique(rbind(mutation.eligibilities, fusion.eligibilities,amplification.eligibilities, therapy.eligibilities))
 
 ```
 
