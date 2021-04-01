@@ -15,6 +15,9 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 # BiocManager::install("AnnotationDbi")
 # BiocManager::install("org.Hs.eg.db")
 # BiocManager::install("KEGGREST")
+# BiocManager::install("hgu133a.db")
+require(KEGGlincs)
+require(KEGGgraph)
 
 require(RPostgreSQL)
 require(RODBC)
@@ -35,6 +38,7 @@ require(leaflet)
 require(PostcodesioR)
 require(rjson)
 require(RSQLite)
+require(igraph)
 
 ## clean up first
 rm(list=ls())
@@ -891,6 +895,9 @@ therapy.eligibilities <- unique(therapy.eligibilities)
 
 ## since prior therapies tend to be a mixture of 2-word synonyms, 3-word synonyms etc, plus parent terms, best approach for now is to not try and match against a therapy
 
+# add a controlled.match column for row binding only
+therapy.eligibilities$controlled.match <- NA
+
 ## instead, in the UI, just show inclusion and exclusion criteria (separately) related to prior therapies
 
 formattable(head(therapy.eligibilities))
@@ -920,6 +927,103 @@ dbListTables(con)
 #### **Get pathway graph data from KEGG**  
   
   
+```{r get edge list}
+
+
+## download KGML file for Pathways In Cancer as KGML file
+pathwaysInCancer_KGML <- get_KGML("hsa05200")
+#class(pathwaysInCancer_KGML)
+
+## expand mappings
+pathwaysInCancer_mappings <- expand_KEGG_mappings(pathwaysInCancer_KGML, convert_KEGG_IDs = FALSE)
+pathwaysInCancer_mappings <- expand_KEGG_mappings(pathwaysInCancer_KGML)
+pathwaysInCancer_edges <- expand_KEGG_edges(pathwaysInCancer_KGML, pathwaysInCancer_mappings)
+
+## create a simple edgelist
+edgelist <- unique(dplyr::select(pathwaysInCancer_edges, "from"="entry1symbol", "to"="entry2symbol", specific_subtype, value))
+
+
+
+#Modify existing data sets; specify as nodes and edges
+pathwaysInCancer_node_mapping_info <- node_mapping_info(pathwaysInCancer_mappings)
+
+pathwaysInCancer_edge_mapping_info <- edge_mapping_info(pathwaysInCancer_edges)
+
+#Create an igraph object
+pathwaysInCancer.igraph <- get_graph_object(pathwaysInCancer_node_mapping_info, pathwaysInCancer_edge_mapping_info)
+
+## get edgelist
+edges <- as_data_frame(pathwaysInCancer.igraph, what = c("edges"))
+
+## drop unnecessary columns
+edges <- unique(dplyr::select(edges, "from"="entry1symbol", "to"="entry2symbol", specific_subtype, tooltip))
+
+
+## unnest the from and to columns
+edges$from <- strsplit(edges$from, split = ",")
+edges <- unnest(edges, cols = "from")
+
+edges$to <- strsplit(edges$to, split = ",")
+edges <- unnest(edges, cols = "to")
+
+## convert back to dataframe
+edges <- as.data.frame(edges)
+```
+
+  
+```{r preview graph}
+## fourth, plot graph... 
+graph <- graph_from_data_frame(d=edges, directed=T)
+## look at the nodes
+#V(graph)
+
+## look at the edges
+#E(graph)
+
+
+#plot(graph, layout=layout_as_tree(graph))
+
+
+
+## get a list of nodes that represent the roots (i.e. the most upstream nodes)
+## i.e. nodes that are source nodes (in edges$from) but not target nodes (not in edges$to)
+rootNodes <- unique(setdiff(edges$from, edges$to))
+# rootNodes
+# plot(graph, layout=layout_as_tree(graph, root=rootNodes,mode="out"))
+
+
+## get degrees of nodes
+deg <- degree(graph, mode="all")
+# plot(graph, layout=layout_as_tree(graph, root=rootNodes,mode="out"),edge.arrow.size=0.2, vertex.label.cex=0.5, vertex.size=deg*3)
+  
+
+##As a test, get a list of all vertices (nodes) downstream of KRAS
+KRASdownstreamNodes <- subcomponent(graph, "KRAS", mode = c("out"))
+## get all downstream nodes as a vector
+KRASdownstreamNodes$name
+
+##create a subgraph of a graph, containing only the specified vertices and all the edges among them
+KRASdownstreamGraph <- induced_subgraph(graph=graph, vids = KRASdownstreamNodes, impl = "auto")
+
+
+
+## find paths e.g. from KRAS to CCND1
+#all_simple_paths(graph, "KRAS", "CCND1")
+
+## find single shortest path from KRAS to AKT1
+shortest.KRAS.AKT1.path <- shortest_paths(graph=KRASdownstreamGraph, from="KRAS", to = "AKT1", mode = c("out"), weights = NULL, output = "both",
+  predecessors = FALSE, inbound.edges = FALSE)
+
+
+
+## display edges in shortest path
+shortest.KRAS.AKT1.path$epath[[1]]
+
+## also, would depth-first search be useful? see https://stackoverflow.com/questions/16783095/use-a-list-of-edges-to-draw-a-graph
+
+## see also http://cneurocvs.rmki.kfki.hu/igraphbook/igraphbook-iterators.html#id2530580 
+
+```
 
 
 
@@ -939,39 +1043,6 @@ dbDisconnect(con)
 ```
   
 `r knitr::knit_exit()`  
-  
-```{r kgml analysis}
-# BiocManager::install("hgu133a.db")
-library(KEGGlincs)
-library(KEGGgraph)
-
-#knitr::include_graphics("image_files/hsa04068.png")
-## download KGML file for Fox0 signaling pathway
-pathwaysInCancer_KGML <- get_KGML("hsa05200")
-class(pathwaysInCancer_KGML)
-
-
-pathwaysInCancer_mappings <- expand_KEGG_mappings(pathwaysInCancer_KGML, convert_KEGG_IDs = FALSE)
-pathwaysInCancer_mappings <- expand_KEGG_mappings(pathwaysInCancer_KGML)
-pathwaysInCancer_edges <- expand_KEGG_edges(pathwaysInCancer_KGML, pathwaysInCancer_mappings)
-
-
-#Modify existing data sets; specify as nodes and edges
-pathwaysInCancer_node_mapping_info <- node_mapping_info(pathwaysInCancer_mappings)
-
-pathwaysInCancer_edge_mapping_info <- edge_mapping_info(pathwaysInCancer_edges)
-
-#Create an igraph object
-pathwaysInCancer.igraph <- get_graph_object(pathwaysInCancer_node_mapping_info, pathwaysInCancer_edge_mapping_info)
-class(GO)
-
-
-library(igraph)
-
-shapes <- setdiff(shapes(), "")
-
-```
-
 
 ### **Map trial interventions to biological pathway based on their molecular target**  
 
