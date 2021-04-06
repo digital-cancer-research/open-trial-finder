@@ -79,6 +79,10 @@ conditionSynonyms <- unique(conditionSynonyms)
 #                   summarise(
 #                   synonyms = paste(condition.synonyms, collapse = ", "))))
 
+## replace periods in column names (if any) with underscore for compatibility with SQL
+names(conditionSynonyms) <- gsub(pattern = "\\.", replacement = "_", x=names(conditionSynonyms))
+
+
 ## preview
 formattable(head(conditionSynonyms))
 
@@ -133,6 +137,9 @@ toc()
 ```
   
 ```{r create table of human genes}
+## replace periods in column names (if any) with underscore for compatibility with SQL
+names(humanGenes) <- gsub(pattern = "\\.", replacement = "_", x=names(humanGenes))
+
 ## preview
 formattable(head(humanGenes))
 
@@ -205,6 +212,9 @@ variants$variant <- gsub(pattern = " .*", replacement = "", x=variants$variant)
 
  
 ```{r create table of variants}
+## replace periods in column names (if any) with underscore for compatibility with SQL
+names(variants) <- gsub(pattern = "\\.", replacement = "_", x=names(variants))
+
 ## preview
 formattable(head(variants))
 
@@ -240,6 +250,9 @@ evidence <- as.data.frame(evidence)
 
  
 ```{r create table of evidence}
+## replace periods in column names (if any) with underscore for compatibility with SQL
+names(evidence) <- gsub(pattern = "\\.", replacement = "_", x=names(evidence))
+
 ## preview
 formattable(head(evidence))
 
@@ -267,7 +280,7 @@ dbListTables(con)
 ## see https://aact.ctti-clinicaltrials.org/ for how to create an account
 
 ## load configuration data from JSON file
-configuration <- fromJSON(file = "trialMatchConfiguration.json")
+configuration <- rjson::fromJSON(file = "trialMatchConfiguration.json")
 aact.username <- configuration$aact.username
 aact.password <- configuration$aact.password
 
@@ -322,8 +335,8 @@ cancerStudies <- openStudies[0, ]
 
 # loop through condition synonyms
 for(i in 1:nrow(conditionSynonyms)) {
-  synonym <- as.character(conditionSynonyms$condition.synonyms[i])
-  targetCondition <- as.character(conditionSynonyms$controlled.cancer.type[i])
+  synonym <- as.character(conditionSynonyms$condition_synonyms[i])
+  targetCondition <- as.character(conditionSynonyms$controlled_cancer_type[i])
   ## look for a match in condition name
   matching.rows <- grep(pattern = synonym, x=openStudies$condition, ignore.case = TRUE)
   ## create a temporary data frame to hold matches
@@ -427,6 +440,9 @@ cancerStudies$long[!is.na(cancerStudies$postcode.long)] <- cancerStudies$postcod
 
  
 ```{r create table of studies}
+## replace periods in column names (if any) with underscore for compatibility with SQL
+names(cancerStudies) <- gsub(pattern = "\\.", replacement = "_", x=names(cancerStudies))
+
 ## preview
 formattable(head(cancerStudies))
 
@@ -651,6 +667,9 @@ drugs.targets <- unique(dplyr::select(drugs.targets,"interventions.verbatim"= "i
 
  
 ```{r create table of drugs and targets}
+## replace periods in column names (if any) with underscore for compatibility with SQL
+names(drugs.targets) <- gsub(pattern = "\\.", replacement = "_", x=names(drugs.targets))
+
 ## preview
 formattable(head(drugs.targets))
 
@@ -990,8 +1009,11 @@ indexed.eligibilities <- unique(rbind(mutation.eligibilities, fusion.eligibiliti
 ```
 
 ```{r create table of indexed eligibility criteria}
+## replace periods in column names (if any) with underscore for compatibility with SQL
+names(indexed.eligibilities) <- gsub(pattern = "\\.", replacement = "_", x=names(indexed.eligibilities))
+
 ## preview
-#formattable(head(indexed.eligibilities))
+formattable(head(indexed.eligibilities))
 
 ## create as a table in database
 dbWriteTable(conn = con,name = "indexedEligibility", value = indexed.eligibilities, overwrite=TRUE)
@@ -1053,6 +1075,9 @@ edges <- as.data.frame(edges)
   
 
 ```{r create table of edges}
+## replace periods in column names (if any) with underscore for compatibility with SQL
+names(edges) <- gsub(pattern = "\\.", replacement = "_", x=names(edges))
+
 ## preview
 formattable(head(edges))
 
@@ -1063,6 +1088,104 @@ dbWriteTable(conn = con,name = "edges", value = edges, overwrite=TRUE)
 dbListTables(con)
 
 ```
+  
+  
+  
+  
+  
+### **Score matches between genes and cancer trials**  
+  
+For a given gene of interest...  
+Score 5 if that gene is mentioned in inclusion criteria, and it is the molecular target of the study drug.  
+Score 4 if that gene is mentioned in inclusion criteria, and the study drug targets a downstream gene.  
+Score 3 if that gene is mentioned in inclusion criteria.  
+Score 2 if the study drug targets that gene.  
+Score 1 if the study drug targets a downstream gene.  
+  
+
+```{r create scoredMatches table}
+## create an empty table that will hold details of matches
+## a bit like a SQL view
+# scoredMatches <- data.frame(gene.of.interest = character(0), 
+#                                 nct_id=character(0), 
+#                                 intervention.name = character(0),
+#                                 intervention.target=character(0),
+#                                 rationale=character(0), 
+#                                 confidence=numeric(0))
+# 
+# ## create a table of target matches that will ultimately be added as new rows
+# temp.target.matches <- unique(dplyr::select(targetMatches, gene.of.interest="Target", nct_id, intervention.name="Interventions",intervention.target="Target"))
+# ## drop rows where Target is NA
+# temp.target.matches <- temp.target.matches[!is.na(temp.target.matches$intervention.target),]
+# ## add a rationale column
+# temp.target.matches$rationale <- paste0("Study drug (", temp.target.matches$intervention.name, ") targets ", temp.target.matches$intervention.target)
+# ## add confidence score of +2 for target matches
+# temp.target.matches$confidence <- 2
+# 
+# ## bind as new rows onto scoredMatches table
+# scoredMatches <- rbind(scoredMatches, temp.target.matches)
+# 
+# ## do the same for pathwayMatches
+# ## rename columns to match scoredMatches table
+# temp.pathway.matches <- unique(dplyr::select(pathwayMatches, gene.of.interest="network.element.gene.names", nct_id, intervention.name="Interventions", intervention.target="downstream.genes"))
+# ## aggregate the downstream targets
+# temp.pathway.matches <- temp.pathway.matches %>%
+#             group_by_at(vars(-intervention.target)) %>%
+#             summarize(intervention.target = toString(intervention.target) ) %>%
+#             as.data.frame()
+# ## drop rows with any NA
+# temp.pathway.matches <- temp.pathway.matches[complete.cases(temp.pathway.matches),]
+# ## add a rationale column
+# temp.pathway.matches$rationale <- paste0("Study drug (", temp.pathway.matches$intervention.name, ") targets downstream gene(s) (", temp.pathway.matches$intervention.target, ")")
+# ## add confidence score of +1 for pathway matches
+# temp.pathway.matches$confidence <- 1
+# ## bind as new rows onto big.gene.matches table
+# scoredMatches <- rbind(scoredMatches, temp.pathway.matches)
+# 
+# scoredMatches <- merge(x=scoredMatches, by.x=c("nct_id", "gene.of.interest"), all.x = TRUE, y=unique(dplyr::select(manualNLPmatches,nct_id, matching.symbol, criteria )), by.y = c("nct_id", "matching.symbol"), all.y=TRUE)
+# 
+# ## append rationale for studies matched on eligibility criteria
+# for(i in 1:nrow(scoredMatches)) {
+#    if(!is.na(scoredMatches$criteria[i])) {
+#      ## add +3 to confidence score
+#      if(!is.na(scoredMatches$confidence[i])) {
+#        scoredMatches$confidence[i] <- scoredMatches$confidence[i]+3
+#      } else scoredMatches$confidence[i] <- 3
+#      ## indicate that gene of interest is mentioned in criteria
+#      if(!is.na(scoredMatches$rationale[i])) {
+#        scoredMatches$rationale[i] <- paste(scoredMatches$rationale[i], paste0(scoredMatches$gene.of.interest[i],  " is mentioned in inclusion criteria"), sep = ", ")} else {scoredMatches$rationale[i] <- paste0(scoredMatches$gene.of.interest[i],  " is mentioned in inclusion criteria")}
+#    }
+# }
+# 
+# 
+# ## write full table of all pathway matches to tsv
+# write.table(scoredMatches, file = "scoredMatches.tsv", sep = "\t",
+#             row.names = FALSE, col.names = names(scoredMatches))
+```
+  
+Scored matches between a gene and study have been written to file scoredMatches.tsv. First few rows are as follows:  
+  
+  
+```{r write scoredMatches to tsv}
+#dim(scoredMatches)
+
+# kable(head(scoredMatches)) %>%
+#   kable_styling(bootstrap_options = "striped") %>%
+#   kable_styling(fixed_thead = T)
+
+```
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
   
 
 ```{r disconnect from  database}
@@ -1767,87 +1890,6 @@ kable(head(targetMatches)) %>%
 
 
 
-### **Score matches between genes and cancer trials**  
-  
-For a given gene of interest...  
-Score 5 if that gene is mentioned in inclusion criteria, and it is the molecular target of the study drug.  
-Score 4 if that gene is mentioned in inclusion criteria, and the study drug targets a downstream gene.  
-Score 3 if that gene is mentioned in inclusion criteria.  
-Score 2 if the study drug targets that gene.  
-Score 1 if the study drug targets a downstream gene.  
-  
-
-```{r create scoredMatches table}
-## create an empty table that will hold details of matches
-## a bit like a SQL view
-scoredMatches <- data.frame(gene.of.interest = character(0), 
-                                nct_id=character(0), 
-                                intervention.name = character(0),
-                                intervention.target=character(0),
-                                rationale=character(0), 
-                                confidence=numeric(0))
-
-## create a table of target matches that will ultimately be added as new rows
-temp.target.matches <- unique(dplyr::select(targetMatches, gene.of.interest="Target", nct_id, intervention.name="Interventions",intervention.target="Target"))
-## drop rows where Target is NA
-temp.target.matches <- temp.target.matches[!is.na(temp.target.matches$intervention.target),]
-## add a rationale column
-temp.target.matches$rationale <- paste0("Study drug (", temp.target.matches$intervention.name, ") targets ", temp.target.matches$intervention.target)
-## add confidence score of +2 for target matches
-temp.target.matches$confidence <- 2
-
-## bind as new rows onto scoredMatches table
-scoredMatches <- rbind(scoredMatches, temp.target.matches)
-
-## do the same for pathwayMatches
-## rename columns to match scoredMatches table
-temp.pathway.matches <- unique(dplyr::select(pathwayMatches, gene.of.interest="network.element.gene.names", nct_id, intervention.name="Interventions", intervention.target="downstream.genes"))
-## aggregate the downstream targets
-temp.pathway.matches <- temp.pathway.matches %>%
-            group_by_at(vars(-intervention.target)) %>%
-            summarize(intervention.target = toString(intervention.target) ) %>%
-            as.data.frame()
-## drop rows with any NA
-temp.pathway.matches <- temp.pathway.matches[complete.cases(temp.pathway.matches),]
-## add a rationale column
-temp.pathway.matches$rationale <- paste0("Study drug (", temp.pathway.matches$intervention.name, ") targets downstream gene(s) (", temp.pathway.matches$intervention.target, ")")
-## add confidence score of +1 for pathway matches
-temp.pathway.matches$confidence <- 1
-## bind as new rows onto big.gene.matches table
-scoredMatches <- rbind(scoredMatches, temp.pathway.matches)
-
-scoredMatches <- merge(x=scoredMatches, by.x=c("nct_id", "gene.of.interest"), all.x = TRUE, y=unique(dplyr::select(manualNLPmatches,nct_id, matching.symbol, criteria )), by.y = c("nct_id", "matching.symbol"), all.y=TRUE)
-
-## append rationale for studies matched on eligibility criteria
-for(i in 1:nrow(scoredMatches)) {
-   if(!is.na(scoredMatches$criteria[i])) {
-     ## add +3 to confidence score
-     if(!is.na(scoredMatches$confidence[i])) {
-       scoredMatches$confidence[i] <- scoredMatches$confidence[i]+3
-     } else scoredMatches$confidence[i] <- 3
-     ## indicate that gene of interest is mentioned in criteria
-     if(!is.na(scoredMatches$rationale[i])) {
-       scoredMatches$rationale[i] <- paste(scoredMatches$rationale[i], paste0(scoredMatches$gene.of.interest[i],  " is mentioned in inclusion criteria"), sep = ", ")} else {scoredMatches$rationale[i] <- paste0(scoredMatches$gene.of.interest[i],  " is mentioned in inclusion criteria")}
-   }
-}
-
-
-## write full table of all pathway matches to tsv
-write.table(scoredMatches, file = "scoredMatches.tsv", sep = "\t",
-            row.names = FALSE, col.names = names(scoredMatches))
-```
-  
-Scored matches between a gene and study have been written to file scoredMatches.tsv. First few rows are as follows:  
-  
-  
-```{r write scoredMatches to tsv}
-#dim(scoredMatches)
-
-kable(head(scoredMatches)) %>%
-  kable_styling(bootstrap_options = "striped") %>%
-  kable_styling(fixed_thead = T)
-
-```
 
 ### **Exit script**  
 
