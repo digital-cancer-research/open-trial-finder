@@ -236,6 +236,10 @@ evidence <- unique(dplyr::select(evidence, variant_id, disease, drugs,  evidence
 
 evidence <- as.data.frame(evidence)
 
+## unnest the drugs column
+evidence$drugs <- strsplit(x=evidence$drugs, split=",")
+evidence <- unnest(data = evidence, cols = drugs, keep_empty = TRUE) 
+evidence <- as.data.frame(evidence) ## convert to data frame
 ```
 
  
@@ -744,7 +748,7 @@ mutantIndices <- grep(pattern = mutantPattern, x=mutation.eligibilities$criteria
 # subset table 
 mutation.eligibilities <- mutation.eligibilities[mutantIndices, ]
 # label nature of change
-mutation.eligibilities$feature <- "MUTATION"
+mutation.eligibilities$feature <- "mutation"
 
 ## loop through each criterion that contains mutant pattern
 for(i in 1:nrow(mutation.eligibilities)) {
@@ -756,7 +760,7 @@ for(i in 1:nrow(mutation.eligibilities)) {
     # concatenate
     criterion <- paste(criterion,alternative.criterion, sep = " " )
     # split into tokens
-    criterion <- unlist(strsplit(x=criterion, split = " |\\(|\\)|,|-"))
+    criterion <- unlist(strsplit(x=criterion, split = " |\\(|\\)|,|-|/"))
     
     
     ## get indices of match(es) against mutantPattern
@@ -817,7 +821,7 @@ fusionIndices <- grep(pattern = fusionPattern, x=fusion.eligibilities$criteria, 
 # subset table 
 fusion.eligibilities <- fusion.eligibilities[fusionIndices, ]
 # label nature of change
-fusion.eligibilities$feature <- "FUSION"
+fusion.eligibilities$feature <- "fusion"
 
 ## loop through each criterion that contains pattern
 for(i in 1:nrow(fusion.eligibilities)) {
@@ -825,11 +829,11 @@ for(i in 1:nrow(fusion.eligibilities)) {
     # also create an alternative criterion for patterns such as "BRCA1/2"
     alternative.criterion <- gsub(pattern = "./", replacement = "", x=criterion)
     # now do the same and trim off the first character after the slash
-    criterion <- gsub(pattern = "/.", replacement = "", x=criterion)
+    #criterion <- gsub(pattern = "/.", replacement = "", x=criterion)
     # concatenate
     criterion <- paste(criterion,alternative.criterion, sep = " " )
     # split into tokens
-    criterion <- unlist(strsplit(x=criterion, split = " |\\(|\\)|,|-"))
+    criterion <- unlist(strsplit(x=criterion, split = " |\\(|\\)|,|-|/"))
     
     
     ## get indices of match(es) against fusionPattern (need to squish preceding space)
@@ -883,14 +887,14 @@ amplification.eligibilities <- eligibilities
 ## define pattern
 amplificationPattern <- " amplification"
 ## specify word range - fusionPattern must occur within this many words of a gene name
-amplificationWordRange <- 6
+amplificationWordRange <- 5
 
 ## define which rows contain a match for mutantPattern
 amplificationIndices <- grep(pattern = amplificationPattern, x=amplification.eligibilities$criteria, ignore.case = T)
 # subset table 
 amplification.eligibilities <- amplification.eligibilities[amplificationIndices, ]
 # label nature of change
-amplification.eligibilities$feature <- "AMPLIFICATION"
+amplification.eligibilities$feature <- "amplification"
 
 ## loop through each criterion that contains pattern
 for(i in 1:nrow(amplification.eligibilities)) {
@@ -902,7 +906,7 @@ for(i in 1:nrow(amplification.eligibilities)) {
     # concatenate
     criterion <- paste(criterion,alternative.criterion, sep = " " )
     # split into tokens
-    criterion <- unlist(strsplit(x=criterion, split = " |\\(|\\)|,|-"))
+    criterion <- unlist(strsplit(x=criterion, split = " |\\(|\\)|,|-|/"))
     
     
     ## get indices of match(es) against fusionPattern (need to squish preceding space)
@@ -1032,6 +1036,9 @@ pathwaysInCancer.igraph <- get_graph_object(pathwaysInCancer_node_mapping_info, 
 ## get edgelist
 edges <- as_data_frame(pathwaysInCancer.igraph, what = c("edges"))
 
+## retain only edges where "from" is a gene
+edges <- unique(dplyr::filter(edges, entry1type=="gene"))
+
 ## drop unnecessary columns
 # keep edge IDs fur use in graph analysis 
 edges <- unique(dplyr::select(edges, "from"="entry1symbol", "to"="entry2symbol",edgeID, specific_subtype, tooltip))
@@ -1064,6 +1071,223 @@ dbListTables(con)
 
 ```
   
+  
+#### **Score matches against trials**  
+  
+```{r score matches on gene intervention target}
+
+## start with studies and their interventions
+targetMatches <- unique(dplyr::select(cancerStudies, nct_id, interventions))
+## join to drugs.targets on intervention name (verbatim)
+targetMatches <- merge(x=targetMatches, by.x="interventions", y=drugs.targets, by.y="interventions.verbatim" )
+## drop rows where drugTargetSymbol is NA
+targetMatches <- targetMatches[!is.na(targetMatches$drugTargetSymbol), ]
+
+## drop unnecessary columns
+targetMatches <- unique(dplyr::select(targetMatches, nct_id, interventions.processed, drugTargetSymbol))
+
+## add rationale column
+targetMatches$intervention_rationale <- paste0("Study drug (", targetMatches$interventions.processed, ") targets ", targetMatches$drugTargetSymbol)
+
+## drop intervention column
+targetMatches <- unique(dplyr::select(targetMatches, -interventions.processed))
+
+## rename drugTargetSymbol column
+targetMatches <- rename(targetMatches,"symbol"= "drugTargetSymbol")
+
+## add a score
+targetMatches$intervention_score <- 2
+
+```
+
+```{r score matches on pathway}
+## start with studies and their interventions
+pathwayMatches <- unique(dplyr::select(cancerStudies, nct_id, interventions))
+## join to drugs.targets on intervention name (verbatim)
+pathwayMatches <- merge(x=pathwayMatches, by.x="interventions", y=drugs.targets, by.y="interventions.verbatim" )
+## drop rows where drugTargetSymbol is NA
+pathwayMatches <- pathwayMatches[!is.na(pathwayMatches$drugTargetSymbol), ]
+## drop unnecessary columns
+pathwayMatches <- unique(dplyr::select(pathwayMatches, nct_id, interventions.processed, drugTargetSymbol))
+
+## join to edges, where drugTargetSymbol == to
+## i.e. intervention targets the downstream node
+pathwayMatches <- merge(x=pathwayMatches, by.x="drugTargetSymbol", y=edges, by.y="to")
+
+## select and rename columns
+pathwayMatches <- unique(dplyr::select(pathwayMatches,nct_id, interventions.processed, "downstream"="drugTargetSymbol","upstream"="from" ))
+
+## where an intervention targets >1 gene, aggregate
+pathwayMatches <- as.data.frame(pathwayMatches %>%
+                group_by(nct_id, interventions.processed, upstream) %>%
+                summarise(
+                  downstream = paste(unique(downstream), collapse = ", ")
+                ))
+
+## add rationale column
+pathwayMatches$intervention_rationale <- paste0("Study drug (", pathwayMatches$interventions.processed, ") targets downstream gene(s) (", pathwayMatches$downstream, ")")
+
+## drop intervention column
+pathwayMatches <- unique(dplyr::select(pathwayMatches, -c(interventions.processed, downstream)))
+
+## rename upstream column to drugTargetSymbol to match targetMatches
+pathwayMatches <- rename(pathwayMatches, "symbol"="upstream")
+
+## add a score
+pathwayMatches$intervention_score <- 1
+```
+
+```{r row bind target and pathway matches}
+
+scoredMatches <- rbind(targetMatches, pathwayMatches)
+
+## for genes that don't have a match in eligilityMatches, we want to be able to match on gene alone, regardless of variant_type... 
+scoredMatches$variant_type <- list(c("mutation", "fusion", "amplification"))
+
+## unnest to multiply rows
+scoredMatches <- data.frame(unnest(scoredMatches, cols = "variant_type"))
+
+```
+
+
+
+
+```{r score matches on inclusion criteria}
+## start with indexed eligibilities
+eligibilityMatches <- unique(dplyr::select(indexed.eligibilities, nct_id,"gene"="controlled.match",criterion.type, feature, criteria ))
+
+## filter out matches against exclusion criteria
+eligibilityMatches <- filter(eligibilityMatches, criterion.type=="INCLUSION")
+
+## filter out matches against prior therapy
+eligibilityMatches <- filter(eligibilityMatches, feature!="PRIOR_THERAPY")
+
+## concatenate gene and feature
+# eligibilityMatches$gene <- paste(eligibilityMatches$gene, eligibilityMatches$feature, sep = " ")
+
+## add rationale column
+eligibilityMatches$eligibility_rationale <- paste0("Enrolling subjects with ", eligibilityMatches$gene, " ", eligibilityMatches$feature)
+
+
+
+## add a score
+eligibilityMatches$eligibility_score <- 3
+
+## where multiple criteria, aggregate
+eligibilityMatches <- as.data.frame(eligibilityMatches %>%
+                group_by(nct_id, gene, criterion.type, feature, eligibility_rationale, eligibility_score) %>%
+                summarise(
+                  criteria = paste(unique(criteria), collapse = "\n\n")
+                ))
+
+
+## select and rename columns to match targetMatches and pathwayMatches
+eligibilityMatches <- unique(dplyr::select(eligibilityMatches, nct_id, "symbol"="gene", "variant_type" = "feature", eligibility_rationale, "matching_criteria"="criteria", eligibility_score))
+
+
+```
+
+```{r join eligibility matches to scored matches}
+scoredMatches <- merge(x=scoredMatches, by.x=c("nct_id", "symbol", "variant_type"), all.x=TRUE, 
+      y=eligibilityMatches, by.y = c("nct_id", "symbol", "variant_type"), all.y=TRUE)
+
+## add a combined score
+scoredMatches$combined_score <- rowSums(scoredMatches[,c("intervention_score", "eligibility_score")], na.rm=TRUE)
+
+## select and reorder columns
+scoredMatches <- unique(dplyr::select(scoredMatches, symbol, variant_type, nct_id, intervention_rationale, eligibility_rationale, matching_criteria, combined_score))
+
+## order on combined_score descending
+scoredMatches <- scoredMatches[order(scoredMatches$combined_score, decreasing = TRUE), ]
+
+
+```
+
+
+```{r create table of scored matches}
+## preview
+formattable(head(scoredMatches,10))
+
+## create as a table in database
+dbWriteTable(conn = con,name = "scoredMatches", value = scoredMatches, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+
+```
+
+
+```{r score matches on variant sensitivity}
+## start with evidence data
+variantMatches <- unique(dplyr::select(evidence, variant_id, drugs, evidence_type, evidence_direction, clinical_significance))
+
+## join variant info
+variantMatches <- merge(x=variantMatches, by.x="variant_id", y=dplyr::select(variants, variant_id, gene, variant), by.y="variant_id")
+
+## drop rows where drugs == NA
+variantMatches <- variantMatches[!is.na(variantMatches$drugs), ]
+
+## drop rows where evidence_direction does not support
+variantMatches <- variantMatches[variantMatches$evidence_direction=="Supports", ]
+
+## drop unnecessary columns
+variantMatches <- unique(dplyr::select(variantMatches, gene, variant, clinical_significance, drugs))
+
+## apply underscore consistently for mutations, amplifications, fusions
+variantMatches$variant[grep(pattern = "mutation", x=variantMatches$variant, ignore.case = T)] <- "mutation"
+variantMatches$variant[grep(pattern = "amplification", x=variantMatches$variant, ignore.case = T)] <- "amplification"
+variantMatches$variant[grep(pattern = "fusion", x=variantMatches$variant, ignore.case = T)] <- "fusion"
+
+
+
+
+
+## if more than one interpretation for a gene-variant-drug combination, aggregate
+variantMatches <- as.data.frame(variantMatches %>%
+                  group_by(gene,variant, drugs) %>%
+                  summarise(
+                      clinical_significance = paste(unique(clinical_significance), collapse = ", ")
+                  ))
+# drop those rows that have >1 interpretation (based on presence of comma)
+variantMatches <- variantMatches[-grep(pattern = ",", x=variantMatches$clinical_significance), ]
+
+## join to intervention names as per clinicaltrials.gov
+variantMatches <- merge(x=variantMatches, by.x="drugs", y=unique(dplyr::select(drugs.targets, interventions.verbatim, interventions.processed)), by.y="interventions.processed")
+
+## add rationale column
+variantMatches$rationale <- paste0(variantMatches$gene, " ", variantMatches$variant, " predicts ", variantMatches$clinical_significance, " to study intervention (", variantMatches$drugs, ")")
+
+## add score column
+variantMatches$score <- ifelse(variantMatches$clinical_significance=="Sensitivity/Response", yes=3, no=-3)
+
+
+## join to cancerStudies
+variantMatches <- merge(x=variantMatches, 
+      by.x="interventions.verbatim", 
+      y=unique(dplyr::select(cancerStudies, nct_id, interventions)), 
+      by.y="interventions")
+
+## create gene_variant values
+variantMatches$gene_variant <- paste(variantMatches$gene, variantMatches$variant, sep = " ")
+
+## select and rename columns to match targetMatches etc
+variantMatches <- unique(dplyr::select(variantMatches, nct_id, "symbol"="gene_variant", rationale, score))
+```
+
+```{r row bind scored matches}
+# scoredMatches <- rbind(eligibilityMatches, targetMatches, pathwayMatches)
+# 
+# ## aggregate where mutliple lines of rationale per gene-study
+# scoredMatches <- as.data.frame(scoredMatches %>%
+#                 group_by(nct_id, symbol) %>%
+#                 summarise(
+#                   rationale = paste(unique(rationale), collapse = ", "), 
+#                   score = sum(score)
+#                 ))
+
+```
+
+
 
 ```{r disconnect from  database}
 
