@@ -760,7 +760,7 @@ for(i in 1:nrow(mutation.eligibilities)) {
     # concatenate
     criterion <- paste(criterion,alternative.criterion, sep = " " )
     # split into tokens
-    criterion <- unlist(strsplit(x=criterion, split = " |\\(|\\)|,|-"))
+    criterion <- unlist(strsplit(x=criterion, split = " |\\(|\\)|,|-|/"))
     
     
     ## get indices of match(es) against mutantPattern
@@ -829,11 +829,11 @@ for(i in 1:nrow(fusion.eligibilities)) {
     # also create an alternative criterion for patterns such as "BRCA1/2"
     alternative.criterion <- gsub(pattern = "./", replacement = "", x=criterion)
     # now do the same and trim off the first character after the slash
-    criterion <- gsub(pattern = "/.", replacement = "", x=criterion)
+    #criterion <- gsub(pattern = "/.", replacement = "", x=criterion)
     # concatenate
     criterion <- paste(criterion,alternative.criterion, sep = " " )
     # split into tokens
-    criterion <- unlist(strsplit(x=criterion, split = " |\\(|\\)|,|-"))
+    criterion <- unlist(strsplit(x=criterion, split = " |\\(|\\)|,|-|/"))
     
     
     ## get indices of match(es) against fusionPattern (need to squish preceding space)
@@ -887,7 +887,7 @@ amplification.eligibilities <- eligibilities
 ## define pattern
 amplificationPattern <- " amplification"
 ## specify word range - fusionPattern must occur within this many words of a gene name
-amplificationWordRange <- 6
+amplificationWordRange <- 5
 
 ## define which rows contain a match for mutantPattern
 amplificationIndices <- grep(pattern = amplificationPattern, x=amplification.eligibilities$criteria, ignore.case = T)
@@ -906,7 +906,7 @@ for(i in 1:nrow(amplification.eligibilities)) {
     # concatenate
     criterion <- paste(criterion,alternative.criterion, sep = " " )
     # split into tokens
-    criterion <- unlist(strsplit(x=criterion, split = " |\\(|\\)|,|-"))
+    criterion <- unlist(strsplit(x=criterion, split = " |\\(|\\)|,|-|/"))
     
     
     ## get indices of match(es) against fusionPattern (need to squish preceding space)
@@ -1087,7 +1087,7 @@ targetMatches <- targetMatches[!is.na(targetMatches$drugTargetSymbol), ]
 targetMatches <- unique(dplyr::select(targetMatches, nct_id, interventions.processed, drugTargetSymbol))
 
 ## add rationale column
-targetMatches$rationale <- paste0("Study drug (", targetMatches$interventions.processed, ") targets ", targetMatches$drugTargetSymbol)
+targetMatches$intervention_rationale <- paste0("Study drug (", targetMatches$interventions.processed, ") targets ", targetMatches$drugTargetSymbol)
 
 ## drop intervention column
 targetMatches <- unique(dplyr::select(targetMatches, -interventions.processed))
@@ -1096,7 +1096,7 @@ targetMatches <- unique(dplyr::select(targetMatches, -interventions.processed))
 targetMatches <- rename(targetMatches,"symbol"= "drugTargetSymbol")
 
 ## add a score
-targetMatches$score <- 2
+targetMatches$intervention_score <- 2
 
 ```
 
@@ -1125,7 +1125,7 @@ pathwayMatches <- as.data.frame(pathwayMatches %>%
                 ))
 
 ## add rationale column
-pathwayMatches$rationale <- paste0("Study drug (", pathwayMatches$interventions.processed, ") targets downstream gene(s) (", pathwayMatches$downstream, ")")
+pathwayMatches$intervention_rationale <- paste0("Study drug (", pathwayMatches$interventions.processed, ") targets downstream gene(s) (", pathwayMatches$downstream, ")")
 
 ## drop intervention column
 pathwayMatches <- unique(dplyr::select(pathwayMatches, -c(interventions.processed, downstream)))
@@ -1134,33 +1134,88 @@ pathwayMatches <- unique(dplyr::select(pathwayMatches, -c(interventions.processe
 pathwayMatches <- rename(pathwayMatches, "symbol"="upstream")
 
 ## add a score
-pathwayMatches$score <- 1
+pathwayMatches$intervention_score <- 1
 ```
+
+```{r row bind target and pathway matches}
+
+scoredMatches <- rbind(targetMatches, pathwayMatches)
+
+## for genes that don't have a match in eligilityMatches, we want to be able to match on gene alone, regardless of variant_type... 
+scoredMatches$variant_type <- list(c("mutation", "fusion", "amplification"))
+
+## unnest to multiply rows
+scoredMatches <- data.frame(unnest(scoredMatches, cols = "variant_type"))
+
+```
+
+
+
 
 ```{r score matches on inclusion criteria}
 ## start with indexed eligibilities
-eligibilityMatches <- unique(dplyr::select(indexed.eligibilities, nct_id,"gene"="controlled.match",criterion.type, feature ))
+eligibilityMatches <- unique(dplyr::select(indexed.eligibilities, nct_id,"gene"="controlled.match",criterion.type, feature, criteria ))
 
 ## filter out matches against exclusion criteria
 eligibilityMatches <- filter(eligibilityMatches, criterion.type=="INCLUSION")
 
-## filter out matches against exclusion criteria
+## filter out matches against prior therapy
 eligibilityMatches <- filter(eligibilityMatches, feature!="PRIOR_THERAPY")
 
 ## concatenate gene and feature
-eligibilityMatches$gene <- paste(eligibilityMatches$gene, eligibilityMatches$feature, sep = " ")
+# eligibilityMatches$gene <- paste(eligibilityMatches$gene, eligibilityMatches$feature, sep = " ")
 
 ## add rationale column
-eligibilityMatches$rationale <- paste0("Enrolling subjects with ", eligibilityMatches$gene)
+eligibilityMatches$eligibility_rationale <- paste0("Enrolling subjects with ", eligibilityMatches$gene, " ", eligibilityMatches$feature)
+
+
 
 ## add a score
-eligibilityMatches$score <- 3
+eligibilityMatches$eligibility_score <- 3
+
+## where multiple criteria, aggregate
+eligibilityMatches <- as.data.frame(eligibilityMatches %>%
+                group_by(nct_id, gene, criterion.type, feature, eligibility_rationale, eligibility_score) %>%
+                summarise(
+                  criteria = paste(unique(criteria), collapse = "\n\n")
+                ))
+
 
 ## select and rename columns to match targetMatches and pathwayMatches
-eligibilityMatches <- unique(dplyr::select(eligibilityMatches, nct_id, "symbol"="gene", rationale, score))
+eligibilityMatches <- unique(dplyr::select(eligibilityMatches, nct_id, "symbol"="gene", "variant_type" = "feature", eligibility_rationale, "matching_criteria"="criteria", eligibility_score))
 
 
 ```
+
+```{r join eligibility matches to scored matches}
+scoredMatches <- merge(x=scoredMatches, by.x=c("nct_id", "symbol", "variant_type"), all.x=TRUE, 
+      y=eligibilityMatches, by.y = c("nct_id", "symbol", "variant_type"), all.y=TRUE)
+
+## add a combined score
+scoredMatches$combined_score <- rowSums(scoredMatches[,c("intervention_score", "eligibility_score")], na.rm=TRUE)
+
+## select and reorder columns
+scoredMatches <- unique(dplyr::select(scoredMatches, symbol, variant_type, nct_id, intervention_rationale, eligibility_rationale, matching_criteria, combined_score))
+
+## order on combined_score descending
+scoredMatches <- scoredMatches[order(scoredMatches$combined_score, decreasing = TRUE), ]
+
+
+```
+
+
+```{r create table of scored matches}
+## preview
+formattable(head(scoredMatches,10))
+
+## create as a table in database
+dbWriteTable(conn = con,name = "scoredMatches", value = scoredMatches, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+
+```
+
 
 ```{r score matches on variant sensitivity}
 ## start with evidence data
@@ -1220,15 +1275,15 @@ variantMatches <- unique(dplyr::select(variantMatches, nct_id, "symbol"="gene_va
 ```
 
 ```{r row bind scored matches}
-scoredMatches <- rbind(eligibilityMatches, targetMatches, pathwayMatches)
-
-## aggregate where mutliple lines of rationale per gene-study
-scoredMatches <- as.data.frame(scoredMatches %>%
-                group_by(nct_id, symbol) %>%
-                summarise(
-                  rationale = paste(unique(rationale), collapse = ", "), 
-                  score = sum(score)
-                ))
+# scoredMatches <- rbind(eligibilityMatches, targetMatches, pathwayMatches)
+# 
+# ## aggregate where mutliple lines of rationale per gene-study
+# scoredMatches <- as.data.frame(scoredMatches %>%
+#                 group_by(nct_id, symbol) %>%
+#                 summarise(
+#                   rationale = paste(unique(rationale), collapse = ", "), 
+#                   score = sum(score)
+#                 ))
 
 ```
 
