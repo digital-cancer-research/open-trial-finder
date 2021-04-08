@@ -1,7 +1,12 @@
 ---
-title: "Cancer trial match report"
-author: "digital ECMT cancer trial matching tool"
-output: html_document
+title: "digital ECMT cancer trial matching tool: results"
+#output: html_document
+output: 
+  flexdashboard::flex_dashboard:
+    #source_code: embed
+    orientation: rows
+    #logo: digitalECMTlogo48px.PNG
+    theme: spacelab
 params: 
   subject_ID: "Not provided"
   cancer_type: "cancer type"
@@ -22,21 +27,7 @@ require(kableExtra)
 today <- format(Sys.Date(), format = "%d %B %Y")
 ```
   
-Date of report: **`r today`**   
-  
-Subject: **`r params$subject_ID`**  
 
-Cancer type: **`r params$cancer_type`**  
-  
-Include matches on solid tumour? **`r params$include_solid`**  
-  
-Genes included in search: **`r paste(params$genes, collapse=", ")`**  
-  
-Drug mechanism filters: **`r paste(params$mechanism_filter, collapse=", ")`**  
-  
-Hide matches on cancer type alone? **`r params$hide_cancer_only`**  
-  
-  
   
 
 ```{r load parameters}
@@ -59,17 +50,110 @@ paramTable <- as.data.frame(fromJSON(params$table))
 
 ```
   
+Row {.tabset}
+-----------------------------------------------------------------------
+
+    
+### Study details   
   
 ```{r display table}
-paramTable %>%
-  kable("html", escape = FALSE) %>%
-            kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
-            # kable_styling(bootstrap_options = c("hover", "condensed", "responsive")) %>%
-            # collapse_rows(columns = 1:3, valign = "top") %>%
-            kable_styling(fixed_thead = T)
+if(nrow(paramTable)>0) {
+   HTML(paramTable %>%
+            mutate(nct_id = cell_spec(x=paramTable$nct_id,format="html", link = paramTable$Link)) %>%
+            dplyr::select(-c(Link, TARGET.condition, conditions)) %>%
+            mutate(locations = cell_spec(x=paramTable$locations,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+           mutate(investigators = cell_spec(x=paramTable$investigators,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+           mutate(contacts = cell_spec(x=paramTable$contacts,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+           mutate(criteria = cell_spec(x=paramTable$criteria,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+           dplyr::select("Study ID" = nct_id, 
+                         "Brief title" = "brief_title", 
+                         "Overall status" = "overall_status", 
+                         "Rationale" = "rationale",
+                         "Matching cancer type" = "matching.condition", 
+                         "Matching inclusion criterion" = "criteria",
+                         "Matching gene" = "gene.of.interest",
+   #                      "Interventions" = "interventions", 
+   #                      Mechanism, 
+                         "Recruiting sites" = "locations", 
+                         "Investigators" = "investigators", 
+                         "Contacts" = "contacts"
+                         ) %>% 
+            unique() %>%
+            kable("html", escape = FALSE) %>%
+            # kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+            kable_styling(bootstrap_options = c("hover", "condensed", "responsive")) %>%
+            collapse_rows(columns = 1:3, valign = "top") %>%
+            #row_spec(row=3, hline_after = TRUE) %>%
+            kable_styling(fixed_thead = T))
+            
+   } else print("No matching studies found")
+
+
+
+
+
+# paramTable %>%
+#   kable("html", escape = FALSE) %>%
+#             kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+#             # kable_styling(bootstrap_options = c("hover", "condensed", "responsive")) %>%
+#             # collapse_rows(columns = 1:3, valign = "top") %>%
+#             kable_styling(fixed_thead = T)
 
 
 ```
+  
+### Search details  
+  
+Date of report: **`r today`**   
+  
+Subject ID: **`r params$subject_ID`**  
+
+Cancer type: **`r params$cancer_type`**  
+  
+Include matches on solid tumour? **`r params$include_solid`**  
+  
+Genes included in search: **`r paste(params$genes, collapse=", ")`**  
+  
+Drug mechanism filters: **`r paste(params$mechanism_filter, collapse=", ")`**  
+  
+Hide matches on cancer type alone? **`r params$hide_cancer_only`**  
+  
+      
+  
+### Study ranking details  
 
   
+All studies are matched on cancer type.  
   
+If a gene of interest, matching studies are ordered as follows:  
+
+1. Gene of interest is mentioned in inclusion criteria, and it is the molecular target of the study drug.  
+
+2. Gene of interest is mentioned in inclusion criteria, and the study drug targets a downstream gene.   
+  
+  
+3. Gene of interest is mentioned in inclusion criteria.  
+  
+  
+4. Study drug targets gene of interest.  
+  
+  
+5. Study drug targets a downstream gene.  
+  
+  
+6. Study matched on cancer type alone.  
+  
+### Acknowledgements
+  
+INTENDED USE: This tool is a prototype, intended for research use by Medical Professionals. Please note that it is not a comprehensive source of information about clinical trials, and is not for use in clinical decision making. 
+  
+    
+DATA SOURCES:  
+  
+  
+* Trial data are sourced from clinicaltrials.gov via the Clinical Trials Transformation Initiative: https://www.ctti-clinicaltrials.org/  
+  
+* Data regarding mechanisms of trial interventions are sourced from the NCI Thesaurus: https://ncithesaurus.nci.nih.gov/ncitbrowser/  
+  
+* Data regarding biological pathways are sourced from KEGG (https://www.kegg.jp/kegg/) using the R BioConductor package: https://www.bioconductor.org/  
+    

@@ -2,7 +2,7 @@
 title: "digital ECMT cancer trial matching tool"
 output: 
   flexdashboard::flex_dashboard:
-    source_code: embed
+    #source_code: embed
     orientation: rows
     logo: digitalECMTlogo48px.PNG
     theme: spacelab
@@ -150,6 +150,68 @@ shiny::renderUI({
 ```{r omit cancer type alone}
 checkboxInput(inputId="confidenceFilter", label="Hide matches on cancer type alone?", value = FALSE, width = NULL)
 ```
+  
+  
+**4. Save results to file (optional)**      
+  
+```{r download button}
+
+# display filter
+shiny::renderUI({
+   downloadButton("report", "Download results") 
+})
+
+```
+
+  
+  
+  
+```{r print results to file}
+## see also https://shiny.rstudio.com/articles/generating-reports.html 
+
+
+output$report <- downloadHandler(
+      # For PDF output, change this to "report.pdf"
+      filename = "trial_report.html",
+      content = function(file) {
+        #file.copy("trial_report.Rmd", overwrite = TRUE)
+        # Copy the report file to a temporary directory before processing it, in
+        # case we don't have write permissions to the current working dir (which
+        # can happen when deployed).
+        tempReport <- file.path(tempdir(), "trial_report.Rmd")
+        file.copy("trial_report.Rmd", tempReport, overwrite = TRUE)
+
+        
+
+        # Set up parameters to pass to Rmd document
+        params <- list(subject_ID="not provided", 
+                       cancer_type= input$cancerTypeFilter,
+                       include_solid= input$solidTumourFilter, 
+                       genes=input$geneFilter,
+                       mechanism_filter=input$mechanismFilter, 
+                       hide_cancer_only=input$confidenceFilter, 
+                       #table=toJSON(read.csv("exampleTable.csv"))
+                       table=toJSON(reactiveCancerStudies())
+                       )
+
+        # Knit the document, passing in the `params` list, and eval it in a
+        # child of the global environment (this isolates the code in the document
+        # from the code in this app).
+        rmarkdown::render(tempReport, output_file = file,
+          params = params,
+          envir = new.env(parent = globalenv())
+       )
+   }
+)
+
+
+
+
+
+```
+
+
+
 
 
 ```{r filter scoredMatches table}
@@ -180,7 +242,9 @@ reactiveCancerStudies <- reactive({
    }
    table$rationale[is.na(table$rationale)] <- "Match on cancer type alone"
    if(input$confidenceFilter==TRUE) {table <- dplyr::filter(table, rationale != "Match on cancer type alone")}
-   
+   if(!is.na(map.selection$id )) {
+      table <- dplyr::filter(table, nct_id == map.selection$id )
+   }
    ## return table
    unique(table)
 })
@@ -249,9 +313,9 @@ observeEvent(input$studiesmap_click, {
 shiny::renderUI({
    table <- reactiveCancerStudies()
    table[is.na(table)] <- "-"
-   if(!is.na(map.selection$id )) {
-      table <- dplyr::filter(table, nct_id == map.selection$id )
-   }
+   # if(!is.na(map.selection$id )) {
+   #    table <- dplyr::filter(table, nct_id == map.selection$id )
+   # }
    if(nrow(table)>0) {
    HTML(table %>%
             mutate(nct_id = cell_spec(x=table$nct_id,format="html", link = table$Link)) %>%
