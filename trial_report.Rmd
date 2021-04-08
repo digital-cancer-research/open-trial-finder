@@ -1,0 +1,75 @@
+---
+title: "Cancer trial match report"
+author: "digital ECMT cancer trial matching tool"
+output: html_document
+params: 
+  subject_ID: "Not provided"
+  cancer_type: "cancer type"
+  include_solid: "T/F"
+  genes: "mutations, fusions, amplifications"
+  mechanism_filter: "mechanism(s)"
+  hide_cancer_only: "T/F"
+  table: "json format"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+require(rjson)
+require(formattable)
+require(kableExtra)
+
+##get today's date
+today <- format(Sys.Date(), format = "%d %B %Y")
+```
+  
+Date of report: **`r today`**   
+  
+Subject: **`r params$subject_ID`**  
+
+Cancer type: **`r params$cancer_type`**  
+  
+Include matches on solid tumour? **`r params$include_solid`**  
+  
+Genes included in search: **`r paste(params$genes, collapse=", ")`**  
+  
+Drug mechanism filters: **`r paste(params$mechanism_filter, collapse=", ")`**  
+  
+Hide matches on cancer type alone? **`r params$hide_cancer_only`**  
+  
+  
+  
+
+```{r load parameters}
+## view parameters
+
+
+
+
+
+
+
+
+## table is passed as a parameter in JSON format
+#params$table
+
+## get table from parameters and convert to data frame
+paramTable <- as.data.frame(fromJSON(params$table))
+
+#formattable(paramTable)
+
+```
+  
+  
+```{r display table}
+paramTable %>%
+  kable("html", escape = FALSE) %>%
+            kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+            # kable_styling(bootstrap_options = c("hover", "condensed", "responsive")) %>%
+            # collapse_rows(columns = 1:3, valign = "top") %>%
+            kable_styling(fixed_thead = T)
+
+
+```
+
+  
+  
