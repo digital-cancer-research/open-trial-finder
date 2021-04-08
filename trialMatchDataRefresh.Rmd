@@ -430,18 +430,6 @@ cancerStudies$long[!is.na(cancerStudies$postcode.long)] <- cancerStudies$postcod
 
 
  
-```{r create table of studies}
-## preview
-formattable(head(cancerStudies))
-
-## create as a table in database
-dbWriteTable(conn = con,name = "cancerStudies", value = cancerStudies, overwrite=TRUE)
-
-## check it has saved
-dbListTables(con)
-
-```
-  
 #### **Get drug:mechanism and drug:target data**  
       
 ##### **Get mechanisms from NCI thesaurus**  
@@ -665,7 +653,33 @@ dbWriteTable(conn = con,name = "drugsTargets", value = drugs.targets, overwrite=
 dbListTables(con)
 
 ```
+  
+#### **Append mechanisms to cancerStudies table**  
 
+
+```{r join mechanisms to cancerStudies}
+## join on interventions.verbatim == interventions
+cancerStudies <- merge(x=cancerStudies, by.x="interventions", all.x=TRUE, 
+                       y=unique(dplyr::select(drugs.targets, interventions.verbatim, ParentTerm)), by.y="interventions.verbatim")
+
+
+
+```
+
+  
+ 
+```{r create table of studies}
+## preview
+formattable(head(cancerStudies))
+
+## create as a table in database
+dbWriteTable(conn = con,name = "cancerStudies", value = cancerStudies, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+
+```
+   
 #### **Index eligibility criteria for cancer studies**  
       
   
