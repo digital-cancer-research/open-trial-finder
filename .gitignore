@@ -4,3 +4,7 @@
 *.zip
 *.html
 *.gz
+*.sqlite
+.Rhistory
+.Rhistory
+.Rhistory
