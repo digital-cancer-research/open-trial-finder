@@ -2,7 +2,7 @@
 title: "digital ECMT cancer trial matching tool"
 output: 
   flexdashboard::flex_dashboard:
-    source_code: embed
+    #source_code: embed
     orientation: rows
     logo: digitalECMTlogo48px.PNG
     theme: spacelab
@@ -151,12 +151,14 @@ shiny::renderUI({
 checkboxInput(inputId="confidenceFilter", label="Hide matches on cancer type alone?", value = FALSE, width = NULL)
 ```
   
+  
+**4. Save results to file (optional)**      
+  
 ```{r download button}
-#downloadButton("report", "Generate report")
 
 # display filter
 shiny::renderUI({
-   downloadButton("report", "Generate report") 
+   downloadButton("report", "Download results") 
 })
 
 ```
