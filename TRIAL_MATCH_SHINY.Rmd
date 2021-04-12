@@ -387,7 +387,7 @@ shiny::renderUI({
             kable("html", escape = FALSE) %>%
             # kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
             kable_styling(bootstrap_options = c("hover", "condensed", "responsive")) %>%
-            collapse_rows(columns = 1:3, valign = "top") %>%
+            #collapse_rows(columns = 1:3, valign = "top") %>%
             #row_spec(row=3, hline_after = TRUE) %>%
             kable_styling(fixed_thead = T))
 
