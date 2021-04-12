@@ -20,7 +20,7 @@ require(shinyWidgets)
 require(leaflet)
 require(htmltools)
 require(rjson)
-require(DT)
+#require(DT)
 
 
 ## load configuration data from JSON file
@@ -243,9 +243,9 @@ reactiveCancerStudies <- reactive({
    }
    table$rationale[is.na(table$rationale)] <- "Match on cancer type alone"
    if(input$confidenceFilter==TRUE) {table <- dplyr::filter(table, rationale != "Match on cancer type alone")}
-   if(!is.na(map.selection$id )) {
-      table <- dplyr::filter(table, nct_id == map.selection$id )
-   }
+   # if(!is.na(map.selection$id )) {
+   #    table <- dplyr::filter(table, nct_id == map.selection$id )
+   # }
    ## return table
    unique(table)
 })
@@ -359,9 +359,9 @@ observeEvent(input$studiesmap_click, {
 shiny::renderUI({
    table <- reactiveCancerStudies()
    table[is.na(table)] <- "-"
-   # if(!is.na(map.selection$id )) {
-   #    table <- dplyr::filter(table, nct_id == map.selection$id )
-   # }
+   if(!is.na(map.selection$id )) {
+      table <- dplyr::filter(table, nct_id == map.selection$id )
+   }
    if(nrow(table)>0) {
    HTML(table %>%
             mutate(nct_id = cell_spec(x=table$nct_id,format="html", link = table$Link, new_tab = TRUE )) %>%
