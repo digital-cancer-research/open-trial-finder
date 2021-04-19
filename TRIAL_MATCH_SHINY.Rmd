@@ -20,6 +20,8 @@ require(shinyWidgets)
 require(leaflet)
 require(htmltools)
 require(rjson)
+require(RSQLite)
+
 #require(DT)
 
 
@@ -27,23 +29,41 @@ require(rjson)
 configuration <- fromJSON(file = "trialMatchConfiguration.json")
 ```
   
-  
+```{r connect to SQLite DB}
+# Create an RSQLite database
+con <- dbConnect(RSQLite::SQLite(), "trialMatchData.sqlite")
+
+```
+
   
 ```{r read cancer study data into memory}
 ## read cancerStudies table into memory
-# contains study details, mapped to a controlled set of cancer types in the "TARGET.condition"  column
-# names are "locations, nct_id, brief_title, overall_status, condition, interventions, postcode, site_status, investigators, contacts, Refresh.date, matching.condition, TARGET.condition, Link, lat, long"
+cancerStudies <- dbGetQuery(con, "SELECT * FROM cancerStudies")
+
+
+
+## contains study details, mapped to a controlled set of cancer types in the "TARGET.condition"  column
+## names are
+# [1] "interventions"      "locations"          "postcode"          
+#  [4] "nct_id"             "brief_title"        "overall_status"    
+#  [7] "condition"          "site_name"          "site_status"       
+# [10] "investigators"      "contacts"           "Refresh.date"      
+# [13] "matching.condition" "TARGET.condition"   "Link"              
+# [16] "postcode.lat"       "postcode.long"      "lat"               
+# [19] "long"               "ParentTerm"  
 # no columns are aggregated
-cancerStudies <- unique(read.table(file = "cancerStudies.tsv", header = TRUE, stringsAsFactors = FALSE))
 
 ## filter and retain only studies with overall status of "Recruiting"
 cancerStudies <- dplyr::filter(cancerStudies, overall_status == "Recruiting")
 
-## filter out sites with status of not yet recruiting
-cancerStudies <- dplyr::filter(cancerStudies, site_status == "Recruiting")
+## drop postcode.lat and postcode.long columns
+cancerStudies <- unique(dplyr::select(cancerStudies, -c("postcode.lat", "postcode.long")))
+
+## rename parentTerm column as "Mechanism"
+cancerStudies <- rename(cancerStudies, "Mechanism"="ParentTerm")
 
 ## read conditions and synonyms into memory
-conditionSynonyms <- read.csv(file="conditionSynonyms4.csv", header = TRUE, stringsAsFactors = FALSE)
+# conditionSynonyms <- read.csv(file="conditionSynonyms4.csv", header = TRUE, stringsAsFactors = FALSE)
 ```
 
 ```{r get a full set of all study locations}
@@ -55,20 +75,30 @@ cancer.study.locations <- cancer.study.locations[complete.cases(cancer.study.loc
 ```
 
 ```{r get mechanisms}
-targetMatches <- unique(read.table(file = "targetMatches.tsv", header = TRUE, stringsAsFactors = FALSE))
-## drop unneeded columns
-targetMatches <- unique(dplyr::select(targetMatches, Interventions, Mechanism))
+## not needed, as mechanisms are already included in cancerStudies$ParentTerm
 
-## join to cancerStudies table
-cancerStudies <- merge(x=cancerStudies, by.x="interventions", all.x=TRUE, y=targetMatches, by.y="Interventions")
+
+
+## read drugs.targets table into memory
+# targetMatches <- dbGetQuery(con, "SELECT * FROM drugsTargets")
+# 
+# 
+# 
+# targetMatches <- unique(read.table(file = "targetMatches.tsv", header = TRUE, stringsAsFactors = FALSE))
+# ## drop unneeded columns
+# targetMatches <- unique(dplyr::select(targetMatches, Interventions, Mechanism))
+# 
+# ## join to cancerStudies table
+# cancerStudies <- merge(x=cancerStudies, by.x="interventions", all.x=TRUE, y=targetMatches, by.y="Interventions")
 ```
 
 
 ```{r aggregate cancerStudies into compact form}
 ## aggregating interventions was causing some study:intervention combinations to be missed out
 cancerStudies <- cancerStudies %>%
-       group_by_at(vars(-c(locations, postcode, condition,  site_status, investigators, contacts, lat, long, Refresh.date))) %>%
+       group_by_at(vars(-c( locations, postcode, condition, site_name, site_status, investigators, contacts, lat, long, Refresh.date))) %>%
        summarize(locations = toString(sort(unique(na.omit(locations)))),
+                 sites = toString(sort(unique(na.omit(site_name)))),
                  conditions = toString(sort(unique(na.omit(condition)))),
                  investigators = toString(sort(unique(na.omit(investigators)))),
                  contacts = toString(sort(unique(na.omit(contacts))))) %>%
@@ -77,18 +107,32 @@ cancerStudies <- cancerStudies %>%
 
 
 ```{r read studies scored on match against genes of interest}
-## scoredMatches contains all possible matches of studies, their interventions and inclusion criteria against all possible genes of interest
-## column names are "nct_id, gene.of.interest, intervention.name, intervention.target, rationale, confidence, criteria"
+## read cancerStudies table into memory
+scoredMatches <- dbGetQuery(con, "SELECT * FROM scoredMatches")
 
-scoredMatches <- unique(read.table(file = "scoredMatches.tsv", header = TRUE, stringsAsFactors = FALSE))
+## scoredMatches contains all possible matches of studies, their interventions and inclusion criteria against all possible genes of interest
+
+## column names are
+# [1] "symbol"                 "variant_type"           "nct_id"                
+# [4] "intervention_rationale" "eligibility_rationale"  "matching_criteria"     
+# [7] "combined_score"
+
+## conatenate symbol and variant_type columns to get <gene name> <variant_type>, e.g. "EGFR mutation"
+scoredMatches$gene_variant_type <- paste(scoredMatches$symbol, scoredMatches$variant_type, sep=" ")
+
+
+# scoredMatches <- unique(read.table(file = "scoredMatches.tsv", header = TRUE, stringsAsFactors = FALSE))
+## column names are "nct_id, gene.of.interest, intervention.name, intervention.target, rationale, confidence, criteria"
 
 
 ```
 
 Inputs {.sidebar}
 -----------------------------------------------------------------------
-
-**1. Filter on cancer type**    
+**FILTERS**  
+  
+  
+**1. Cancer type**    
 
 ```{r  cancer type filter}
 ## display filter for cancer type
@@ -101,10 +145,10 @@ selectInput(inputId = "cancerTypeFilter", label=NULL, choices = available.cancer
 <!-- **Cancer types included in search:**   -->
 
 ```{r reactive label}
-synonymsLabel <- reactive({
-   synonyms <- paste(unique(conditionSynonyms$condition.synonyms[conditionSynonyms$controlled.cancer.type==input$cancerTypeFilter]), collapse = ", ")
-   synonyms
-})
+# synonymsLabel <- reactive({
+#    synonyms <- paste(unique(conditionSynonyms$condition.synonyms[conditionSynonyms$controlled.cancer.type==input$cancerTypeFilter]), collapse = ", ")
+#    synonyms
+# })
 
 ## uncomment this line if you want to show synonyms included in matches for each cancer type
 # shiny::renderText({
@@ -120,14 +164,8 @@ checkboxInput(inputId="solidTumourFilter", label="Include matches on solid tumou
 # checkboxInput(inputId="notYetRecruitingFilter", label="Include sites not yet recruiting?", value = TRUE, width = NULL)
 ```
 
-**2. Order results on genes of interest (optional)**    
- 
-```{r define static gene filter}
-gene.list <- sort(unique(scoredMatches$gene.of.interest))
-selectInput(inputId = "geneFilter", label=NULL, choices = gene.list, selected = NULL, multiple = TRUE,  selectize = TRUE, width = NULL, size = NULL)
-```
 
-**3. Filter results on drug classes (optional)**    
+**2. Drug mechanisms (optional)**    
 
 
 ```{r define reactive mechanism filter}
@@ -149,9 +187,36 @@ shiny::renderUI({
 
   
 ```{r omit cancer type alone}
-checkboxInput(inputId="confidenceFilter", label="Hide matches on cancer type alone?", value = FALSE, width = NULL)
+# checkboxInput(inputId="confidenceFilter", label="Hide matches on cancer type alone?", value = FALSE, width = NULL)
 ```
   
+**3. Genetic alterations (optional)**    
+ 
+```{r define static gene filter}
+# gene.list <- sort(unique(scoredMatches$gene_variant_type))
+# selectInput(inputId = "geneFilter", label=NULL, choices = gene.list, selected = NULL, multiple = TRUE,  selectize = TRUE, width = NULL, size = NULL)
+```
+  
+
+```{r define reactive gene filter}
+## define how filter values will be populated
+output$reactiveGeneFilter <- renderUI({
+   if(input$solidTumourFilter==FALSE) {cancer.types <- input$cancerTypeFilter}
+   else {cancer.types <- c(input$cancerTypeFilter, "Solid")}
+   
+   table <- dplyr::filter(cancerStudies, TARGET.condition %in% cancer.types) 
+   table <- merge(x=table, by.x="nct_id", y=scoredMatches, by.y = "nct_id")
+   gene_variant_type.list <- sort(unique(table$gene_variant_type))
+
+   selectInput(inputId = "geneFilter", label=NULL, choices = gene_variant_type.list, selected = NULL, multiple = TRUE,  selectize = TRUE, width = NULL, size = NULL)
+})
+# display filter
+shiny::renderUI({
+   uiOutput("reactiveGeneFilter") 
+})
+```
+
+    
   
 **4. Save results to file (optional)**      
   
@@ -164,8 +229,6 @@ shiny::renderUI({
 
 ```
 
-  
-  
   
 ```{r print results to file}
 ## see also https://shiny.rstudio.com/articles/generating-reports.html 
@@ -190,7 +253,7 @@ output$report <- downloadHandler(
                        include_solid= input$solidTumourFilter, 
                        genes=input$geneFilter,
                        mechanism_filter=input$mechanismFilter, 
-                       hide_cancer_only=input$confidenceFilter, 
+                       #hide_cancer_only=input$confidenceFilter, 
                        #table=toJSON(read.csv("exampleTable.csv"))
                        table=toJSON(reactiveCancerStudies())
                        )
@@ -218,8 +281,9 @@ output$report <- downloadHandler(
 ```{r filter scoredMatches table}
 reactiveScoredMatches <- reactive({
    table <- scoredMatches
+   #table <- dplyr::filter(table, gene_variant_type %in% input$geneFilter)
    if(!is.null(input$geneFilter)) {
-      table <- dplyr::filter(table, gene.of.interest %in% input$geneFilter)
+      table <- dplyr::filter(table, gene_variant_type %in% input$geneFilter)
    }
    ## return table
    unique(table)
@@ -232,17 +296,17 @@ reactiveCancerStudies <- reactive({
    else {cancer.types <- c(input$cancerTypeFilter, "Solid")}
    table <- dplyr::filter(cancerStudies, TARGET.condition %in% cancer.types)
    if(!is.null(input$geneFilter)) {
-      table <- merge(x=table, by.x=c("nct_id"), all.x=TRUE, 
+      table <- merge(x=table, by.x=c("nct_id"), all.x=FALSE, 
                      y=reactiveScoredMatches(), by.y=c("nct_id"))
       ## sort on confidence decreasing
-      table <- table[order(table$confidence, decreasing = TRUE), ]
-   } else {table[ , c("gene.of.interest","intervention.name","intervention.target","rationale","confidence","criteria")] <- NA}  ## add empty columns so can select and rename for display...
+      table <- table[order(table$combined_score, decreasing = TRUE), ]
+   } #else {table[ , c("rationale")] <- NA} #else {table[ , c("gene.of.interest","intervention.name","intervention.target","rationale","confidence","criteria")] <- NA}  ## add empty columns so can select and rename for display...
    if(!is.null(input$mechanismFilter)) {
       table <- dplyr::filter(table, Mechanism %in% input$mechanismFilter)
-      table$rationale <- paste0("Match on drug class (", table$interventions, "; ", table$Mechanism, ")")
+      #table$rationale <- paste0("Match on drug class (", table$interventions, "; ", table$Mechanism, ")")
    }
-   table$rationale[is.na(table$rationale)] <- "Match on cancer type alone"
-   if(input$confidenceFilter==TRUE) {table <- dplyr::filter(table, rationale != "Match on cancer type alone")}
+   #table$rationale[is.na(table$rationale)] <- "Match on cancer type alone"
+   #if(input$confidenceFilter==TRUE) {table <- dplyr::filter(table, rationale != "Match on cancer type alone")}
    # if(!is.na(map.selection$id )) {
    #    table <- dplyr::filter(table, nct_id == map.selection$id )
    # }
@@ -367,22 +431,23 @@ shiny::renderUI({
             mutate(nct_id = cell_spec(x=table$nct_id,format="html", link = table$Link, new_tab = TRUE )) %>%
             dplyr::select(-c(Link, TARGET.condition, conditions)) %>%
             mutate(locations = cell_spec(x=table$locations,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+          mutate(sites = cell_spec(x=table$sites,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
            mutate(investigators = cell_spec(x=table$investigators,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
            mutate(contacts = cell_spec(x=table$contacts,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
            mutate(criteria = cell_spec(x=table$criteria,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
-           dplyr::select("Matching cancer type" = "matching.condition",
-                         "Matching gene" = "gene.of.interest",
-                         "Rationale" = "rationale",
-                         "Brief title" = "brief_title",
-                         "Matching inclusion criterion" = "criteria",
-                         "Recruiting sites" = "locations",
-                         "Investigators" = "investigators",
-                         "Contacts" = "contacts",
-                         "Study ID" = nct_id
-                         #"Overall status" = "overall_status"
-   #                      "Interventions" = "interventions",
-   #                      Mechanism
-                         ) %>%
+   #         dplyr::select("Matching cancer type" = "matching.condition",
+   #                       "Matching gene" = "gene.of.interest",
+   #                       "Rationale" = "rationale",
+   #                       "Brief title" = "brief_title",
+   #                       "Matching inclusion criterion" = "criteria",
+   #                       "Recruiting sites" = "locations",
+   #                       "Investigators" = "investigators",
+   #                       "Contacts" = "contacts",
+   #                       "Study ID" = nct_id
+   #                       #"Overall status" = "overall_status"
+   # #                      "Interventions" = "interventions",
+   # #                      Mechanism
+   #                       ) %>%
             unique() %>%
             kable("html", escape = FALSE) %>%
             # kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
