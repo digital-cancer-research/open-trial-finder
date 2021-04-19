@@ -83,6 +83,8 @@ Row {.tabset}
 if(nrow(paramTable)>0) {
   table <- paramTable
    table[is.na(table)] <- "-"
+   
+   if(nrow(table)>0) {
    HTML(table %>%
             mutate(brief_title = cell_spec(x=table$brief_title,format="html", link = table$Link, new_tab = TRUE )) %>%
             dplyr::select(-c(Link, TARGET.condition, conditions)) %>%
@@ -90,14 +92,16 @@ if(nrow(paramTable)>0) {
           mutate(sites = cell_spec(x=table$sites,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
            mutate(investigators = cell_spec(x=table$investigators,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
            mutate(contacts = cell_spec(x=table$contacts,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
-           mutate(criteria = cell_spec(x=table$criteria,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
-           dplyr::select("Matching cancer type" = "matching.condition",
-                         "Matching alteration" = "gene_variant_type",
+           mutate(criteria = cell_spec(x=table$matching_criteria,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+          aggregate( by=table['nct_id'], function(x) {paste(unique(x), collapse = ";\n")}) %>%
+          dplyr::select("Matching cancer type(s)" = "matching.condition",
+                         "Matching alteration(s)" = "gene_variant_type",
                          "Drug rationale" = "intervention_rationale",
                          "Eligibility" = "eligibility_rationale",
                          "Brief title" = "brief_title",
-                         "Matching inclusion criterion" = "matching_criteria",
-                         "Recruiting sites" = "locations",
+                         "Matching inclusion criteria" = "criteria",
+                         "Locations" = "locations",
+                        "Centres" = "sites",
                          "Investigators" = "investigators",
                          "Contacts" = "contacts",
                         # "Study ID" = nct_id
@@ -109,12 +113,12 @@ if(nrow(paramTable)>0) {
             kable("html", escape = FALSE) %>%
             # kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
             kable_styling(bootstrap_options = c("hover", "condensed", "responsive")) %>%
-            collapse_rows(columns = 1:3, valign = "top") %>%
+            #collapse_rows(columns = c(1,2,4,5), valign = "middle") %>%
             #row_spec(row=3, hline_after = TRUE) %>%
             kable_styling(fixed_thead = T))
 
    } else print("No matching studies found")
-
+}
 
 
 
@@ -143,25 +147,25 @@ Drug mechanism filters: **`r paste(params$mechanism_filter, collapse=", ")`**
 ### Study ranking details  
 
   
-All studies are matched on cancer type.  
+* Studies are filtered on cancer type, plus/minus solid tumour.  
   
-If a gene of interest, matching studies are ordered as follows:  
+* If one or more drug mechanisms are selected, only studies that include one or more matching interventions are displayed.  
+  
+* If one or more genetic alterations are selected, only studies relevant for those alterations are displayed, matches are ranked based on:  
 
-1. Gene of interest is mentioned in inclusion criteria, and it is the molecular target of the study drug.  
+    * Study is enrolling patients with specified genetic alterations, and specified gene is targeted by a study drug.  
 
-2. Gene of interest is mentioned in inclusion criteria, and the study drug targets a downstream gene.   
+    * Study is enrolling patients with specified genetic alterations, and a study drug targets a gene immediately downstream.   
   
   
-3. Gene of interest is mentioned in inclusion criteria.  
+    * Study is enrolling patients with specified genetic alterations.   
   
   
-4. Study drug targets gene of interest.  
+    * Study drug targets gene of interest.  
   
   
-5. Study drug targets a downstream gene.  
-  
-  
-6. Study matched on cancer type alone.  
+    * Study drug targets a gene immediately downstream of specified genetic alteration.  
+    
   
 ### Acknowledgements
   

@@ -483,25 +483,27 @@ shiny::renderUI({
 ### Study ranking details  
 
   
-All studies are matched on cancer type.  
+* Studies are filtered on cancer type, plus/minus solid tumour.  
   
-If a gene of interest, matching studies are ordered as follows:  
+* If one or more drug mechanisms are selected, only studies that include one or more matching interventions are displayed.  
+  
+* If one or more genetic alterations are selected, only studies relevant for those alterations are displayed, matches are ranked based on:  
 
-1. Gene of interest is mentioned in inclusion criteria, and it is the molecular target of the study drug.  
+    * Study is enrolling patients with specified genetic alterations, and specified gene is targeted by a study drug.  
 
-2. Gene of interest is mentioned in inclusion criteria, and the study drug targets a downstream gene.   
+    * Study is enrolling patients with specified genetic alterations, and a study drug targets a gene immediately downstream.   
   
   
-3. Gene of interest is mentioned in inclusion criteria.  
+    * Study is enrolling patients with specified genetic alterations.   
   
   
-4. Study drug targets gene of interest.  
+    * Study drug targets gene of interest.  
   
   
-5. Study drug targets a downstream gene.  
+    * Study drug targets a gene immediately downstream of specified genetic alteration.  
   
   
-6. Study matched on cancer type alone.  
+
   
 ### Acknowledgements
   
