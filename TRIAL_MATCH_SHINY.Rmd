@@ -378,7 +378,7 @@ shiny::renderUI({
                          "Recruiting sites" = "locations",
                          "Investigators" = "investigators",
                          "Contacts" = "contacts",
-                         "Study ID" = nct_id
+                         "Study ID" = "nct_id"
                          #"Overall status" = "overall_status"
    #                      "Interventions" = "interventions",
    #                      Mechanism
