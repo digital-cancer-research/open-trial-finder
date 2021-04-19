@@ -118,7 +118,7 @@ scoredMatches <- dbGetQuery(con, "SELECT * FROM scoredMatches")
 # [7] "combined_score"
 
 ## conatenate symbol and variant_type columns to get <gene name> <variant_type>, e.g. "EGFR mutation"
-scoredMatches$gene_variant_type <- paste(scoredMatches$symbol, scoredMatches$variant_type, sep=" ")
+#scoredMatches$gene_variant_type <- paste(scoredMatches$symbol, scoredMatches$variant_type, sep=" ")
 
 
 # scoredMatches <- unique(read.table(file = "scoredMatches.tsv", header = TRUE, stringsAsFactors = FALSE))
@@ -245,7 +245,13 @@ output$report <- downloadHandler(
         tempReport <- file.path(tempdir(), "trial_report.Rmd")
         file.copy("trial_report.Rmd", tempReport, overwrite = TRUE)
 
+        table=reactiveCancerStudies()
+        table[is.na(table)] <- "-"
+        table=toJSON(table)
         
+         if(!is.na(map.selection$id )) {
+            table <- dplyr::filter(table, nct_id == map.selection$id )
+         }
 
         # Set up parameters to pass to Rmd document
         params <- list(subject_ID="not provided", 
@@ -255,7 +261,7 @@ output$report <- downloadHandler(
                        mechanism_filter=input$mechanismFilter, 
                        #hide_cancer_only=input$confidenceFilter, 
                        #table=toJSON(read.csv("exampleTable.csv"))
-                       table=toJSON(reactiveCancerStudies())
+                       table=table
                        )
 
         # Knit the document, passing in the `params` list, and eval it in a
@@ -285,6 +291,8 @@ reactiveScoredMatches <- reactive({
    if(!is.null(input$geneFilter)) {
       table <- dplyr::filter(table, gene_variant_type %in% input$geneFilter)
    }
+   
+   
    ## return table
    unique(table)
 })
@@ -300,10 +308,16 @@ reactiveCancerStudies <- reactive({
                      y=reactiveScoredMatches(), by.y=c("nct_id"))
       ## sort on confidence decreasing
       table <- table[order(table$combined_score, decreasing = TRUE), ]
-   } #else {table[ , c("rationale")] <- NA} #else {table[ , c("gene.of.interest","intervention.name","intervention.target","rationale","confidence","criteria")] <- NA}  ## add empty columns so can select and rename for display...
+   } else {table[ , c("symbol", "variant_type", "intervention_rationale", "eligibility_rationale", "matching_criteria", "combined_score", "gene_variant_type")] <- NA}  ## add empty columns so can select and rename for display...
    if(!is.null(input$mechanismFilter)) {
-      table <- dplyr::filter(table, Mechanism %in% input$mechanismFilter)
-      #table$rationale <- paste0("Match on drug class (", table$interventions, "; ", table$Mechanism, ")")
+     tryCatch({
+       table <- dplyr::filter(table, Mechanism %in% input$mechanismFilter)
+       table$intervention_rationale <- paste0( "Match on selected mechanism (", table$interventions, "; ", table$Mechanism, ")")
+       },error=function(cond) {return(NA)})
+     
+      
+      # table <- dplyr::filter(table, Mechanism %in% input$mechanismFilter)
+      # table$intervention_rationale <- paste0("Match on drug class (", table$interventions, "; ", table$Mechanism, ")")
    }
    #table$rationale[is.na(table$rationale)] <- "Match on cancer type alone"
    #if(input$confidenceFilter==TRUE) {table <- dplyr::filter(table, rationale != "Match on cancer type alone")}
@@ -428,26 +442,27 @@ shiny::renderUI({
    }
    if(nrow(table)>0) {
    HTML(table %>%
-            mutate(nct_id = cell_spec(x=table$nct_id,format="html", link = table$Link, new_tab = TRUE )) %>%
+            mutate(brief_title = cell_spec(x=table$brief_title,format="html", link = table$Link, new_tab = TRUE )) %>%
             dplyr::select(-c(Link, TARGET.condition, conditions)) %>%
             mutate(locations = cell_spec(x=table$locations,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
           mutate(sites = cell_spec(x=table$sites,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
            mutate(investigators = cell_spec(x=table$investigators,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
            mutate(contacts = cell_spec(x=table$contacts,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
            mutate(criteria = cell_spec(x=table$criteria,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
-   #         dplyr::select("Matching cancer type" = "matching.condition",
-   #                       "Matching gene" = "gene.of.interest",
-   #                       "Rationale" = "rationale",
-   #                       "Brief title" = "brief_title",
-   #                       "Matching inclusion criterion" = "criteria",
-   #                       "Recruiting sites" = "locations",
-   #                       "Investigators" = "investigators",
-   #                       "Contacts" = "contacts",
-   #                       "Study ID" = nct_id
-   #                       #"Overall status" = "overall_status"
-   # #                      "Interventions" = "interventions",
-   # #                      Mechanism
-   #                       ) %>%
+           dplyr::select("Matching cancer type" = "matching.condition",
+                         "Matching alteration" = "gene_variant_type",
+                         "Drug rationale" = "intervention_rationale",
+                         "Eligibility" = "eligibility_rationale",
+                         "Brief title" = "brief_title",
+                         "Matching inclusion criterion" = "matching_criteria",
+                         "Recruiting sites" = "locations",
+                         "Investigators" = "investigators",
+                         "Contacts" = "contacts",
+                        # "Study ID" = nct_id
+                         #"Overall status" = "overall_status"
+   #                      "Interventions" = "interventions",
+   #                      Mechanism
+                         ) %>%
             unique() %>%
             kable("html", escape = FALSE) %>%
             # kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%

@@ -81,22 +81,26 @@ Row {.tabset}
 
 
 if(nrow(paramTable)>0) {
-   HTML(paramTable %>%
-            mutate(nct_id = cell_spec(x=paramTable$nct_id,format="html", link = paramTable$Link)) %>%
+  table <- paramTable
+   table[is.na(table)] <- "-"
+   HTML(table %>%
+            mutate(brief_title = cell_spec(x=table$brief_title,format="html", link = table$Link, new_tab = TRUE )) %>%
             dplyr::select(-c(Link, TARGET.condition, conditions)) %>%
-            mutate(locations = cell_spec(x=paramTable$locations,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
-           mutate(investigators = cell_spec(x=paramTable$investigators,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
-           mutate(contacts = cell_spec(x=paramTable$contacts,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
-           mutate(criteria = cell_spec(x=paramTable$criteria,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+            mutate(locations = cell_spec(x=table$locations,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+          mutate(sites = cell_spec(x=table$sites,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+           mutate(investigators = cell_spec(x=table$investigators,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+           mutate(contacts = cell_spec(x=table$contacts,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+           mutate(criteria = cell_spec(x=table$criteria,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
            dplyr::select("Matching cancer type" = "matching.condition",
-                         "Matching gene" = "gene.of.interest",
-                         "Rationale" = "rationale",
+                         "Matching alteration" = "gene_variant_type",
+                         "Drug rationale" = "intervention_rationale",
+                         "Eligibility" = "eligibility_rationale",
                          "Brief title" = "brief_title",
-                         "Matching inclusion criterion" = "criteria",
+                         "Matching inclusion criterion" = "matching_criteria",
                          "Recruiting sites" = "locations",
                          "Investigators" = "investigators",
                          "Contacts" = "contacts",
-                         "Study ID" = nct_id
+                        # "Study ID" = nct_id
                          #"Overall status" = "overall_status"
    #                      "Interventions" = "interventions",
    #                      Mechanism
@@ -110,6 +114,11 @@ if(nrow(paramTable)>0) {
             kable_styling(fixed_thead = T))
 
    } else print("No matching studies found")
+
+
+
+
+
 
 
 ```
@@ -128,8 +137,7 @@ Genes included in search: **`r paste(params$genes, collapse=", ")`**
   
 Drug mechanism filters: **`r paste(params$mechanism_filter, collapse=", ")`**  
   
-Hide matches on cancer type alone? **`r params$hide_cancer_only`**  
-  
+
       
   
 ### Study ranking details  
