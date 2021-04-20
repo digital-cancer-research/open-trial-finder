@@ -93,6 +93,7 @@ cancer.study.locations <- cancer.study.locations[complete.cases(cancer.study.loc
 ```
 
 
+
 ```{r aggregate cancerStudies into compact form}
 ## aggregating interventions was causing some study:intervention combinations to be missed out
 cancerStudies <- cancerStudies %>%
@@ -104,6 +105,37 @@ cancerStudies <- cancerStudies %>%
                  contacts = toString(sort(unique(na.omit(contacts))))) %>%
        as.data.frame()
 ```
+
+
+
+
+```{r get prior tx exclusions}
+## read indexed eligibilities table into memory
+indexedEligibility <- dbGetQuery(con, "SELECT * FROM indexedEligibility")
+
+## filter for exclusions
+excludedTX <- filter(indexedEligibility, criterion.type=="EXCLUSION")
+
+## filter for prior therapy
+excludedTX <- filter(excludedTX, feature=="PRIOR_THERAPY")
+
+## drop unnecessary columns
+excludedTX <- unique(dplyr::select(excludedTX, nct_id, "Exclusions"="criteria"))
+
+## aggregate into single row per study
+excludedTX <- excludedTX %>%
+       group_by(nct_id) %>%
+       summarize(Exclusions = paste(sort(unique(na.omit(Exclusions))), collapse="\n")) %>%
+       as.data.frame()
+
+## join to cancerStudies
+cancerStudies <- merge(x=cancerStudies, by.x = "nct_id", all.x = TRUE, y=excludedTX, by.y="nct_id")
+
+
+
+
+```
+
 
 
 ```{r read studies scored on match against genes of interest}
@@ -456,6 +488,7 @@ shiny::renderUI({
                          "Eligibility" = "eligibility_rationale",
                          "Brief title" = "brief_title",
                          "Matching inclusion criteria" = "criteria",
+                        "Prior Therapy exclusions" = Exclusions,
                          "Locations" = "locations",
                         "Centres" = "sites",
                          "Investigators" = "investigators",
