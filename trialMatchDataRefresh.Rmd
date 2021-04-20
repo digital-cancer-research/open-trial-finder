@@ -7,7 +7,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE, warning=FALSE, message=FALSE, results=F} 
-knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ##NOTE: the following packages are required to run this script, but should be installed (e.g. using code snippets below) before runnning the script, NOT as part of the script itself
 
 # options(repos = "http://cran.us.r-project.org")
@@ -1208,8 +1208,11 @@ scoredMatches <- merge(x=scoredMatches, by.x=c("nct_id", "symbol", "variant_type
 ## add a combined score
 scoredMatches$combined_score <- rowSums(scoredMatches[,c("intervention_score", "eligibility_score")], na.rm=TRUE)
 
+## conatenate symbol and variant_type columns to get <gene name> <variant_type>, e.g. "EGFR mutation"
+scoredMatches$gene_variant_type <- paste(scoredMatches$symbol, scoredMatches$variant_type, sep=" ")
+
 ## select and reorder columns
-scoredMatches <- unique(dplyr::select(scoredMatches, symbol, variant_type, nct_id, intervention_rationale, eligibility_rationale, matching_criteria, combined_score))
+scoredMatches <- unique(dplyr::select(scoredMatches, symbol, variant_type,gene_variant_type, nct_id, intervention_rationale, eligibility_rationale, matching_criteria, combined_score))
 
 ## order on combined_score descending
 scoredMatches <- scoredMatches[order(scoredMatches$combined_score, decreasing = TRUE), ]
