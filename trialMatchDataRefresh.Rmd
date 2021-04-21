@@ -15,6 +15,7 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 # BiocManager::install("AnnotationDbi")
 # BiocManager::install("org.Hs.eg.db")
 # BiocManager::install("KEGGREST")
+# BiocManager::install("KEGGlincs")
 # BiocManager::install("hgu133a.db")
 require(KEGGlincs)
 require(KEGGgraph)
@@ -350,6 +351,19 @@ cancerStudies <- unique(cancerStudies)
 ## add a column to hold link
 cancerStudies$Link <- paste0("https://clinicaltrials.gov/ct2/show/", cancerStudies$nct_id)
 
+## get eligibility criteria (before connection times out)
+studyIDs <- unique(cancerStudies$nct_id)
+
+## form SQL query
+studyIDsForSQL <- paste0("\'",paste(studyIDs, collapse = "\',\'"), "\'")
+getEligibilities <- paste0("select e.nct_id, e.criteria 
+from eligibilities e
+where e.nct_id in (",
+"", studyIDsForSQL,
+")")
+
+## get criteria from clinicaltrials.gov
+eligibilities <- dbGetQuery(conn2,getEligibilities)
 ```
 
 ```{r get latitude and longitude values for sites}
@@ -684,18 +698,18 @@ dbListTables(con)
       
   
 ```{r get eligibility criteria for cancer studies}
-studyIDs <- unique(cancerStudies$nct_id)
-
-## form SQL query
-studyIDsForSQL <- paste0("\'",paste(studyIDs, collapse = "\',\'"), "\'")
-getEligibilities <- paste0("select e.nct_id, e.criteria 
-from eligibilities e
-where e.nct_id in (",
-"", studyIDsForSQL,
-")")
-
-## get criteria from clinicaltrials.gov
-eligibilities <- dbGetQuery(conn2,getEligibilities)
+# studyIDs <- unique(cancerStudies$nct_id)
+# 
+# ## form SQL query
+# studyIDsForSQL <- paste0("\'",paste(studyIDs, collapse = "\',\'"), "\'")
+# getEligibilities <- paste0("select e.nct_id, e.criteria 
+# from eligibilities e
+# where e.nct_id in (",
+# "", studyIDsForSQL,
+# ")")
+# 
+# ## get criteria from clinicaltrials.gov
+# eligibilities <- dbGetQuery(conn2,getEligibilities)
 
 ```
 
