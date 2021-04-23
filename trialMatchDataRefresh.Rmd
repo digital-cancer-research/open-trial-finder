@@ -913,7 +913,7 @@ formattable(head(fusion.eligibilities))
 amplification.eligibilities <- eligibilities
 
 ## define pattern
-amplificationPattern <- " amplification"
+amplificationPattern <- " amplification|overexpression"
 ## specify word range - fusionPattern must occur within this many words of a gene name
 amplificationWordRange <- 5
 
