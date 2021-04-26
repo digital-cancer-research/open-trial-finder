@@ -74,25 +74,6 @@ cancer.study.locations <- unique(dplyr::select(cancerStudies, nct_id, lat, long)
 cancer.study.locations <- cancer.study.locations[complete.cases(cancer.study.locations), ]
 ```
 
-```{r get mechanisms}
-## not needed, as mechanisms are already included in cancerStudies$ParentTerm
-
-
-
-## read drugs.targets table into memory
-# targetMatches <- dbGetQuery(con, "SELECT * FROM drugsTargets")
-# 
-# 
-# 
-# targetMatches <- unique(read.table(file = "targetMatches.tsv", header = TRUE, stringsAsFactors = FALSE))
-# ## drop unneeded columns
-# targetMatches <- unique(dplyr::select(targetMatches, Interventions, Mechanism))
-# 
-# ## join to cancerStudies table
-# cancerStudies <- merge(x=cancerStudies, by.x="interventions", all.x=TRUE, y=targetMatches, by.y="Interventions")
-```
-
-
 
 ```{r aggregate cancerStudies into compact form}
 ## aggregating interventions was causing some study:intervention combinations to be missed out
@@ -105,9 +86,6 @@ cancerStudies <- cancerStudies %>%
                  contacts = toString(sort(unique(na.omit(contacts))))) %>%
        as.data.frame()
 ```
-
-
-
 
 ```{r get prior tx exclusions}
 ## read indexed eligibilities table into memory
@@ -131,12 +109,7 @@ excludedTX <- excludedTX %>%
 ## join to cancerStudies
 cancerStudies <- merge(x=cancerStudies, by.x = "nct_id", all.x = TRUE, y=excludedTX, by.y="nct_id")
 
-
-
-
 ```
-
-
 
 ```{r read studies scored on match against genes of interest}
 ## read cancerStudies table into memory
@@ -149,14 +122,6 @@ scoredMatches <- dbGetQuery(con, "SELECT * FROM scoredMatches")
 # [4] "intervention_rationale" "eligibility_rationale"  "matching_criteria"     
 # [7] "combined_score"
 
-## conatenate symbol and variant_type columns to get <gene name> <variant_type>, e.g. "EGFR mutation"
-#scoredMatches$gene_variant_type <- paste(scoredMatches$symbol, scoredMatches$variant_type, sep=" ")
-
-
-# scoredMatches <- unique(read.table(file = "scoredMatches.tsv", header = TRUE, stringsAsFactors = FALSE))
-## column names are "nct_id, gene.of.interest, intervention.name, intervention.target, rationale, confidence, criteria"
-
-
 ```
 
 Inputs {.sidebar}
@@ -164,7 +129,7 @@ Inputs {.sidebar}
 **FILTERS**  
   
   
-**1. Cancer type**    
+**Filter on cancer type**    
 
 ```{r  cancer type filter}
 ## display filter for cancer type
@@ -172,11 +137,16 @@ available.cancer.types <- sort(unique(cancerStudies$TARGET.condition))
 selectInput(inputId = "cancerTypeFilter", label=NULL, choices = available.cancer.types, selected = NULL, multiple = FALSE,  selectize = TRUE, width = NULL, size = NULL)
 
 
-```
+checkboxInput(inputId="solidTumourFilter", label="Include matches on solid tumour?", value = TRUE, width = NULL)
 
-<!-- **Cancer types included in search:**   -->
+## define a reactive value that will hold selected cancer type
+selectedCancerTypes <- reactive({
+  if(input$solidTumourFilter==FALSE) {cancer.types <- input$cancerTypeFilter}
+  else {cancer.types <- c(input$cancerTypeFilter, "Solid")}
+  ## return value
+  cancer.types
+})
 
-```{r reactive label}
 # synonymsLabel <- reactive({
 #    synonyms <- paste(unique(conditionSynonyms$condition.synonyms[conditionSynonyms$controlled.cancer.type==input$cancerTypeFilter]), collapse = ", ")
 #    synonyms
@@ -187,25 +157,65 @@ selectInput(inputId = "cancerTypeFilter", label=NULL, choices = available.cancer
 #    paste(synonymsLabel(), collapse = "\n")
 # })
 
-
 ```
 
+```{r filter cancerStudies table}
+reactiveCancerStudies <- reactive({
+   # cancer.types <- c(input$cancerTypeFilter, "Solid") 
+   # if(input$solidTumourFilter==FALSE) {cancer.types <- input$cancerTypeFilter}
+   # else {cancer.types <- c(input$cancerTypeFilter, "Solid")}
+   cancer.types <- selectedCancerTypes()
   
-```{r additional options}
-checkboxInput(inputId="solidTumourFilter", label="Include matches on solid tumour?", value = TRUE, width = NULL)
-# checkboxInput(inputId="notYetRecruitingFilter", label="Include sites not yet recruiting?", value = TRUE, width = NULL)
+   table <- dplyr::filter(cancerStudies, TARGET.condition %in% cancer.types)
+   ## return table
+   unique(table)
+})
+```
+ 
+
+
+
+**Filter on genetic alterations**    
+
+```{r define reactive gene filter}
+## only genes with rationale for selected cancer type will be presented
+
+## define how filter values will be populated
+output$reactiveGeneFilter <- renderUI({
+   # if(input$solidTumourFilter==FALSE) {cancer.types <- input$cancerTypeFilter}
+   # else {cancer.types <- c(input$cancerTypeFilter, "Solid")}
+   cancer.types <- selectedCancerTypes()
+   table <- dplyr::filter(cancerStudies, TARGET.condition %in% cancer.types) 
+   table <- merge(x=table, by.x="nct_id", y=scoredMatches, by.y = "nct_id")
+   gene_variant_type.list <- sort(unique(table$gene_variant_type))
+
+   selectInput(inputId = "geneFilter", label=NULL, choices = gene_variant_type.list, selected = NULL, multiple = TRUE,  selectize = TRUE, width = NULL, size = NULL)
+})
+# display filter
+shiny::renderUI({
+   uiOutput("reactiveGeneFilter") 
+})
+
+
+## define a reactive value that will hold selected cancer type
+selectedAlterations <- reactive({
+  alterations <- input$geneFilter
+  ## return value
+  alterations
+})
+
 ```
 
 
-**2. Drug mechanisms (optional)**    
+**Filter on study drug mechanisms**    
 
 
 ```{r define reactive mechanism filter}
 ## define how filter values will be populated
 output$reactive.mechanism.filter <- renderUI({
-   if(input$solidTumourFilter==FALSE) {cancer.types <- input$cancerTypeFilter}
-   else {cancer.types <- c(input$cancerTypeFilter, "Solid")}
-   
+   # if(input$solidTumourFilter==FALSE) {cancer.types <- input$cancerTypeFilter}
+   # else {cancer.types <- c(input$cancerTypeFilter, "Solid")}
+   cancer.types <- selectedCancerTypes()
    table <- dplyr::filter(cancerStudies, TARGET.condition %in% cancer.types)   
    mechanism.list <- sort(unique(table$Mechanism))
 
@@ -221,36 +231,9 @@ shiny::renderUI({
 ```{r omit cancer type alone}
 # checkboxInput(inputId="confidenceFilter", label="Hide matches on cancer type alone?", value = FALSE, width = NULL)
 ```
+      
   
-**3. Genetic alterations (optional)**    
  
-```{r define static gene filter}
-# gene.list <- sort(unique(scoredMatches$gene_variant_type))
-# selectInput(inputId = "geneFilter", label=NULL, choices = gene.list, selected = NULL, multiple = TRUE,  selectize = TRUE, width = NULL, size = NULL)
-```
-  
-
-```{r define reactive gene filter}
-## define how filter values will be populated
-output$reactiveGeneFilter <- renderUI({
-   if(input$solidTumourFilter==FALSE) {cancer.types <- input$cancerTypeFilter}
-   else {cancer.types <- c(input$cancerTypeFilter, "Solid")}
-   
-   table <- dplyr::filter(cancerStudies, TARGET.condition %in% cancer.types) 
-   table <- merge(x=table, by.x="nct_id", y=scoredMatches, by.y = "nct_id")
-   gene_variant_type.list <- sort(unique(table$gene_variant_type))
-
-   selectInput(inputId = "geneFilter", label=NULL, choices = gene_variant_type.list, selected = NULL, multiple = TRUE,  selectize = TRUE, width = NULL, size = NULL)
-})
-# display filter
-shiny::renderUI({
-   uiOutput("reactiveGeneFilter") 
-})
-```
-
-    
-  
-**4. Save results to file (optional)**      
   
 ```{r download button}
 
@@ -277,7 +260,7 @@ output$report <- downloadHandler(
         tempReport <- file.path(tempdir(), "trial_report.Rmd")
         file.copy("trial_report.Rmd", tempReport, overwrite = TRUE)
 
-        table=reactiveCancerStudies()
+        table=mergedStudyTable()
         table[is.na(table)] <- "-"
         table=toJSON(table)
         
@@ -329,39 +312,41 @@ reactiveScoredMatches <- reactive({
    unique(table)
 })
 ```
+ 
+```{r join reactiveCancerStudies and reactiveScoredMatches tables}
 
-```{r filter cancerStudies table}
-reactiveCancerStudies <- reactive({
-   if(input$solidTumourFilter==FALSE) {cancer.types <- input$cancerTypeFilter}
-   else {cancer.types <- c(input$cancerTypeFilter, "Solid")}
-   table <- dplyr::filter(cancerStudies, TARGET.condition %in% cancer.types)
-   if(!is.null(input$geneFilter)) {
-      table <- merge(x=table, by.x=c("nct_id"), all.x=FALSE, 
+mergedStudyTable <-  reactive({
+   table <- reactiveCancerStudies()
+  if(!is.null(input$geneFilter)) {
+     table <- merge(x=table, by.x=c("nct_id"), all.x=FALSE, 
                      y=reactiveScoredMatches(), by.y=c("nct_id"))
-      ## sort on confidence decreasing
-      table <- table[order(table$combined_score, decreasing = TRUE), ]
-   } else {table[ , c("symbol", "variant_type", "intervention_rationale", "eligibility_rationale", "matching_criteria", "combined_score", "gene_variant_type")] <- NA}  ## add empty columns so can select and rename for display...
+    } else {table[ , c("symbol", "variant_type", "intervention_rationale", "eligibility_rationale", "matching_criteria", "combined_score", "gene_variant_type")] <- NA}  ## add empty columns so can select and rename for display...
+  
+   ## sort on confidence decreasing
+   table <- table[order(table$combined_score, decreasing = TRUE), ]
+   
    if(!is.null(input$mechanismFilter)) {
      tryCatch({
        table <- dplyr::filter(table, Mechanism %in% input$mechanismFilter)
        table$intervention_rationale <- paste0( "Match on selected mechanism (", table$interventions, "; ", table$Mechanism, ")")
        },error=function(cond) {return(NA)})
-     
-      
-      # table <- dplyr::filter(table, Mechanism %in% input$mechanismFilter)
-      # table$intervention_rationale <- paste0("Match on drug class (", table$interventions, "; ", table$Mechanism, ")")
    }
-   #table$rationale[is.na(table$rationale)] <- "Match on cancer type alone"
-   #if(input$confidenceFilter==TRUE) {table <- dplyr::filter(table, rationale != "Match on cancer type alone")}
-   # if(!is.na(map.selection$id )) {
-   #    table <- dplyr::filter(table, nct_id == map.selection$id )
-   # }
+   
+   
    ## return table
    unique(table)
-})
-```
-  
    
+   
+})
+  
+  
+
+   
+
+
+
+```
+
   
 Row {.tabset}
 -----------------------------------------------------------------------
@@ -374,7 +359,7 @@ Row {.tabset}
 ## NOTE: layerIds must be unique (i.e. one study would only appear once)
 ## need to use combination of study ID and location to make layerIds unique
 output$studiesmap <- renderLeaflet({
-   studies <- unique(dplyr::select(reactiveCancerStudies(), nct_id, brief_title))
+   studies <- unique(dplyr::select(mergedStudyTable(), nct_id, brief_title))
    locations <- merge(x=studies,by.x="nct_id", y=cancer.study.locations, by.y="nct_id")
    locations$uniqueId <- paste(locations$nct_id, locations$lat, locations$long, sep = "_")
    if(nrow(locations)>0) {
@@ -420,54 +405,11 @@ observeEvent(input$studiesmap_click, {
 ### Study details  
 
 ```{r render reactive cancerStudies table}
-## render as datatable
-# DT::renderDataTable({
-#   table <- as.data.frame(reactiveCancerStudies())
-#   if(nrow(reactiveCancerStudies())>0) {
-#   table[is.na(table)] <- "-"
-#   ## convert rationale column to factor to enable filtering with dropdown list 
-#   #table$rationale <- as.factor(table$rationale)
-#   ## do same for gene.of.interest
-#   table$gene.of.interest <- as.factor(table$gene.of.interest)
-#   table$nct_id <- paste0('<a href="',table$Link,'" target="_blank">',table$nct_id ,  " </a>")
-#   #table <- table[, -c('Link')]
-#   table <- unique(dplyr::select(table, "Matching cancer type" = "matching.condition",
-#                          "Matching gene" = "gene.of.interest",
-#                          "Rationale" = "rationale",
-#                          "Brief title" = "brief_title",
-#                          "Matching inclusion criterion" = "criteria",
-#                          "Recruiting sites" = "locations",
-#                          "Investigators" = "investigators",
-#                          "Contacts" = "contacts",
-#                          "Study ID" = nct_id
-#                          #"Overall status" = "overall_status"
-#    #                      "Interventions" = "interventions",
-#    #                      Mechanism
-#                          ))
-#   DT::datatable(table, escape = which(names(table) == "Study ID"), filter = 'top',autoHideNavigation = TRUE,
-#           # selection = list(mode = 'multiple', selected = NULL, target = 'column'),
-#           options=list(ordering=FALSE, 
-#                        autoWidth=TRUE,
-#                        columnDefs = list(list(width='200px', targets = 4))))
-# } else DT::datatable(dplyr::select(cancerStudies, "Matching cancer type" = "matching.condition",
-#                          "Matching gene" = "gene.of.interest",
-#                          "Rationale" = "rationale",
-#                          "Brief title" = "brief_title",
-#                          "Matching inclusion criterion" = "criteria",
-#                          "Recruiting sites" = "locations",
-#                          "Investigators" = "investigators",
-#                          "Contacts" = "contacts",
-#                          "Study ID" = nct_id
-#                          #"Overall status" = "overall_status"
-#    #                      "Interventions" = "interventions",
-#    #                      Mechanism
-#                          )[NULL,])
-#   })
 
 
 ## render as kable
 shiny::renderUI({
-   table <- reactiveCancerStudies()
+   table <- mergedStudyTable()
    table[is.na(table)] <- "-"
    if(!is.na(map.selection$id )) {
       table <- dplyr::filter(table, nct_id == map.selection$id )
@@ -487,11 +429,11 @@ shiny::renderUI({
                          "Drug rationale" = "intervention_rationale",
                          "Eligibility" = "eligibility_rationale",
                          "Brief title" = "brief_title",
-                         "Matching inclusion criteria" = "criteria",
-                        "Prior Therapy exclusions" = Exclusions,
+                        # "Matching inclusion criteria" = "criteria",
+                        # "Prior Therapy exclusions" = Exclusions,
                          "Locations" = "locations",
-                        "Centres" = "sites",
-                         "Investigators" = "investigators",
+                        # "Centres" = "sites",
+                        # "Investigators" = "investigators",
                          "Contacts" = "contacts",
                         # "Study ID" = nct_id
                          #"Overall status" = "overall_status"
@@ -568,4 +510,26 @@ DATA SOURCES:
 ```{r exit script }
 knitr::knit_exit()
 ```
+  
+  
+
+<!-- **Cancer types included in search:**   -->
+
+```{r reactive label}
+# synonymsLabel <- reactive({
+#    synonyms <- paste(unique(conditionSynonyms$condition.synonyms[conditionSynonyms$controlled.cancer.type==input$cancerTypeFilter]), collapse = ", ")
+#    synonyms
+# })
+
+## uncomment this line if you want to show synonyms included in matches for each cancer type
+# shiny::renderText({
+#    paste(synonymsLabel(), collapse = "\n")
+# })
+
+
+```
+
+    
+  
+  
   
