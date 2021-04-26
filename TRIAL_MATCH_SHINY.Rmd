@@ -189,7 +189,7 @@ output$reactiveGeneFilter <- renderUI({
    table <- merge(x=table, by.x="nct_id", y=scoredMatches, by.y = "nct_id")
    gene_variant_type.list <- sort(unique(table$gene_variant_type))
 
-   selectInput(inputId = "geneFilter", label=NULL, choices = gene_variant_type.list, selected = NULL, multiple = TRUE,  selectize = TRUE, width = NULL, size = NULL)
+   selectInput(inputId = "geneFilter", label=NULL, choices = gene_variant_type.list, selected = selectedAlterations(), multiple = TRUE,  selectize = TRUE, width = NULL, size = NULL)
 })
 # display filter
 shiny::renderUI({
@@ -302,10 +302,11 @@ output$report <- downloadHandler(
 ```{r filter scoredMatches table}
 reactiveScoredMatches <- reactive({
    table <- scoredMatches
-   #table <- dplyr::filter(table, gene_variant_type %in% input$geneFilter)
-   if(!is.null(input$geneFilter)) {
-      table <- dplyr::filter(table, gene_variant_type %in% input$geneFilter)
-   }
+   table <- dplyr::filter(table, gene_variant_type %in% selectedAlterations())
+   
+   # if(!is.null(input$geneFilter)) {
+   #    table <- dplyr::filter(table, gene_variant_type %in% input$geneFilter)
+   # }
    
    
    ## return table
@@ -321,7 +322,11 @@ mergedStudyTable <-  reactive({
      table <- merge(x=table, by.x=c("nct_id"), all.x=FALSE, 
                      y=reactiveScoredMatches(), by.y=c("nct_id"))
     } else {table[ , c("symbol", "variant_type", "intervention_rationale", "eligibility_rationale", "matching_criteria", "combined_score", "gene_variant_type")] <- NA}  ## add empty columns so can select and rename for display...
-  
+   
+   ## if combined_score is NA, set value to zero
+   table$combined_score[is.na(table$combined_score)] <- 0
+   
+   
    ## sort on confidence decreasing
    table <- table[order(table$combined_score, decreasing = TRUE), ]
    
