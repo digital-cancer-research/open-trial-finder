@@ -21,6 +21,7 @@ require(leaflet)
 require(htmltools)
 require(rjson)
 require(RSQLite)
+require(DT)
 
 #require(DT)
 
@@ -459,46 +460,6 @@ observeEvent(input$studiesmap_click, {
 ```
 
 
-```{r render reactive datatable}
-## render as datatable
-# output$datatable <- DT::renderDataTable({
-#   table <- mergedStudyTable()
-#    table[is.na(table)] <- "-"
-#    if(!is.na(map.selection$id )) {
-#       table <- dplyr::filter(table, nct_id == map.selection$id )
-#    }
-#         table$brief_title <- paste0('<a href="',table$Link,'" target="_blank">',table$brief_title ,  " </a>")
-#         table <- unique(dplyr::select(table, 
-#                             combined_score, 
-#                             "Matching cancer type(s)" = "matching.condition",
-#                             "Matching alteration(s)" = "gene_variant_type",
-#                             "Drug rationale" = "intervention_rationale",
-#                             "Eligibility" = "eligibility_rationale",
-#                             "Brief title" = "brief_title",
-#                           # "Matching inclusion criteria" = "criteria",
-#                           # "Prior Therapy exclusions" = Exclusions,
-#                             "Locations" = "locations",
-#                           # "Centres" = "sites",
-#                           # "Investigators" = "investigators",
-#                             "Contacts" = "contacts",
-#                           # "Study ID" = nct_id
-#                           #"Overall status" = "overall_status"
-#    #                      "Interventions" = "interventions",
-#    #                      Mechanism
-#                                ))
-#         table <- arrange(table, desc(combined_score))
-#         table <- dplyr::select(table, -combined_score)
-#         table <- DT::datatable(table, escape = which(names(table) == "Brief title"))
-# 
-#         return(table)
-# })
-# 
-# # display formatted table
-# DT::DTOutput("datatable") 
-
-```
-
-
 ```{r render reactive datatable catch error for empty}
 
 ## render as datatable
@@ -534,7 +495,7 @@ formattedTable <- reactive({
         table <- arrange(table, desc(combined_score))
         table <- dplyr::select(table, -combined_score)
         
-        table <- DT::datatable(table, escape = which(names(table) == "Brief title"))
+        table <- DT::datatable(table, escape = which(names(table) == "Brief title"), options = list(ordering=F))
         
         return(table)
 })

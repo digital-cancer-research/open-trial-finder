@@ -91,8 +91,8 @@ if(nrow(paramTable)>0) {
             #row_spec(row=3, hline_after = TRUE) %>%
             kable_styling(fixed_thead = T))
 
-   } else print("No matching studies found")
-}
+   } 
+} else print("No matching studies based on selected options")
 
 
 
