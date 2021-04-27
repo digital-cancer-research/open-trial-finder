@@ -319,16 +319,17 @@ reactiveScoredMatches <- reactive({
 mergedStudyTable <-  reactive({
    table <- reactiveCancerStudies()
   if(!is.null(input$geneFilter)) {
-     table <- merge(x=table, by.x=c("nct_id"), all.x=FALSE, 
+     table <- merge(x=table, by.x=c("nct_id"), all.x=TRUE, 
                      y=reactiveScoredMatches(), by.y=c("nct_id"))
     } else {table[ , c("symbol", "variant_type", "intervention_rationale", "eligibility_rationale", "matching_criteria", "combined_score", "gene_variant_type")] <- NA}  ## add empty columns so can select and rename for display...
    
    ## if combined_score is NA, set value to zero
    table$combined_score[is.na(table$combined_score)] <- 0
-   
-   
    ## sort on confidence decreasing
    table <- table[order(table$combined_score, decreasing = TRUE), ]
+   
+   ## sort on confidence decreasing
+   #table <- table[order(table$combined_score, decreasing = TRUE), ]
    
    if(!is.null(input$mechanismFilter)) {
      tryCatch({
@@ -415,6 +416,8 @@ observeEvent(input$studiesmap_click, {
 ## render as kable
 shiny::renderUI({
    table <- mergedStudyTable()
+   
+   
    table[is.na(table)] <- "-"
    if(!is.na(map.selection$id )) {
       table <- dplyr::filter(table, nct_id == map.selection$id )
@@ -429,7 +432,10 @@ shiny::renderUI({
            mutate(contacts = cell_spec(x=table$contacts,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
            mutate(criteria = cell_spec(x=table$matching_criteria,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
           aggregate( by=table['nct_id'], function(x) {paste(unique(x), collapse = ";\n")}) %>%
-          dplyr::select("Matching cancer type(s)" = "matching.condition",
+          #arrange( desc(combined_score)) %>% ## sort on score desc
+          #as.data.frame() %>%
+          dplyr::select(combined_score, 
+                        "Matching cancer type(s)" = "matching.condition",
                          "Matching alteration(s)" = "gene_variant_type",
                          "Drug rationale" = "intervention_rationale",
                          "Eligibility" = "eligibility_rationale",
@@ -445,6 +451,8 @@ shiny::renderUI({
    #                      "Interventions" = "interventions",
    #                      Mechanism
                          ) %>%
+            arrange( desc(combined_score)) %>% ## sort on score desc
+            dplyr::select(-combined_score) %>%
             unique() %>%
             kable("html", escape = FALSE) %>%
             # kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
