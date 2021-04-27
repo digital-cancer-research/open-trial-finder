@@ -49,36 +49,6 @@ Row {.tabset}
 ### Study details   
   
 ```{r display table}
-# if(nrow(paramTable)>0) {
-#   table <- paramTable
-#   table[is.na(table)] <- "-"
-#   ## convert rationale column to factor to enable filtering with dropdown list 
-#   #table$rationale <- as.factor(table$rationale)
-#   ## do same for gene.of.interest
-#   table$gene.of.interest <- as.factor(table$gene.of.interest)
-#   table$nct_id <- paste0('<a href="',table$Link,'" target="_blank">',table$nct_id ,  " </a>")
-#   #table <- table[, -c('Link')]
-#   table <- unique(dplyr::select(table, "Matching cancer type" = "matching.condition",
-#                          "Matching gene" = "gene.of.interest",
-#                          "Rationale" = "rationale",
-#                          "Brief title" = "brief_title",
-#                          "Matching inclusion criterion" = "criteria",
-#                          "Recruiting sites" = "locations",
-#                          "Investigators" = "investigators",
-#                          "Contacts" = "contacts",
-#                          "Study ID" = nct_id
-#                          #"Overall status" = "overall_status"
-#    #                      "Interventions" = "interventions",
-#    #                      Mechanism
-#                          ))
-#   DT::datatable(table, escape = which(names(table) == "Study ID"), filter = 'top',autoHideNavigation = TRUE,
-#           # selection = list(mode = 'multiple', selected = NULL, target = 'column'),
-#           options=list(ordering=FALSE, 
-#                        autoWidth=TRUE,
-#                        columnDefs = list(list(width='200px', targets = 4))))
-#  } else print("No matching studies found")
-
-
 
 if(nrow(paramTable)>0) {
   table <- paramTable
@@ -94,7 +64,8 @@ if(nrow(paramTable)>0) {
            mutate(contacts = cell_spec(x=table$contacts,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
            mutate(criteria = cell_spec(x=table$matching_criteria,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
           aggregate( by=table['nct_id'], function(x) {paste(unique(x), collapse = ";\n")}) %>%
-          dplyr::select("Matching cancer type(s)" = "matching.condition",
+          dplyr::select(combined_score,
+                        "Matching cancer type(s)" = "matching.condition",
                          "Matching alteration(s)" = "gene_variant_type",
                          "Drug rationale" = "intervention_rationale",
                          "Eligibility" = "eligibility_rationale",
@@ -110,6 +81,8 @@ if(nrow(paramTable)>0) {
    #                      "Interventions" = "interventions",
    #                      Mechanism
                          ) %>%
+            arrange( desc(combined_score)) %>% ## sort on score desc
+            dplyr::select(-combined_score) %>%
             unique() %>%
             kable("html", escape = FALSE) %>%
             # kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
@@ -138,9 +111,12 @@ Cancer type: **`r params$cancer_type`**
   
 Include matches on solid tumour? **`r params$include_solid`**  
   
-Genes included in search: **`r paste(params$genes, collapse=", ")`**  
+Genetic alterations included in search: **`r paste(params$genes, collapse=", ")`**  
   
 Drug mechanism filters: **`r paste(params$mechanism_filter, collapse=", ")`**  
+  
+Hide matches on cancer type alone: **`r params$hide_cancer_only`**  
+  
   
 
       

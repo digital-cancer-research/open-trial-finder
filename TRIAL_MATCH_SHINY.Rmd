@@ -229,7 +229,7 @@ shiny::renderUI({
 
   
 ```{r omit cancer type alone}
-# checkboxInput(inputId="confidenceFilter", label="Hide matches on cancer type alone?", value = FALSE, width = NULL)
+checkboxInput(inputId="confidenceFilter", label="Hide matches on cancer type alone?", value = FALSE, width = NULL)
 ```
       
   
@@ -274,7 +274,7 @@ output$report <- downloadHandler(
                        include_solid= input$solidTumourFilter, 
                        genes=input$geneFilter,
                        mechanism_filter=input$mechanismFilter, 
-                       #hide_cancer_only=input$confidenceFilter, 
+                       hide_cancer_only=input$confidenceFilter, 
                        #table=toJSON(read.csv("exampleTable.csv"))
                        table=table
                        )
@@ -325,11 +325,6 @@ mergedStudyTable <-  reactive({
    
    ## if combined_score is NA, set value to zero
    table$combined_score[is.na(table$combined_score)] <- 0
-   ## sort on confidence decreasing
-   table <- table[order(table$combined_score, decreasing = TRUE), ]
-   
-   ## sort on confidence decreasing
-   #table <- table[order(table$combined_score, decreasing = TRUE), ]
    
    if(!is.null(input$mechanismFilter)) {
      tryCatch({
@@ -337,12 +332,13 @@ mergedStudyTable <-  reactive({
        table$intervention_rationale <- paste0( "Match on selected mechanism (", table$interventions, "; ", table$Mechanism, ")")
        },error=function(cond) {return(NA)})
    }
+   ## 
+   if(input$confidenceFilter==TRUE) {table <- filter(table, combined_score >0)}
    
    
    ## return table
    unique(table)
-   
-   
+  
 })
   
   
