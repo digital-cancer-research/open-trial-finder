@@ -406,64 +406,148 @@ observeEvent(input$studiesmap_click, {
 
 ### Study details  
 
-```{r render reactive cancerStudies table}
+```{r render reactive kable}
+
+# ## render as kable
+# shiny::renderUI({
+#    table <- mergedStudyTable()
+#    table[is.na(table)] <- "-"
+#    if(!is.na(map.selection$id )) {
+#       table <- dplyr::filter(table, nct_id == map.selection$id )
+#    }
+#    if(nrow(table)>0) {
+#    HTML(table %>%
+#             mutate(brief_title = cell_spec(x=table$brief_title,format="html", link = table$Link, new_tab = TRUE )) %>%
+#             dplyr::select(-c(Link, TARGET.condition, conditions)) %>%
+#             mutate(locations = cell_spec(x=table$locations,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+#           mutate(sites = cell_spec(x=table$sites,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+#            mutate(investigators = cell_spec(x=table$investigators,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+#            mutate(contacts = cell_spec(x=table$contacts,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+#            mutate(criteria = cell_spec(x=table$matching_criteria,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+#           aggregate( by=table['nct_id'], function(x) {paste(unique(x), collapse = ";\n")}) %>%
+#           #arrange( desc(combined_score)) %>% ## sort on score desc
+#           #as.data.frame() %>%
+#           dplyr::select(combined_score, 
+#                         "Matching cancer type(s)" = "matching.condition",
+#                          "Matching alteration(s)" = "gene_variant_type",
+#                          "Drug rationale" = "intervention_rationale",
+#                          "Eligibility" = "eligibility_rationale",
+#                          "Brief title" = "brief_title",
+#                         # "Matching inclusion criteria" = "criteria",
+#                         # "Prior Therapy exclusions" = Exclusions,
+#                          "Locations" = "locations",
+#                         # "Centres" = "sites",
+#                         # "Investigators" = "investigators",
+#                          "Contacts" = "contacts",
+#                         # "Study ID" = nct_id
+#                          #"Overall status" = "overall_status"
+#    #                      "Interventions" = "interventions",
+#    #                      Mechanism
+#                          ) %>%
+#             arrange( desc(combined_score)) %>% ## sort on score desc
+#             dplyr::select(-combined_score) %>%
+#             unique() %>%
+#             kable("html", escape = FALSE) %>%
+#             # kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+#             kable_styling(bootstrap_options = c("hover", "condensed", "responsive")) %>%
+#             #collapse_rows(columns = c(1,2,4,5), valign = "middle") %>%
+#             #row_spec(row=3, hline_after = TRUE) %>%
+#             kable_styling(fixed_thead = T))
+# 
+#    } else print("No matching studies fround")
+# })
+```
 
 
-## render as kable
-shiny::renderUI({
-   table <- mergedStudyTable()
-   
-   
+```{r render reactive datatable}
+## render as datatable
+# output$datatable <- DT::renderDataTable({
+#   table <- mergedStudyTable()
+#    table[is.na(table)] <- "-"
+#    if(!is.na(map.selection$id )) {
+#       table <- dplyr::filter(table, nct_id == map.selection$id )
+#    }
+#         table$brief_title <- paste0('<a href="',table$Link,'" target="_blank">',table$brief_title ,  " </a>")
+#         table <- unique(dplyr::select(table, 
+#                             combined_score, 
+#                             "Matching cancer type(s)" = "matching.condition",
+#                             "Matching alteration(s)" = "gene_variant_type",
+#                             "Drug rationale" = "intervention_rationale",
+#                             "Eligibility" = "eligibility_rationale",
+#                             "Brief title" = "brief_title",
+#                           # "Matching inclusion criteria" = "criteria",
+#                           # "Prior Therapy exclusions" = Exclusions,
+#                             "Locations" = "locations",
+#                           # "Centres" = "sites",
+#                           # "Investigators" = "investigators",
+#                             "Contacts" = "contacts",
+#                           # "Study ID" = nct_id
+#                           #"Overall status" = "overall_status"
+#    #                      "Interventions" = "interventions",
+#    #                      Mechanism
+#                                ))
+#         table <- arrange(table, desc(combined_score))
+#         table <- dplyr::select(table, -combined_score)
+#         table <- DT::datatable(table, escape = which(names(table) == "Brief title"))
+# 
+#         return(table)
+# })
+# 
+# # display formatted table
+# DT::DTOutput("datatable") 
+
+```
+
+
+```{r render reactive datatable catch error for empty}
+
+## render as datatable
+
+formattedTable <- reactive({
+  table <- mergedStudyTable()
+   validate(
+            need(nrow(table)>0, "No matching studies based on selected options")
+        )
    table[is.na(table)] <- "-"
    if(!is.na(map.selection$id )) {
       table <- dplyr::filter(table, nct_id == map.selection$id )
    }
-   if(nrow(table)>0) {
-   HTML(table %>%
-            mutate(brief_title = cell_spec(x=table$brief_title,format="html", link = table$Link, new_tab = TRUE )) %>%
-            dplyr::select(-c(Link, TARGET.condition, conditions)) %>%
-            mutate(locations = cell_spec(x=table$locations,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
-          mutate(sites = cell_spec(x=table$sites,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
-           mutate(investigators = cell_spec(x=table$investigators,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
-           mutate(contacts = cell_spec(x=table$contacts,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
-           mutate(criteria = cell_spec(x=table$matching_criteria,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
-          aggregate( by=table['nct_id'], function(x) {paste(unique(x), collapse = ";\n")}) %>%
-          #arrange( desc(combined_score)) %>% ## sort on score desc
-          #as.data.frame() %>%
-          dplyr::select(combined_score, 
-                        "Matching cancer type(s)" = "matching.condition",
-                         "Matching alteration(s)" = "gene_variant_type",
-                         "Drug rationale" = "intervention_rationale",
-                         "Eligibility" = "eligibility_rationale",
-                         "Brief title" = "brief_title",
-                        # "Matching inclusion criteria" = "criteria",
-                        # "Prior Therapy exclusions" = Exclusions,
-                         "Locations" = "locations",
-                        # "Centres" = "sites",
-                        # "Investigators" = "investigators",
-                         "Contacts" = "contacts",
-                        # "Study ID" = nct_id
-                         #"Overall status" = "overall_status"
+        table$brief_title <- paste0('<a href="',table$Link,'" target="_blank">',table$brief_title ,  " </a>")
+        table <- unique(dplyr::select(table, 
+                            combined_score, 
+                            "Matching cancer type(s)" = "matching.condition",
+                            "Matching alteration(s)" = "gene_variant_type",
+                            "Drug rationale" = "intervention_rationale",
+                            "Eligibility" = "eligibility_rationale",
+                            "Brief title" = "brief_title",
+                          # "Matching inclusion criteria" = "criteria",
+                          # "Prior Therapy exclusions" = Exclusions,
+                            "Locations" = "locations",
+                          # "Centres" = "sites",
+                          # "Investigators" = "investigators",
+                            "Contacts" = "contacts",
+                          # "Study ID" = nct_id
+                          #"Overall status" = "overall_status"
    #                      "Interventions" = "interventions",
    #                      Mechanism
-                         ) %>%
-            arrange( desc(combined_score)) %>% ## sort on score desc
-            dplyr::select(-combined_score) %>%
-            unique() %>%
-            kable("html", escape = FALSE) %>%
-            # kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
-            kable_styling(bootstrap_options = c("hover", "condensed", "responsive")) %>%
-            #collapse_rows(columns = c(1,2,4,5), valign = "middle") %>%
-            #row_spec(row=3, hline_after = TRUE) %>%
-            kable_styling(fixed_thead = T))
-
-
-
-   } else print("No matching studies fround")
+                               ))
+        table <- arrange(table, desc(combined_score))
+        table <- dplyr::select(table, -combined_score)
+        
+        table <- DT::datatable(table, escape = which(names(table) == "Brief title"))
+        
+        return(table)
 })
+
+output$datatable <- DT::renderDT(formattedTable())
+
+
+# display formatted table
+DT::DTOutput("datatable") 
+
 ```
 
-  
+   
 ### Study ranking details  
 
   
