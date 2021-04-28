@@ -200,31 +200,33 @@ reactiveCancerStudies <- reactive({
 
 **Order studies based on genetic alterations**    
 ```{r parse alterations from URL}
-## define a variable that will hold alterations from URL
-#urlAlterations <- NA
-
-## define a reactive value that will hold selected cancer type
-# urlAlterations <- reactive({
-#   alterations <- input$geneFilter
-#   ## return value
-#   alterations
-# })
-
-
-
 
 observe({
       query <- parseQueryString(session$clientData$url_search)
       if (!is.null(query[['alterations']])) {
-        urlAlterations <- query[['alterations']]
-        updateTextInput(session, "alterations", value = urlAlterations)
-      }
-    })
+        urlValues$alterations <- query[['alterations']]
+        urlValues$alterations <- urlValues$alterations
+        # urlValues$alterations <- unlist(strsplit(urlValues$alterations, split=","))
+        updateTextInput(session, "alterations", value = urlValues$alterations)
+      } 
+})
 
-## URL when running locally is http://127.0.0.1:3831/TRIAL_MATCH_SHINY.Rmd
 
-## can test by manually changing URL to e.g. 
+
+
+# observe({
+#       query <- parseQueryString(session$clientData$url_search)
+#       if (!is.null(query[['alterations']])) {
+#         urlAlterations <- query[['alterations']]
+#         updateTextInput(session, "alterations", value = urlAlterations)
+#       }
+#     })
+
+
+## can test when running locally by manually changing URL to e.g. 
 ##  http://127.0.0.1:7712/TRIAL_MATCH_SHINY.Rmd?cancerType=Breast&alterations=ERBB2 amplification
+## or http://127.0.0.1:5793/TRIAL_MATCH_SHINY.Rmd?cancerType=Breast&alterations=ERBB2%20amplification,%20KRAS%20mutation
+
 ```
 
 
@@ -251,7 +253,10 @@ shiny::renderUI({
 
 ## define a reactive value that will hold selected cancer type
 selectedAlterations <- reactive({
-  alterations <- input$geneFilter
+  if(!is.null(urlValues$alterations)) {
+    alterations <- urlValues$alterations
+  } else {alterations <- input$geneFilter}
+  
   ## return value
   alterations
 })
@@ -644,7 +649,11 @@ DATA SOURCES:
   
   
 
-  
+```{r disconnect from database}
+dbDisconnect(con) 
+
+```
+
   
 
 
