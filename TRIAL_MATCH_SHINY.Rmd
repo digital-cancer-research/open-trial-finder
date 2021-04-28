@@ -130,12 +130,42 @@ Inputs {.sidebar}
 **FILTERS**  
   
   
-**Filter on cancer type**    
+**Filter studies on cancer type**    
 
-```{r  cancer type filter}
+```{r parse cancer type from URL}
+## define a reactive value that will hold cancer type from URL, if any
+urlValues <- reactiveValues()
+
+#urlCancerType <- reactive({
+observe({
+      query <- parseQueryString(session$clientData$url_search)
+      if (!is.null(query[['cancerType']])) {
+        urlValues$CancerType <- query[['cancerType']]
+        updateTextInput(session, "cancerType", value = urlValues$CancerType)
+      } 
+})
+
+
+output$reactiveCancerFilter <- renderUI({
+   selectInput(inputId = "cancerTypeFilter", label=NULL, choices = available.cancer.types, selected = urlValues$CancerType, multiple = FALSE,  selectize = TRUE, width = NULL, size = NULL)
+})
+# display filter
+shiny::renderUI({
+   uiOutput("reactiveCancerFilter")
+})
+
+## can test when running locally by manually changing URL to e.g. http://127.0.0.1:7712/TRIAL_MATCH_SHINY.Rmd?cancerType=Breast
+
+```
+
+
+```{r static cancer type filter}
 ## display filter for cancer type
 available.cancer.types <- sort(unique(cancerStudies$TARGET.condition))
-selectInput(inputId = "cancerTypeFilter", label=NULL, choices = available.cancer.types, selected = NULL, multiple = FALSE,  selectize = TRUE, width = NULL, size = NULL)
+# selectInput(inputId = "cancerTypeFilter", label=NULL, choices = available.cancer.types, selected = NULL, multiple = FALSE,  selectize = TRUE, width = NULL, size = NULL)
+
+## get cancer type from URL
+# selectInput(inputId = "cancerTypeFilter", label=NULL, choices = available.cancer.types, selected = urlCancerType, multiple = FALSE,  selectize = TRUE, width = NULL, size = NULL)
 
 
 checkboxInput(inputId="solidTumourFilter", label="Include matches on solid tumour?", value = TRUE, width = NULL)
@@ -148,15 +178,7 @@ selectedCancerTypes <- reactive({
   cancer.types
 })
 
-# synonymsLabel <- reactive({
-#    synonyms <- paste(unique(conditionSynonyms$condition.synonyms[conditionSynonyms$controlled.cancer.type==input$cancerTypeFilter]), collapse = ", ")
-#    synonyms
-# })
 
-## uncomment this line if you want to show synonyms included in matches for each cancer type
-# shiny::renderText({
-#    paste(synonymsLabel(), collapse = "\n")
-# })
 
 ```
 
@@ -176,7 +198,36 @@ reactiveCancerStudies <- reactive({
 
 
 
-**Filter on genetic alterations**    
+**Order studies based on genetic alterations**    
+```{r parse alterations from URL}
+## define a variable that will hold alterations from URL
+#urlAlterations <- NA
+
+## define a reactive value that will hold selected cancer type
+# urlAlterations <- reactive({
+#   alterations <- input$geneFilter
+#   ## return value
+#   alterations
+# })
+
+
+
+
+observe({
+      query <- parseQueryString(session$clientData$url_search)
+      if (!is.null(query[['alterations']])) {
+        urlAlterations <- query[['alterations']]
+        updateTextInput(session, "alterations", value = urlAlterations)
+      }
+    })
+
+## URL when running locally is http://127.0.0.1:3831/TRIAL_MATCH_SHINY.Rmd
+
+## can test by manually changing URL to e.g. 
+##  http://127.0.0.1:7712/TRIAL_MATCH_SHINY.Rmd?cancerType=Breast&alterations=ERBB2 amplification
+```
+
+
 
 ```{r define reactive gene filter}
 ## only genes with rationale for selected cancer type will be presented
@@ -206,6 +257,7 @@ selectedAlterations <- reactive({
 })
 
 ```
+(Entrez symbols - e.g. for HER2, search on ERBB2)  
 
 
 **Filter on study drug mechanisms**    
@@ -233,8 +285,7 @@ shiny::renderUI({
 checkboxInput(inputId="confidenceFilter", label="Hide matches on cancer type alone?", value = FALSE, width = NULL)
 ```
       
-  
- 
+
   
 ```{r download button}
 
@@ -507,8 +558,44 @@ output$datatable <- DT::renderDT(formattedTable())
 DT::DTOutput("datatable") 
 
 ```
+  
+### Shortlisted studies  
+  
+    
+```{r detect selection of rows}
+## see also https://yihui.shinyapps.io/DT-proxy/ 
 
-   
+proxy = dataTableProxy('datatable')
+
+  observeEvent(input$select1, {
+    proxy %>% selectRows(as.numeric(input$rows))
+  })
+
+output$info = renderPrint({
+    list(rows = input$datatable_rows_selected)
+  })
+
+
+```
+  
+  
+```{r show selected rows}
+verbatimTextOutput('info')
+
+
+```
+     
+### URL parameters
+  
+```{r access parameters from URL}
+textInput("cancerType", "Cancer type", "no cancer type in URL")
+textInput("alterations", "Genetic alterations", "none specified in URL")
+## see also https://stackoverflow.com/questions/32872222/how-do-you-pass-parameters-to-a-shiny-app-via-url
+
+
+```
+
+
 ### Study ranking details  
 
   
