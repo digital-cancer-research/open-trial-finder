@@ -308,12 +308,25 @@ output$report <- downloadHandler(
         file.copy("trial_report.Rmd", tempReport, overwrite = TRUE)
 
         table=mergedStudyTable()
+        
+        ## filter and retain only studies on the shortlist
+        shortlist = shortlist()
+        table <- dplyr::filter(table, nct_id %in% shortlist$ID)
+        
+        ## pass the shortlist instead of full table
+        #table = shortlist()
+        # table <- formattedTable()
+        # indices <- input$datatable_rows_selected
+        # table <- table[indices, ]
+
+          if(!is.na(map.selection$id )) {
+            table <- dplyr::filter(table, nct_id == map.selection$id )
+         }
+        
         table[is.na(table)] <- "-"
         table=toJSON(table)
         
-         if(!is.na(map.selection$id )) {
-            table <- dplyr::filter(table, nct_id == map.selection$id )
-         }
+       
 
         # Set up parameters to pass to Rmd document
         params <- list(subject_ID="not provided", 
@@ -520,6 +533,7 @@ formattedTable <- reactive({
       table <- dplyr::filter(table, nct_id == map.selection$id )
    }
         table$brief_title <- paste0('<a href="',table$Link,'" target="_blank">',table$brief_title ,  " </a>")
+        table$ID <- table$nct_id
         table <- aggregate(table, by=table['nct_id'], function(x) {paste(unique(x), collapse = ";\n")})
         table <- unique(dplyr::select(table, 
                             combined_score, 
@@ -534,7 +548,8 @@ formattedTable <- reactive({
                           # "Centres" = "sites",
                           # "Investigators" = "investigators",
                             "Contacts" = "contacts",
-                          # "Study ID" = nct_id
+                          ID
+                          # "StudyID" = nct_id
                           #"Overall status" = "overall_status"
    #                      "Interventions" = "interventions",
    #                      Mechanism
@@ -551,7 +566,7 @@ formattedTable <- reactive({
 
 # output$datatable <- DT::renderDT(formattedTable(), escape = which(names(table) == "Brief title"), options = list(ordering=F))
 
-output$datatable <- DT::renderDT(formattedTable(), escape = 1:length(names(table)), options = list(ordering=F))
+output$datatable <- DT::renderDT(formattedTable(), escape = 5, options = list(ordering=F))
 
 
 # display formatted table
@@ -601,7 +616,12 @@ shortlist <- reactive({
   return(table)
 })
 
-output$shortlistTable <- DT::renderDT(shortlist(), escape = which(names(table) == "Brief title"), options = list(ordering=F))
+
+#renderPrint()
+
+# output$shortlistTable <- DT::renderDT(shortlist(), escape = which(names(table) == "Brief title"), options = list(ordering=F))
+
+output$shortlistTable <- DT::renderDT(shortlist(), escape = 5, options = list(ordering=F))
 
 
 # display formatted table
