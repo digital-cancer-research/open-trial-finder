@@ -542,12 +542,16 @@ formattedTable <- reactive({
         table <- arrange(table, desc(combined_score))
         table <- dplyr::select(table, -combined_score)
         
-        table <- DT::datatable(table, escape = which(names(table) == "Brief title"), options = list(ordering=F))
+        # table <- DT::datatable(table, escape = which(names(table) == "Brief title"), options = list(ordering=F))
+        #table <- DT::datatable(table, escape = TRUE, options = list(ordering=F))
+
         
         return(table)
 })
 
-output$datatable <- DT::renderDT(formattedTable())
+# output$datatable <- DT::renderDT(formattedTable(), escape = which(names(table) == "Brief title"), options = list(ordering=F))
+
+output$datatable <- DT::renderDT(formattedTable(), escape = 1:length(names(table)), options = list(ordering=F))
 
 
 # display formatted table
@@ -555,7 +559,7 @@ DT::DTOutput("datatable")
 
 ```
   
-### Shortlisted studies (`r renderText(numberSelectedRows())`)
+### Shortlisted studies (`r renderText(countSelectedRows())`)
   
     
 ```{r detect selection of rows}
@@ -570,17 +574,16 @@ proxy = dataTableProxy('datatable')
   
   
 output$info = renderPrint({
-    #length(list(rows = input$datatable_rows_selected))
-    length(input$datatable_rows_selected)
-
+  input$datatable_rows_selected
   })
 
 
+
 ## define a reactive value that will hold number selected rows
-numberSelectedRows <- reactive({
-  number <- length(input$datatable_rows_selected)
+countSelectedRows <- reactive({
+  count <- length(input$datatable_rows_selected)
   ## return value
-  number
+  count
 })
 
 
@@ -589,10 +592,20 @@ numberSelectedRows <- reactive({
   
 ```{r show selected rows}
 #verbatimTextOutput('info')
-#verbatimTextOutput(numberSelectedRows())
-renderPrint(numberSelectedRows())
+#renderPrint(length(input$datatable_rows_selected))
+
+shortlist <- reactive({
+  table <- formattedTable()
+  indices <- input$datatable_rows_selected
+  table <- table[indices, ]
+  return(table)
+})
+
+output$shortlistTable <- DT::renderDT(shortlist(), escape = which(names(table) == "Brief title"), options = list(ordering=F))
 
 
+# display formatted table
+DT::DTOutput("shortlistTable") 
 ```
      
 <!-- ### URL parameters -->
