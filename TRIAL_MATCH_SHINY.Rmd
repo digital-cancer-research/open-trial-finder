@@ -220,7 +220,17 @@ observe({
 
 
 ```{r define reactive gene filter}
-## only genes with rationale for selected cancer type will be presented
+## if alterations have been passed as URL arguments, get values
+urlAlterations <- reactive({
+    if(!is.null(urlValues$alterations)) {
+    alterations <- unlist(strsplit(urlValues$alterations, split=","))
+    } else alterations = NULL
+  ## return value
+  alterations
+})
+
+
+
 
 ## define how filter values will be populated
 output$reactiveGeneFilter <- renderUI({
@@ -230,7 +240,7 @@ output$reactiveGeneFilter <- renderUI({
    table <- merge(x=table, by.x="nct_id", y=scoredMatches, by.y = "nct_id")
    gene_variant_type.list <- sort(unique(table$gene_variant_type))
    
-   selectInput(inputId = "geneFilter", label=NULL, choices = gene_variant_type.list, selected = selectedAlterations(), multiple = TRUE,  selectize = TRUE, width = NULL, size = NULL)
+   selectInput(inputId = "geneFilter", label=NULL, choices = gene_variant_type.list, selected = urlAlterations(), multiple = TRUE,  selectize = TRUE, width = NULL, size = NULL)
 
 })
 
@@ -240,11 +250,23 @@ shiny::renderUI({
 })
 
 
-## define a reactive value that will hold selected cancer type
+
+## define a reactive value that will hold selected alterations
+# if url values passed, these are stored
+# however, if url values are deleted from geneFilter, this reactive value is updated accordingly
 selectedAlterations <- reactive({
-  if(!is.null(urlValues$alterations)) {
-    alterations <- unlist(strsplit(urlValues$alterations, split=","))
-  } else {alterations <- input$geneFilter}
+  
+  if(!is.null(urlAlterations()) & is.null(input$geneFilter)) {
+    alterations <-urlAlterations()
+  } else if(!is.null(input$geneFilter)) {
+    alterations <- input$geneFilter
+  } else {alterations <- NULL}
+  
+  
+  # if(!is.null(input$geneFilter)) {
+  #   alterations <- input$geneFilter
+  # } else {alterations <-urlAlterations()}
+  
   
   #alterations <- input$geneFilter
   ## return value
@@ -364,6 +386,7 @@ reactiveScoredMatches <- reactive({
    table <- scoredMatches
    table <- dplyr::filter(table, gene_variant_type %in% selectedAlterations())
    
+
    # if(!is.null(input$geneFilter)) {
    #    table <- dplyr::filter(table, gene_variant_type %in% input$geneFilter)
    # }
