@@ -234,11 +234,13 @@ urlAlterations <- reactive({
 
 ## define how filter values will be populated
 output$reactiveGeneFilter <- renderUI({
-   cancer.types <- selectedCancerTypes()
+   ## having reactive list of alterations means only those with matching studies are shown, but if toggle solid tumour on/off, the UI reacts and selected values are reset to the url arguments...
+   # cancer.types <- selectedCancerTypes()
+   # table <- dplyr::filter(cancerStudies, TARGET.condition %in% cancer.types) 
+   # table <- merge(x=table, by.x="nct_id", y=scoredMatches, by.y = "nct_id")
+   # gene_variant_type.list <- sort(unique(table$gene_variant_type))
    
-   table <- dplyr::filter(cancerStudies, TARGET.condition %in% cancer.types) 
-   table <- merge(x=table, by.x="nct_id", y=scoredMatches, by.y = "nct_id")
-   gene_variant_type.list <- sort(unique(table$gene_variant_type))
+   gene_variant_type.list <- sort(unique(scoredMatches$gene_variant_type))
    
    selectInput(inputId = "geneFilter", label=NULL, choices = gene_variant_type.list, selected = urlAlterations(), multiple = TRUE,  selectize = TRUE, width = NULL, size = NULL)
 

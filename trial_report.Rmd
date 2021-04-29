@@ -63,6 +63,7 @@ if(nrow(paramTable)>0) {
            mutate(investigators = cell_spec(x=table$investigators,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
            mutate(contacts = cell_spec(x=table$contacts,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
            mutate(criteria = cell_spec(x=table$matching_criteria,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+           mutate(Exclusions = cell_spec(x=table$Exclusions,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
           aggregate( by=table['nct_id'], function(x) {paste(unique(x), collapse = ";\n")}) %>%
           dplyr::select(combined_score,
                         "Matching cancer type(s)" = "matching.condition",
@@ -70,6 +71,7 @@ if(nrow(paramTable)>0) {
                          "Drug rationale" = "intervention_rationale",
                          "Eligibility" = "eligibility_rationale",
                          "Brief title" = "brief_title",
+                        "Interventions" = "interventions",
                          "Matching inclusion criteria" = "criteria",
                         "Prior Therapy exclusions" = Exclusions,
                          "Locations" = "locations",
