@@ -141,7 +141,7 @@ observe({
       query <- parseQueryString(session$clientData$url_search)
       if (!is.null(query[['cancerType']])) {
         urlValues$CancerType <- query[['cancerType']]
-        updateTextInput(session, "cancerType", value = urlValues$CancerType)
+        #updateTextInput(session, "cancerType", value = urlValues$CancerType)
       } 
 })
 
@@ -206,26 +206,14 @@ observe({
       if (!is.null(query[['alterations']])) {
         urlValues$alterations <- query[['alterations']]
         urlValues$alterations <- urlValues$alterations
-        # urlValues$alterations <- unlist(strsplit(urlValues$alterations, split=","))
-        updateTextInput(session, "alterations", value = urlValues$alterations)
+        #updateTextInput(session, "alterations", value = urlValues$alterations)
       } 
 })
 
 
-
-
-# observe({
-#       query <- parseQueryString(session$clientData$url_search)
-#       if (!is.null(query[['alterations']])) {
-#         urlAlterations <- query[['alterations']]
-#         updateTextInput(session, "alterations", value = urlAlterations)
-#       }
-#     })
-
-
 ## can test when running locally by manually changing URL to e.g. 
 ##  http://127.0.0.1:7712/TRIAL_MATCH_SHINY.Rmd?cancerType=Breast&alterations=ERBB2 amplification
-## or http://127.0.0.1:5793/TRIAL_MATCH_SHINY.Rmd?cancerType=Breast&alterations=ERBB2%20amplification,%20KRAS%20mutation
+## or http://127.0.0.1:5793/TRIAL_MATCH_SHINY.Rmd?cancerType=Breast&alterations=ERBB2%20amplification,KRAS%20mutation
 
 ```
 
@@ -236,15 +224,16 @@ observe({
 
 ## define how filter values will be populated
 output$reactiveGeneFilter <- renderUI({
-   # if(input$solidTumourFilter==FALSE) {cancer.types <- input$cancerTypeFilter}
-   # else {cancer.types <- c(input$cancerTypeFilter, "Solid")}
    cancer.types <- selectedCancerTypes()
+   
    table <- dplyr::filter(cancerStudies, TARGET.condition %in% cancer.types) 
    table <- merge(x=table, by.x="nct_id", y=scoredMatches, by.y = "nct_id")
    gene_variant_type.list <- sort(unique(table$gene_variant_type))
-
+   
    selectInput(inputId = "geneFilter", label=NULL, choices = gene_variant_type.list, selected = selectedAlterations(), multiple = TRUE,  selectize = TRUE, width = NULL, size = NULL)
+
 })
+
 # display filter
 shiny::renderUI({
    uiOutput("reactiveGeneFilter") 
@@ -254,9 +243,10 @@ shiny::renderUI({
 ## define a reactive value that will hold selected cancer type
 selectedAlterations <- reactive({
   if(!is.null(urlValues$alterations)) {
-    alterations <- urlValues$alterations
+    alterations <- unlist(strsplit(urlValues$alterations, split=","))
   } else {alterations <- input$geneFilter}
   
+  #alterations <- input$geneFilter
   ## return value
   alterations
 })
@@ -530,6 +520,7 @@ formattedTable <- reactive({
       table <- dplyr::filter(table, nct_id == map.selection$id )
    }
         table$brief_title <- paste0('<a href="',table$Link,'" target="_blank">',table$brief_title ,  " </a>")
+        table <- aggregate(table, by=table['nct_id'], function(x) {paste(unique(x), collapse = ";\n")})
         table <- unique(dplyr::select(table, 
                             combined_score, 
                             "Matching cancer type(s)" = "matching.condition",
@@ -564,7 +555,7 @@ DT::DTOutput("datatable")
 
 ```
   
-### Shortlisted studies  
+<!-- ### Shortlisted studies   -->
   
     
 ```{r detect selection of rows}
@@ -585,16 +576,16 @@ output$info = renderPrint({
   
   
 ```{r show selected rows}
-verbatimTextOutput('info')
+# verbatimTextOutput('info')
 
 
 ```
      
-### URL parameters
+<!-- ### URL parameters -->
   
 ```{r access parameters from URL}
-textInput("cancerType", "Cancer type", "no cancer type in URL")
-textInput("alterations", "Genetic alterations", "none specified in URL")
+# textInput("cancerType", "Cancer type", "no cancer type in URL")
+# textInput("alterations", "Genetic alterations", "none specified in URL")
 ## see also https://stackoverflow.com/questions/32872222/how-do-you-pass-parameters-to-a-shiny-app-via-url
 
 
