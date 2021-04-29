@@ -555,7 +555,7 @@ DT::DTOutput("datatable")
 
 ```
   
-<!-- ### Shortlisted studies   -->
+### Shortlisted studies (`r renderText(numberSelectedRows())`)
   
     
 ```{r detect selection of rows}
@@ -567,16 +567,30 @@ proxy = dataTableProxy('datatable')
     proxy %>% selectRows(as.numeric(input$rows))
   })
 
+  
+  
 output$info = renderPrint({
-    list(rows = input$datatable_rows_selected)
+    #length(list(rows = input$datatable_rows_selected))
+    length(input$datatable_rows_selected)
+
   })
+
+
+## define a reactive value that will hold number selected rows
+numberSelectedRows <- reactive({
+  number <- length(input$datatable_rows_selected)
+  ## return value
+  number
+})
 
 
 ```
   
   
 ```{r show selected rows}
-# verbatimTextOutput('info')
+#verbatimTextOutput('info')
+#verbatimTextOutput(numberSelectedRows())
+renderPrint(numberSelectedRows())
 
 
 ```
