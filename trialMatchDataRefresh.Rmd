@@ -69,7 +69,14 @@ dbListTables(con)
 ## conditionSynonyms specifies which cancer types are of interest, and which condition names (as used by clinicaltrials.gov) will be considered as matches for each
 
 ## synonyms define on basis of those in clinicaltrials.gov
-conditionSynonyms <- read.csv(file = "conditionSynonyms4.csv", stringsAsFactors = FALSE)
+#conditionSynonyms <- read.csv(file = "conditionSynonyms4.csv", stringsAsFactors = FALSE)
+## updated set of more granular cancer types
+conditionSynonyms <- read.csv(file = "conditionSynonyms5.csv", stringsAsFactors = FALSE)
+
+
+
+
+## trim leading/trailing whitespace
 
 ## remove redundancy, if any
 conditionSynonyms <- unique(conditionSynonyms)
@@ -842,7 +849,9 @@ fusion.eligibilities <- eligibilities
 ## define fusion pattern
 fusionPattern <- " fusion|rearrangement"
 ## specify word range - fusionPattern must occur within this many words of a gene name
-fusionWordRange <- 6
+fusionWordRange <- 7
+
+## also consider indexing on duplication, deletion
 
 ## define which rows contain a match for mutantPattern
 fusionIndices <- grep(pattern = fusionPattern, x=fusion.eligibilities$criteria, ignore.case = T)
@@ -862,7 +871,9 @@ for(i in 1:nrow(fusion.eligibilities)) {
     criterion <- paste(criterion,alternative.criterion, sep = " " )
     # split into tokens
     criterion <- unlist(strsplit(x=criterion, split = " |\\(|\\)|,|-|/"))
-    
+    ## criterion is now a vector of tokens (words, but also some empty elements)
+    ## remove any empty elements in criterion 
+    criterion <- criterion[criterion!=""]
     
     ## get indices of match(es) against fusionPattern (need to squish preceding space)
     indices <- grep(pattern = str_squish(fusionPattern), x = criterion, ignore.case = TRUE)

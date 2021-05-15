@@ -13,3 +13,5 @@
 *.sqlite
 *.sqlite
 .Rhistory
+*.sqlite
+.Rhistory
