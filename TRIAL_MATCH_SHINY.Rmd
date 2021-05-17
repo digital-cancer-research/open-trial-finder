@@ -41,7 +41,8 @@ con <- dbConnect(RSQLite::SQLite(), "trialMatchData.sqlite")
 ## read cancerStudies table into memory
 cancerStudies <- dbGetQuery(con, "SELECT * FROM cancerStudies")
 
-
+## get refresh date
+refresh.date <- unique(cancerStudies$Refresh.date)
 
 ## contains study details, mapped to a controlled set of cancer types in the "TARGET.condition"  column
 ## names are
@@ -125,7 +126,7 @@ scoredMatches <- dbGetQuery(con, "SELECT * FROM scoredMatches")
 
 ```
 
-
+# (data refreshed `r refresh.date`)  
 
 Inputs {.sidebar}
 -----------------------------------------------------------------------
@@ -204,6 +205,11 @@ reactiveCancerStudies <- reactive({
 **Rank matching studies based on genetic alterations**    
 
 ```{r parse alterations from URL}
+## try this on command line
+# parseQueryString("http://127.0.0.1:5793/TRIAL_MATCH_SHINY.Rmd?cancerType=Breast&alterations=ERBB2%20amplification,KRAS%20mutation")
+
+
+
 observe({
       query <- parseQueryString(session$clientData$url_search)
       if (!is.null(query[['alterations']])) {
