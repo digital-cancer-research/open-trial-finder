@@ -11,6 +11,7 @@ params:
   subject_ID: "Not provided"
   cancer_type: "cancer type"
   include_solid: "T/F"
+  synonyms: "condition synonyms"
   genes: "mutations, fusions, amplifications"
   mechanism_filter: "mechanism(s)"
   hide_cancer_only: "T/F"
@@ -107,12 +108,12 @@ if(nrow(paramTable)>0) {
   
 Date of report: **`r today`**   
   
-Subject ID: **`r params$subject_ID`**  
-
-Cancer type: **`r params$cancer_type`**  
+Cancer type(s): **`r params$cancer_type`**  
+  
+Synonyms included for selected cancer type(s): **`r params$synonyms`**  
   
 Include matches on solid tumour? **`r params$include_solid`**  
-  
+    
 Genetic alterations included in search: **`r paste(params$genes, collapse=", ")`**  
   
 Drug mechanism filters: **`r paste(params$mechanism_filter, collapse=", ")`**  

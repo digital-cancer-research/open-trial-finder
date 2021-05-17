@@ -77,6 +77,7 @@ conditionSynonyms <- read.csv(file = "conditionSynonyms5.csv", stringsAsFactors 
 
 
 ## trim leading/trailing whitespace
+conditionSynonyms$condition.synonyms <- str_squish(string = conditionSynonyms$condition.synonyms)
 
 ## remove redundancy, if any
 conditionSynonyms <- unique(conditionSynonyms)
@@ -872,7 +873,7 @@ formattable(head(fusion.eligibilities))
   
 ```{r index criteria on rearrangements}
 
-rearrangement.eligibilities <- indexOnPattern(eligibilities = eligibilities, pattern = " fusion|rearrangement|truncation|truncated|deletion|loss|deleted|lost|duplication|duplicated", wordRange = 6, featureLabel = "rearrangement")
+rearrangement.eligibilities <- indexOnPattern(eligibilities = eligibilities, pattern = " fusion|rearrangement|truncation|truncated|deletion|deleted|lost|duplication|duplicated", wordRange = 6, featureLabel = "rearrangement")
 
 ## preview
 formattable(head(rearrangement.eligibilities))
@@ -882,8 +883,8 @@ formattable(head(rearrangement.eligibilities))
      
   
 ```{r index criteria on copy number loss}
-
-loss.eligibilities <- indexOnPattern(eligibilities = eligibilities, pattern = " amplification|overexpression", wordRange = 5, featureLabel = "amplification")
+## NOTE USE WORD RANGE OF 2 FOR LOSS, OTHERWISE GET TOO MANY FALSE HITS (including "loss of function" etc, which is indexed as a mutation)
+loss.eligibilities <- indexOnPattern(eligibilities = eligibilities, pattern = "loss", wordRange = 2, featureLabel = "loss")
 
 ## preview
 formattable(head(loss.eligibilities))
@@ -901,7 +902,7 @@ formattable(head(loss.eligibilities))
 amplification.eligibilities <- indexOnPattern(eligibilities = eligibilities, pattern = " amplification|overexpression", wordRange = 5, featureLabel = "amplification")
 
 ## preview
-formattable(head(rearrangement.eligibilities))
+formattable(head(amplification.eligibilities))
 
 ```
   
@@ -947,7 +948,7 @@ formattable(head(therapy.eligibilities))
 # indexed.eligibilities <- unique(rbind(mutation.eligibilities, fusion.eligibilities,  amplification.eligibilities, therapy.eligibilities))
 
 
-indexed.eligibilities <- unique(rbind(mutation.eligibilities, rearrangement.eligibilities,  amplification.eligibilities, therapy.eligibilities))
+indexed.eligibilities <- unique(rbind(mutation.eligibilities, rearrangement.eligibilities, loss.eligibilities, amplification.eligibilities, therapy.eligibilities))
 
 
 

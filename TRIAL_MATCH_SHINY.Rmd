@@ -65,7 +65,7 @@ cancerStudies <- unique(dplyr::select(cancerStudies, -c("postcode.lat", "postcod
 cancerStudies <- rename(cancerStudies, "Mechanism"="ParentTerm")
 
 ## read conditions and synonyms into memory
-# conditionSynonyms <- read.csv(file="conditionSynonyms4.csv", header = TRUE, stringsAsFactors = FALSE)
+conditionSynonyms <- dbGetQuery(con, "SELECT * FROM cancers")
 ```
 
 ```{r get a full set of all study locations}
@@ -199,6 +199,15 @@ reactiveCancerStudies <- reactive({
 })
 ```
  
+```{r define reactive value to hold cancer type synonyms}
+
+synonymsLabel <- reactive({
+   synonyms <- paste(unique(conditionSynonyms$condition.synonyms[conditionSynonyms$controlled.cancer.type==input$cancerTypeFilter]), collapse = ", ")
+   synonyms
+})
+
+
+```
 
 
 
@@ -213,16 +222,21 @@ reactiveCancerStudies <- reactive({
 observe({
       query <- parseQueryString(session$clientData$url_search)
       if (!is.null(query[['alterations']])) {
-        urlValues$alterations <- query[['alterations']]
-        urlValues$alterations <- urlValues$alterations
+        # urlValues$alterations <- query[['alterations']]
+        # urlValues$alterations <- urlValues$alterations
+        
+        # get alterations from url
+        alterations <- query[['alterations']]
+        
+        
+        urlValues$alterations <- alterations
         #updateTextInput(session, "alterations", value = urlValues$alterations)
       } 
 })
 
 
-## can test when running locally by manually changing URL to e.g. 
-##  http://127.0.0.1:7712/TRIAL_MATCH_SHINY.Rmd?cancerType=Breast&alterations=ERBB2 amplification
-## or http://127.0.0.1:5793/TRIAL_MATCH_SHINY.Rmd?cancerType=Breast&alterations=ERBB2%20amplification,KRAS%20mutation
+
+
 
 ```
 
@@ -231,12 +245,25 @@ observe({
 urlAlterations <- reactive({
     if(!is.null(urlValues$alterations)) {
     alterations <- unlist(strsplit(urlValues$alterations, split=","))
+    
+    ## strip out surplus argument details
+    # for mutations
+    alterations <- gsub(pattern = "SV .*", replacement = "mutation", x=alterations, ignore.case = TRUE)
+    # for rearrangements
+    alterations <- gsub(pattern = "rearrangement .*", replacement = "rearrangement", x=alterations, ignore.case = TRUE)
+    # for CNA amplification
+    alterations <- gsub(pattern = "CNA .*amplification", replacement = "amplification", x=alterations, ignore.case = TRUE)
+    # for CNA loss
+    alterations <- gsub(pattern = " CNA ", replacement = " ", x=alterations, ignore.case = TRUE)
+    # drop repeated alterations
+    alterations <- unique(alterations)
     } else alterations = NULL
   ## return value
   return(alterations)
 })
 
-
+## test eTARGET integration with the following URL
+# http://127.0.0.1:7712/TRIAL_MATCH_SHINY.Rmd?cancerType=Breast&alterations=ERBB2 CNA amplification,EGFR CNA partial_amplification,PTEN CNA loss,ABL1 rearrangement duplication,ABL1 rearrangement duplication,KRAS SV c.34G>T p.(G12C),ERBB2 amplification,EP300 rearrangement duplication,EP300 rearrangement duplication 
 ```
 
 ```{r display gene filter}
@@ -269,7 +296,7 @@ shiny::renderUI({
 selectedAlterations <- reactive({
   
   if(!is.null(urlAlterations()) & is.null(input$geneFilter)) {
-    alterations <-urlAlterations()
+    alterations <- urlAlterations()
   } else if(!is.null(input$geneFilter)) {
     alterations <- input$geneFilter
   } else {alterations <- NULL}
@@ -606,8 +633,10 @@ output$report <- downloadHandler(
         # Set up parameters to pass to Rmd document
         params <- list(subject_ID="not provided", 
                        cancer_type= input$cancerTypeFilter,
+                       synonyms = synonymsLabel(), 
                        include_solid= input$solidTumourFilter, 
-                       genes=input$geneFilter,
+                       genes = urlAlterations(),
+                       #genes=input$geneFilter,
                        mechanism_filter=input$mechanismFilter, 
                        hide_cancer_only=input$confidenceFilter, 
                        #table=toJSON(read.csv("exampleTable.csv"))
@@ -738,7 +767,7 @@ output$shortlistTable <- DT::renderDT(shortlist(), escape = 5, options = list(or
 fillCol(height = 600, flex = c(NA, 1), 
         #DT::DTOutput("shortlistTable"),
         inputPanel(
-          shiny::renderUI({downloadButton("downloadShortlist", "Download selecetd studies", class = "btn-primary")})
+          shiny::renderUI({downloadButton("downloadShortlist", "Download selected studies", class = "btn-primary")})
           #actionButton(inputId="clearShortlist", "Clear shortlist", class = "btn-dark")
           ),
         DT::DTOutput("shortlistTable") 
@@ -779,7 +808,9 @@ output$downloadShortlist <- downloadHandler(
         params <- list(subject_ID="not provided", 
                        cancer_type= input$cancerTypeFilter,
                        include_solid= input$solidTumourFilter, 
-                       genes=input$geneFilter,
+                       synonyms = synonymsLabel(), 
+                       #genes=input$geneFilter,
+                       genes = urlAlterations(),
                        mechanism_filter=input$mechanismFilter, 
                        hide_cancer_only=input$confidenceFilter, 
                        #table=toJSON(read.csv("exampleTable.csv"))

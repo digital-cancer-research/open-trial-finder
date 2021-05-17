@@ -16,3 +16,5 @@
 *.sqlite
 .Rhistory
 *.sqlite
+trialMatchData.sqlite
+.Rhistory
