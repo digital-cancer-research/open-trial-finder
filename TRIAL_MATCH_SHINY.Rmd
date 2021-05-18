@@ -297,6 +297,8 @@ selectedAlterations <- reactive({
   
   if(!is.null(urlAlterations()) & is.null(input$geneFilter)) {
     alterations <- urlAlterations()
+    ## reset urlAlterations value
+    urlAlterations() <- NULL
   } else if(!is.null(input$geneFilter)) {
     alterations <- input$geneFilter
   } else {alterations <- NULL}
@@ -659,7 +661,8 @@ output$report <- downloadHandler(
                        cancer_type= input$cancerTypeFilter,
                        synonyms = synonymsLabel(), 
                        include_solid= input$solidTumourFilter, 
-                       genes = urlAlterations(),
+                       #genes = urlAlterations(),
+                       genes = selectedAlterations(),
                        #genes=input$geneFilter,
                        mechanism_filter=input$mechanismFilter, 
                        hide_cancer_only=input$confidenceFilter, 
