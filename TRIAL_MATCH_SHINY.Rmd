@@ -497,69 +497,69 @@ observeEvent(input$studiesmap_click, {
 ```
 
 ```{r define function to add buttons to table}
-buttonInput <- function(FUNCTION, length, id, ...) {
-    ## create an empty character vector of specified length
-    inputs <- character(length)
-    ## loop through vector
-    for (i in seq_len(length)) {
-      ## call the specified function with id and i as arguments
-      inputs[i] <- as.character(FUNCTION(paste0(id, i), ...))
-    }
-    return(inputs)
-  }
+# buttonInput <- function(FUNCTION, length, id, ...) {
+#     ## create an empty character vector of specified length
+#     inputs <- character(length)
+#     ## loop through vector
+#     for (i in seq_len(length)) {
+#       ## call the specified function with id and i as arguments
+#       inputs[i] <- as.character(FUNCTION(paste0(id, i), ...))
+#     }
+#     return(inputs)
+#   }
 
 ```
 
 ```{r render reactive datatable catch error for empty}
 
 ## render as datatable
-# formattedTable <- reactive({
-#   table <- mergedStudyTable()
-#    validate(
-#             need(nrow(table)>0, "No matching studies based on selected options")
-#         )
-#    table[is.na(table)] <- "-"
-#    if(!is.na(map.selection$id )) {
-#       table <- dplyr::filter(table, nct_id == map.selection$id )
-#    }
-#         table$brief_title <- paste0('<a href="',table$Link,'" target="_blank">',table$brief_title ,  " </a>")
-#         table$ID <- table$nct_id
-#         table <- aggregate(table, by=table['nct_id'], function(x) {paste(unique(x), collapse = ";\n")})
-#         table <- unique(dplyr::select(table, 
-#                             combined_score, 
-#                             "Matching cancer type(s)" = "matching.condition",
-#                             "Matching alteration(s)" = "gene_variant_type",
-#                             "Drug rationale" = "intervention_rationale",
-#                             "Eligibility" = "eligibility_rationale",
-#                             "Brief title" = "brief_title",
-#                           # "Matching inclusion criteria" = "criteria",
-#                           # "Prior Therapy exclusions" = Exclusions,
-#                             "Locations" = "locations",
-#                           # "Centres" = "sites",
-#                           # "Investigators" = "investigators",
-#                             "Contacts" = "contacts",
-#                           ID
-#                           # "StudyID" = nct_id
-#                           #"Overall status" = "overall_status"
-#    #                      "Interventions" = "interventions",
-#    #                      Mechanism
-#                                ))
-#         table <- arrange(table, desc(combined_score))
-#         table <- dplyr::select(table, -combined_score)
-#         
-#         
-#         ## action buttons in column of table
-#         # table$Action = buttonInput(
-#         #         FUNCTION = actionButton,
-#         #         length = nrow(table),
-#         #         id = 'button_',
-#         #         label = "Add to shortlist",
-#         #         class = "btn-primary",
-#         #         onclick = 'Shiny.onInputChange(\"lastClick\",  this.id)'
-#         #       )
-#         
-#         return(table)
-# })
+formattedTable <- reactive({
+  table <- mergedStudyTable()
+   validate(
+            need(nrow(table)>0, "No matching studies based on selected options")
+        )
+   table[is.na(table)] <- "-"
+   if(!is.na(map.selection$id )) {
+      table <- dplyr::filter(table, nct_id == map.selection$id )
+   }
+        table$brief_title <- paste0('<a href="',table$Link,'" target="_blank">',table$brief_title ,  " </a>")
+        table$ID <- table$nct_id
+        table <- aggregate(table, by=table['nct_id'], function(x) {paste(unique(x), collapse = ";\n")})
+        table <- unique(dplyr::select(table,
+                            combined_score,
+                            "Matching cancer type(s)" = "matching.condition",
+                            "Matching alteration(s)" = "gene_variant_type",
+                            "Drug rationale" = "intervention_rationale",
+                            "Eligibility" = "eligibility_rationale",
+                            "Brief title" = "brief_title",
+                          # "Matching inclusion criteria" = "criteria",
+                          # "Prior Therapy exclusions" = Exclusions,
+                            "Locations" = "locations",
+                          # "Centres" = "sites",
+                          # "Investigators" = "investigators",
+                            "Contacts" = "contacts",
+                          ID
+                          # "StudyID" = nct_id
+                          #"Overall status" = "overall_status"
+   #                      "Interventions" = "interventions",
+   #                      Mechanism
+                               ))
+        table <- arrange(table, desc(combined_score))
+        table <- dplyr::select(table, -combined_score)
+
+
+        ## action buttons in column of table
+        # table$Action = buttonInput(
+        #         FUNCTION = actionButton,
+        #         length = nrow(table),
+        #         id = 'button_',
+        #         label = "Add to shortlist",
+        #         class = "btn-primary",
+        #         onclick = 'Shiny.onInputChange(\"lastClick\",  this.id)'
+        #       )
+
+        return(table)
+})
 
 
 ## add ellipsis to locations, lose ID and contacts columns
@@ -580,15 +580,12 @@ buttonInput <- function(FUNCTION, length, id, ...) {
 #                                  )
 
 ## increase width of brief title column to 500 pixels
-# output$datatable <- DT::renderDT(dplyr::select(formattedTable(), -ID), escape = 5, 
-#                                  options = list(ordering=F, paging = FALSE, scrollX = TRUE, scrollY = "450px", scrollCollapse = TRUE, columnDefs = list(list(width = '500px', targets = list(5)))) )
-
-# output$datatable <- DT::renderDT(dplyr::select(formattedTable(), -ID), escape = 5, options = list(ordering=F,                                                                                           paging = FALSE,                                                                   scrollX = TRUE, 
-#       scrollY = "450px",                                                                          scrollCollapse = TRUE, 
-#       autoWidth = TRUE,
-#       columnDefs = list(list(width = '500px', targets = list(5)))
-#       #columnDefs = list(list(targets=c(5), visible=TRUE, width='30%'))
-#   )) 
+output$datatable <- DT::renderDT(dplyr::select(formattedTable(), -ID), rownames=FALSE, escape = 4, options = list(ordering=F,                                                                                           paging = FALSE,                                                                   scrollX = TRUE,
+      scrollY = "450px",                                                                          scrollCollapse = TRUE,
+      autoWidth = TRUE,
+      columnDefs = list(list(width = '500px', targets = list(4)))
+      #columnDefs = list(list(targets=c(5), visible=TRUE, width='30%'))
+  ))
 
 
 ```
@@ -602,117 +599,117 @@ buttonInput <- function(FUNCTION, length, id, ...) {
 
 ```{r render reactive datatable selectable cells catch error for empty}
 
-## render as datatable
-
-formattedTable <- reactive({
-  table <- mergedStudyTable()
-   validate(
-            need(nrow(table)>0, "No matching studies based on selected options")
-        )
-   table[is.na(table)] <- "-"
-   if(!is.na(map.selection$id )) {
-      table <- dplyr::filter(table, nct_id == map.selection$id )
-   }
-        table$brief_title <- paste0('<a href="',table$Link,'" target="_blank">',table$brief_title ,  " </a>")
-        table$ID <- table$nct_id
-        table <- aggregate(table, by=table['nct_id'], function(x) {paste(unique(x), collapse = ";\n")})
-      ## add checkboxes 
-      ## OPTION 1,  based on https://github.com/rstudio/DT/issues/93#issuecomment-111001538
-      # create a character vector of shiny inputs
-      shinyInput = function(FUN, len, id, ...) {
-        inputs = character(len)
-        for (i in seq_len(len)) {
-          inputs[i] = as.character(FUN(paste0(id, i), label = NULL, ...))     }
-        return(inputs)  } # end shinyInput function
-      ## call function to add a column of checkboxes
-      table$Shortlist = shinyInput(FUN=checkboxInput, len = nrow(table), id='Shortlist_', value = FALSE)
-      
-      ## OPTION 2, based on https://github.com/rstudio/DT/issues/185
-      # add a checkbox column
-      # table$Shortlist <- paste0("<input id='type1_",1:nrow(table), "' type='checkbox' >")
-      # ## to get the selected rows see https://yihui.shinyapps.io/DT-radio/ 
-
-      ## OPTION 3
-      # action buttons in column of table
-      # table$Shortlist = buttonInput(
-      #           FUNCTION = actionButton,
-      #           length = nrow(table),
-      #           id = 'button_',
-      #           label = "Add to shortlist",
-      #           class = "btn-primary",
-      #           onclick = 'Shiny.onInputChange(\"lastClick\",  this.id)'
-      #         )
-      ## OPTION 4, based on https://shiny.rstudio.com/articles/action-buttons.html 
-      # table$Shortlist = buttonInput(
-      #           FUNCTION = actionButton,
-      #           length = nrow(table),
-      #           id = 'do',
-      #           label = "Shortlist",
-      #           class = "btn-primary",
-      #           onclick = 'Shiny.onInputChange(\"lastClick\",  this.id)'
-      #         )
-      
-      table <- unique(dplyr::select(table, 
-                            combined_score, 
-                            Shortlist,
-                            "Matching cancer type(s)" = "matching.condition",
-                            "Matching alteration(s)" = "gene_variant_type",
-                            "Drug rationale" = "intervention_rationale",
-                            "Eligibility" = "eligibility_rationale",
-                            "Brief title" = "brief_title",
-                          # "Matching inclusion criteria" = "criteria",
-                          # "Prior Therapy exclusions" = Exclusions,
-                            "Locations" = "locations",
-                          # "Centres" = "sites",
-                          # "Investigators" = "investigators",
-                            "Contacts" = "contacts",
-                          ID
-                          # "StudyID" = nct_id
-                          #"Overall status" = "overall_status"
-   #                      "Interventions" = "interventions",
-   #                      Mechanism
-                               ))
-        
-        ## add a column with shortlisting info
-        #table$Shortlist <- "Add to shortlist"
-        table <- arrange(table, desc(combined_score))
-        table <- dplyr::select(table, -combined_score)
-        
-        
-        # action buttons in column of table
-        # table$Action = buttonInput(
-        #         FUNCTION = actionButton,
-        #         length = nrow(table),
-        #         id = 'button_',
-        #         label = "Add to shortlist",
-        #         class = "btn-primary",
-        #         onclick = 'Shiny.onInputChange(\"lastClick\",  this.id)'
-        #       )
-      
-      
-        
-      return(table)
-})
-
-
-# obtain the values of e.g. Shortlist inputs
-shinyValue = function(id, len) {
-      unlist(lapply(seq_len(len), function(i) {
-        value = input[[paste0(id, i)]]
-        
-        if (is.null(value)) {return(NA)} else {return(value)}
-      }))
-    }
-
-
-
-
-output$datatable <- DT::renderDT(dplyr::select(formattedTable(), -ID), rownames=FALSE, escape = 5, options = list(ordering=F,                                                                                           paging = FALSE,                                                                   scrollX = TRUE, 
-      scrollY = "450px",                                                                          scrollCollapse = TRUE, 
-      autoWidth = TRUE,
-      columnDefs = list(list(width = '500px', targets = list(5)))
-      #columnDefs = list(list(targets=c(5), visible=TRUE, width='30%'))
-  )) 
+# ## render as datatable
+# 
+# formattedTable <- reactive({
+#   table <- mergedStudyTable()
+#    validate(
+#             need(nrow(table)>0, "No matching studies based on selected options")
+#         )
+#    table[is.na(table)] <- "-"
+#    if(!is.na(map.selection$id )) {
+#       table <- dplyr::filter(table, nct_id == map.selection$id )
+#    }
+#         table$brief_title <- paste0('<a href="',table$Link,'" target="_blank">',table$brief_title ,  " </a>")
+#         table$ID <- table$nct_id
+#         table <- aggregate(table, by=table['nct_id'], function(x) {paste(unique(x), collapse = ";\n")})
+#       ## add checkboxes 
+#       ## OPTION 1,  based on https://github.com/rstudio/DT/issues/93#issuecomment-111001538
+#       # create a character vector of shiny inputs
+#       shinyInput = function(FUN, len, id, ...) {
+#         inputs = character(len)
+#         for (i in seq_len(len)) {
+#           inputs[i] = as.character(FUN(paste0(id, i), label = NULL, ...))     }
+#         return(inputs)  } # end shinyInput function
+#       ## call function to add a column of checkboxes
+#       table$Shortlist = shinyInput(FUN=checkboxInput, len = nrow(table), id='Shortlist_', value = FALSE)
+#       
+#       ## OPTION 2, based on https://github.com/rstudio/DT/issues/185
+#       # add a checkbox column
+#       # table$Shortlist <- paste0("<input id='type1_",1:nrow(table), "' type='checkbox' >")
+#       # ## to get the selected rows see https://yihui.shinyapps.io/DT-radio/ 
+# 
+#       ## OPTION 3
+#       # action buttons in column of table
+#       # table$Shortlist = buttonInput(
+#       #           FUNCTION = actionButton,
+#       #           length = nrow(table),
+#       #           id = 'button_',
+#       #           label = "Add to shortlist",
+#       #           class = "btn-primary",
+#       #           onclick = 'Shiny.onInputChange(\"lastClick\",  this.id)'
+#       #         )
+#       ## OPTION 4, based on https://shiny.rstudio.com/articles/action-buttons.html 
+#       # table$Shortlist = buttonInput(
+#       #           FUNCTION = actionButton,
+#       #           length = nrow(table),
+#       #           id = 'do',
+#       #           label = "Shortlist",
+#       #           class = "btn-primary",
+#       #           onclick = 'Shiny.onInputChange(\"lastClick\",  this.id)'
+#       #         )
+#       
+#       table <- unique(dplyr::select(table, 
+#                             combined_score, 
+#                             Shortlist,
+#                             "Matching cancer type(s)" = "matching.condition",
+#                             "Matching alteration(s)" = "gene_variant_type",
+#                             "Drug rationale" = "intervention_rationale",
+#                             "Eligibility" = "eligibility_rationale",
+#                             "Brief title" = "brief_title",
+#                           # "Matching inclusion criteria" = "criteria",
+#                           # "Prior Therapy exclusions" = Exclusions,
+#                             "Locations" = "locations",
+#                           # "Centres" = "sites",
+#                           # "Investigators" = "investigators",
+#                             "Contacts" = "contacts",
+#                           ID
+#                           # "StudyID" = nct_id
+#                           #"Overall status" = "overall_status"
+#    #                      "Interventions" = "interventions",
+#    #                      Mechanism
+#                                ))
+#         
+#         ## add a column with shortlisting info
+#         #table$Shortlist <- "Add to shortlist"
+#         table <- arrange(table, desc(combined_score))
+#         table <- dplyr::select(table, -combined_score)
+#         
+#         
+#         # action buttons in column of table
+#         # table$Action = buttonInput(
+#         #         FUNCTION = actionButton,
+#         #         length = nrow(table),
+#         #         id = 'button_',
+#         #         label = "Add to shortlist",
+#         #         class = "btn-primary",
+#         #         onclick = 'Shiny.onInputChange(\"lastClick\",  this.id)'
+#         #       )
+#       
+#       
+#         
+#       return(table)
+# })
+# 
+# 
+# # obtain the values of e.g. Shortlist inputs
+# shinyValue = function(id, len) {
+#       unlist(lapply(seq_len(len), function(i) {
+#         value = input[[paste0(id, i)]]
+#         
+#         if (is.null(value)) {return(NA)} else {return(value)}
+#       }))
+#     }
+# 
+# 
+# 
+# 
+# output$datatable <- DT::renderDT(dplyr::select(formattedTable(), -ID), rownames=FALSE, escape = 5, options = list(ordering=F,                                                                                           paging = FALSE,                                                                   scrollX = TRUE, 
+#       scrollY = "450px",                                                                          scrollCollapse = TRUE, 
+#       autoWidth = TRUE,
+#       columnDefs = list(list(width = '500px', targets = list(5)))
+#       #columnDefs = list(list(targets=c(5), visible=TRUE, width='30%'))
+#   )) 
 
 
 ```
@@ -756,15 +753,90 @@ output$datatable <- DT::renderDT(dplyr::select(formattedTable(), -ID), rownames=
 
 
 
-```{r layout results table with download button}
+```{r layout results table with download and shortlist buttons}
 
 fillCol(height = 600, flex = c(NA, 1), 
         #shiny::renderPrint('printMsg'), 
         #DT::DTOutput("datatable"), 
-        inputPanel(shiny::renderUI({downloadButton("report", "Download table", class = "btn-primary")})),
+        inputPanel(shiny::renderUI({
+          downloadButton("report", "Download table", class = "btn-primary")
+          }), 
+          shiny::renderUI({
+          actionButton("addToShortlist", "Shortlist selected studies", class = "btn-dark")
+          })
+          ),
         DT::DTOutput("datatable") 
         )
+
+
 ```
+
+    
+```{r detect selection of rows}
+## see also https://yihui.shinyapps.io/DT-proxy/ 
+
+proxy = dataTableProxy('datatable')
+
+observeEvent(input$select1, {
+    proxy %>% selectRows(as.numeric(input$rows))
+    
+    ## add selected rows to shortlist
+    # table <- formattedTable()
+    # indices <- input$datatable_rows_selected
+    # table <- table[indices, ]
+    # 
+    # shortlist() <- unique(rbind(shortlist(), table))
+  })
+
+  
+  
+output$info = renderPrint({
+  input$datatable_rows_selected
+  })
+
+
+
+## define a reactive value that will hold number selected rows
+countSelectedRows <- reactive({
+  count <- length(input$datatable_rows_selected)
+  ## return value
+  return(count)
+})
+
+## define reactive value that will hold indices of selected rows
+indicesSelectedRows <- reactive({
+  return(input$datatable_rows_selected)
+  
+})
+
+## print indices of selected rows to markdown console
+# observeEvent(input$datatable_rows_selected, {
+#     print(input$datatable_rows_selected)
+#   })
+
+## when shortlist button is clicked, print indices of selected rows to markdown console
+observeEvent(input$addToShortlist, {
+    #print(input$datatable_rows_selected)
+  print(indicesSelectedRows())
+  })
+
+```
+ 
+
+
+
+
+```{r function to add selected rows to shortlist }
+
+
+
+
+
+```
+
+
+
+
 
 ```{r download handler for full results}
 ## see also https://shiny.rstudio.com/articles/generating-reports.html 
@@ -860,61 +932,49 @@ shortlist <- reactive({
   table <- formattedTable()
   indices <- input$datatable_rows_selected
   table <- table[indices, ]
+
+
+
   return(table)
-  
+
   ## create an empty shortlist and actions will add rows
   #shortlist <-createEmptyShortlist()
 
 
-  
+
   # filter and retain only studies on the shortlist
   # shortlist = shortlist()
   # table <- dplyr::filter(table, nct_id %in% shortlist$ID)
-  
+
 
   #shortlist <- unique(rbind(shortlist, table))
   #return(shortlist)
 })
 
+
+
+
+# shortlist <- reactive({
+#   table <- formattedTable()
+#   indices <- NULL
+#   table <- table[indices, ]
+#   observeEvent(input$addToShortlist, {
+#     print(indicesSelectedRows())
+#     table <- formattedTable()[indicesSelectedRows(), ]
+#   })
+#   
+#   
+#   
+#   
+#   return(table)
+#   
+# 
+# })
+
 ```
 
    
   
-    
-```{r detect selection of rows}
-## see also https://yihui.shinyapps.io/DT-proxy/ 
-
-proxy = dataTableProxy('datatable')
-
-  observeEvent(input$select1, {
-    proxy %>% selectRows(as.numeric(input$rows))
-    
-    ## add selected rows to shortlist
-    # table <- formattedTable()
-    # indices <- input$datatable_rows_selected
-    # table <- table[indices, ]
-    # 
-    # shortlist() <- unique(rbind(shortlist(), table))
-  })
-
-  
-  
-output$info = renderPrint({
-  input$datatable_rows_selected
-  })
-
-
-
-## define a reactive value that will hold number selected rows
-countSelectedRows <- reactive({
-  count <- length(input$datatable_rows_selected)
-  ## return value
-  count
-})
-
-
-```
- 
  
 
   
@@ -938,10 +998,10 @@ countSelectedRows <- reactive({
 # output$shortlistTable <- DT::renderDT(dplyr::select(shortlist(), -ID), escape = 5, options = list(ordering=F, paging = FALSE, scrollX = TRUE, scrollY = "450px", scrollCollapse = TRUE) )
 
 ## increase width of brief title column
-output$shortlistTable <- DT::renderDT(dplyr::select(shortlist(), -ID), rownames=FALSE, escape = 5, options = list(ordering=F,                                                                                           paging = FALSE,                                                                   scrollX = TRUE, 
+output$shortlistTable <- DT::renderDT(dplyr::select(shortlist(), -ID), rownames=FALSE, escape = 4, options = list(ordering=F,                                                                                           paging = FALSE,                                                                   scrollX = TRUE, 
       scrollY = "450px",                                                                          scrollCollapse = TRUE, 
       autoWidth = TRUE,
-      columnDefs = list(list(width = '500px', targets = list(5)))
+      columnDefs = list(list(width = '500px', targets = list(4)))
       #columnDefs = list(list(targets=c(5), visible=TRUE, width='30%'))
   )) 
 
