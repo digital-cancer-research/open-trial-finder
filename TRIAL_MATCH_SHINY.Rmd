@@ -564,8 +564,27 @@ formattedTable <- reactive({
 })
 
 
+## add ellipsis to locations, lose ID and contacts columns
+# output$datatable <- DT::renderDT(dplyr::select(formattedTable(), -c(ID,Contacts)), escape = 5, options = list(ordering=F, paging = FALSE, scrollX = TRUE, scrollY = "450px", scrollCollapse = TRUE, columnDefs = list(list(
+#   targets = 6,
+#   render = JS(
+#     "function(data, type, row, meta) {",
+#     "return type === 'display' && data.length > 6 ?",
+#     "'<span title=\"' + data + '\">' + data.substr(0, 6) + '...</span>' : data;",
+#     "}")
+# ))), callback = JS('table.page(3).draw(false);'))
 
-output$datatable <- DT::renderDT(formattedTable(), escape = 5, options = list(ordering=F, paging = FALSE, scrollX = TRUE, scrollY = "450px", scrollCollapse = TRUE))
+
+
+## no ellipsis, keep contacts
+# output$datatable <- DT::renderDT(dplyr::select(formattedTable(), -ID), escape = 5, 
+#                                  options = list(ordering=F, paging = FALSE, scrollX = TRUE, scrollY = "450px", scrollCollapse = TRUE) 
+#                                  )
+
+## increase width of brief title column to 500 pixels
+output$datatable <- DT::renderDT(dplyr::select(formattedTable(), -ID), escape = 5, 
+                                 options = list(ordering=F, paging = FALSE, scrollX = TRUE, scrollY = "450px", scrollCollapse = TRUE, columnDefs = list(list(width = '500px', targets = list(5)))) 
+                                 )
 
 
 
@@ -754,11 +773,34 @@ countSelectedRows <- reactive({
   
   
 ```{r define shortlist output}
-#verbatimTextOutput('info')
-#renderPrint(length(input$datatable_rows_selected))
 
 
-output$shortlistTable <- DT::renderDT(shortlist(), escape = 5, options = list(ordering=F, paging = FALSE, scrollX = TRUE, scrollY = "450px", scrollCollapse = TRUE))
+## add ellipsis to locations, lose ID and contacts columns
+# output$shortlistTable <- DT::renderDT(dplyr::select(shortlist(), -c(ID,Contacts)), escape = 5, options = list(ordering=F, paging = FALSE, scrollX = TRUE, scrollY = "450px", scrollCollapse = TRUE, columnDefs = list(list(
+#   targets = 6,
+#   render = JS(
+#     "function(data, type, row, meta) {",
+#     "return type === 'display' && data.length > 6 ?",
+#     "'<span title=\"' + data + '\">' + data.substr(0, 6) + '...</span>' : data;",
+#     "}")
+# ))), callback = JS('table.page(3).draw(false);'))
+
+
+
+## no ellipsis, keep contacts
+# output$shortlistTable <- DT::renderDT(dplyr::select(shortlist(), -ID), escape = 5, options = list(ordering=F, paging = FALSE, scrollX = TRUE, scrollY = "450px", scrollCollapse = TRUE) )
+
+## increase width of brief title column
+output$shortlistTable <- DT::renderDT(dplyr::select(shortlist(), -ID), escape = 5, options = list(ordering=F,                                                                                           paging = FALSE,                                                                   scrollX = TRUE, 
+      scrollY = "450px",                                                                          scrollCollapse = TRUE, 
+      autoWidth = TRUE,
+      columnDefs = list(list(width = '500px', targets = list(5)))
+      #columnDefs = list(list(targets=c(5), visible=TRUE, width='30%'))
+  ) )
+
+
+
+
 
 ```
    
