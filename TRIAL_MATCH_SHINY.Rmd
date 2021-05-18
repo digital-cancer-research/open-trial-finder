@@ -582,10 +582,15 @@ formattedTable <- reactive({
 #                                  )
 
 ## increase width of brief title column to 500 pixels
-output$datatable <- DT::renderDT(dplyr::select(formattedTable(), -ID), escape = 5, 
-                                 options = list(ordering=F, paging = FALSE, scrollX = TRUE, scrollY = "450px", scrollCollapse = TRUE, columnDefs = list(list(width = '500px', targets = list(5)))) 
-                                 )
+# output$datatable <- DT::renderDT(dplyr::select(formattedTable(), -ID), escape = 5, 
+#                                  options = list(ordering=F, paging = FALSE, scrollX = TRUE, scrollY = "450px", scrollCollapse = TRUE, columnDefs = list(list(width = '500px', targets = list(5)))) )
 
+output$datatable <- DT::renderDT(dplyr::select(formattedTable(), -ID), escape = 5, options = list(ordering=F,                                                                                           paging = FALSE,                                                                   scrollX = TRUE, 
+      scrollY = "450px",                                                                          scrollCollapse = TRUE, 
+      autoWidth = TRUE,
+      columnDefs = list(list(width = '500px', targets = list(5)))
+      #columnDefs = list(list(targets=c(5), visible=TRUE, width='30%'))
+  )) 
 
 
 ```
@@ -796,7 +801,7 @@ output$shortlistTable <- DT::renderDT(dplyr::select(shortlist(), -ID), escape = 
       autoWidth = TRUE,
       columnDefs = list(list(width = '500px', targets = list(5)))
       #columnDefs = list(list(targets=c(5), visible=TRUE, width='30%'))
-  ) )
+  )) 
 
 
 
