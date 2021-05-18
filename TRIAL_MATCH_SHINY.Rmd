@@ -860,7 +860,8 @@ output$downloadShortlist <- downloadHandler(
                        include_solid= input$solidTumourFilter, 
                        synonyms = synonymsLabel(), 
                        #genes=input$geneFilter,
-                       genes = urlAlterations(),
+                       #genes = urlAlterations(),
+                       genes = selectedAlterations(),
                        mechanism_filter=input$mechanismFilter, 
                        hide_cancer_only=input$confidenceFilter, 
                        #table=toJSON(read.csv("exampleTable.csv"))
