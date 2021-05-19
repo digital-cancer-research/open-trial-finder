@@ -940,9 +940,14 @@ indicesRowsToDelete <- reactive({
 observeEvent(input$removeSelected, {
     ## add selected rows
     #t = rbind(shortlist(), formattedTable()[indicesSelectedRows(),] )
-    
+    t = shortlist()
+    if(!is.null(indicesRowsToDelete())) {
+      ## drop selected rows
+      t = t[-indicesRowsToDelete(), ]
+  
+    }
     ## drop selected rows
-    t = shortlist()[-indicesRowsToDelete(), ]
+    # t = shortlist()[-indicesRowsToDelete(), ]
   
     ## drop duplicated rows
     t = unique(t)
