@@ -847,8 +847,8 @@ output$downloadShortlist <- downloadHandler(
       content = function(file) {
         # Copy the report file to a temporary directory before processing it, in
         # case we don't have write permissions to the current working dir (which can happen when deployed).
-        tempReport <- file.path(tempdir(), "trial_report.Rmd")
-        file.copy("trial_report.Rmd", tempReport, overwrite = TRUE)
+        tempReport <- file.path(tempdir(), "trials_shortlist.Rmd")
+        file.copy("trials_shortlist.Rmd", tempReport, overwrite = TRUE)
 
         # table=mergedStudyTable()
         # ## filter and retain only studies on the shortlist
