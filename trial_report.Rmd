@@ -78,13 +78,12 @@ if(nrow(paramTable)>0) {
                          "Matching inclusion criteria" = "criteria",
                         "Prior Therapy exclusions" = Exclusions,
                          "Locations" = "locations",
-                        "Centres" = "sites",
-                         "Investigators" = "investigators",
+                        # "Centres" = "sites",
+                        # "Investigators" = "investigators",
                          "Contacts" = "contacts",
                         # "Study ID" = nct_id
-                         #"Overall status" = "overall_status"
-   #                      "Interventions" = "interventions",
-   #                      Mechanism
+                        # "Overall status" = "overall_status"
+                        # Mechanism
                          ) %>%
             arrange( desc(combined_score)) %>% ## sort on score desc
             dplyr::select(-combined_score) %>%
