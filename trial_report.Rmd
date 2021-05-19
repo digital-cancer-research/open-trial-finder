@@ -3,7 +3,7 @@ title: "digital ECMT cancer trial matching tool: results"
 #output: html_document
 output: 
   flexdashboard::flex_dashboard:
-    #source_code: embed
+    source_code: embed
     orientation: rows
     #logo: digitalECMTlogo48px.PNG
     theme: spacelab
@@ -11,6 +11,7 @@ params:
   subject_ID: "Not provided"
   cancer_type: "cancer type"
   include_solid: "T/F"
+  synonyms: "condition synonyms"
   genes: "mutations, fusions, amplifications"
   mechanism_filter: "mechanism(s)"
   hide_cancer_only: "T/F"
@@ -49,77 +50,91 @@ Row {.tabset}
 ### Study details   
   
 ```{r display table}
-# if(nrow(paramTable)>0) {
-#   table <- paramTable
-#   table[is.na(table)] <- "-"
-#   ## convert rationale column to factor to enable filtering with dropdown list 
-#   #table$rationale <- as.factor(table$rationale)
-#   ## do same for gene.of.interest
-#   table$gene.of.interest <- as.factor(table$gene.of.interest)
-#   table$nct_id <- paste0('<a href="',table$Link,'" target="_blank">',table$nct_id ,  " </a>")
-#   #table <- table[, -c('Link')]
-#   table <- unique(dplyr::select(table, "Matching cancer type" = "matching.condition",
-#                          "Matching gene" = "gene.of.interest",
-#                          "Rationale" = "rationale",
-#                          "Brief title" = "brief_title",
-#                          "Matching inclusion criterion" = "criteria",
-#                          "Recruiting sites" = "locations",
-#                          "Investigators" = "investigators",
-#                          "Contacts" = "contacts",
-#                          "Study ID" = nct_id
-#                          #"Overall status" = "overall_status"
-#    #                      "Interventions" = "interventions",
-#    #                      Mechanism
-#                          ))
-#   DT::datatable(table, escape = which(names(table) == "Study ID"), filter = 'top',autoHideNavigation = TRUE,
-#           # selection = list(mode = 'multiple', selected = NULL, target = 'column'),
-#           options=list(ordering=FALSE, 
-#                        autoWidth=TRUE,
-#                        columnDefs = list(list(width='200px', targets = 4))))
-#  } else print("No matching studies found")
-
-
 
 if(nrow(paramTable)>0) {
   table <- paramTable
    table[is.na(table)] <- "-"
-   
-   if(nrow(table)>0) {
-   HTML(table %>%
-            mutate(brief_title = cell_spec(x=table$brief_title,format="html", link = table$Link, new_tab = TRUE )) %>%
-            dplyr::select(-c(Link, TARGET.condition, conditions)) %>%
-            mutate(locations = cell_spec(x=table$locations,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
-          mutate(sites = cell_spec(x=table$sites,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
-           mutate(investigators = cell_spec(x=table$investigators,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
-           mutate(contacts = cell_spec(x=table$contacts,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
-           mutate(criteria = cell_spec(x=table$matching_criteria,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
-          aggregate( by=table['nct_id'], function(x) {paste(unique(x), collapse = ";\n")}) %>%
-          dplyr::select("Matching cancer type(s)" = "matching.condition",
-                         "Matching alteration(s)" = "gene_variant_type",
-                         "Drug rationale" = "intervention_rationale",
-                         "Eligibility" = "eligibility_rationale",
-                         "Brief title" = "brief_title",
-                         "Matching inclusion criteria" = "criteria",
-                        "Prior Therapy exclusions" = Exclusions,
-                         "Locations" = "locations",
-                        "Centres" = "sites",
-                         "Investigators" = "investigators",
-                         "Contacts" = "contacts",
-                        # "Study ID" = nct_id
-                         #"Overall status" = "overall_status"
-   #                      "Interventions" = "interventions",
-   #                      Mechanism
-                         ) %>%
-            unique() %>%
-            kable("html", escape = FALSE) %>%
-            # kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
-            kable_styling(bootstrap_options = c("hover", "condensed", "responsive")) %>%
-            #collapse_rows(columns = c(1,2,4,5), valign = "middle") %>%
-            #row_spec(row=3, hline_after = TRUE) %>%
-            kable_styling(fixed_thead = T))
 
-   } else print("No matching studies found")
-}
+   if(nrow(table)>0) {
+   table <- aggregate(table, by=table['nct_id'], function(x) {paste(unique(x), collapse = ";\n")})
+   table <- table[order(table$combined_score, decreasing = TRUE), ]
+   datatable(dplyr::select(table,
+                            # combined_score,
+                            "Matching cancer type(s)" = "matching.condition",
+                            "Matching alteration(s)" = "gene_variant_type",
+                            "Drug rationale" = "intervention_rationale",
+                            "Eligibility" = "eligibility_rationale",
+                            "Brief title" = "brief_title",
+                            "Interventions" = "interventions",
+                            "Matching inclusion criteria" = "matching_criteria",
+                            "Prior Therapy exclusions" = Exclusions,
+                            "Locations" = "locations",
+                            # "Centres" = "sites",
+                            # "Investigators" = "investigators",
+                            "Contacts" = "contacts"
+                            # "StudyID" = nct_id,
+                            # "Overall status" = "overall_status",
+                            
+                            # Mechanism
+                            ),
+                  rownames=FALSE, escape = 4, 
+                  options = list(ordering=F,
+                                 paging = TRUE,
+                                 scrollX = TRUE,
+                                 scrollY = "70vh",
+                                 #scrollCollapse = TRUE,
+                                 autoWidth = TRUE,
+                                 columnDefs = list(list(width = '500px', targets = list(4)))
+                                )
+  )
+     
+     
+     
+     
+     
+     
+     
+     
+     
+     # HTML(table %>%
+     #      mutate(brief_title = cell_spec(x=table$brief_title,format="html", link = table$Link, new_tab = TRUE )) %>%
+     #        dplyr::select(-c(Link, TARGET.condition, conditions)) %>%
+     #        mutate(locations = cell_spec(x=table$locations,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+     #      mutate(sites = cell_spec(x=table$sites,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+     #       mutate(investigators = cell_spec(x=table$investigators,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+     #       mutate(contacts = cell_spec(x=table$contacts,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+     #       mutate(criteria = cell_spec(x=table$matching_criteria,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+     #       mutate(Exclusions = cell_spec(x=table$Exclusions,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+     #      aggregate( by=table['nct_id'], function(x) {paste(unique(x), collapse = ";\n")}) %>%
+     #      dplyr::select(combined_score,
+     #                    "Matching cancer type(s)" = "matching.condition",
+     #                     "Matching alteration(s)" = "gene_variant_type",
+     #                     "Drug rationale" = "intervention_rationale",
+     #                     "Eligibility" = "eligibility_rationale",
+     #                     "Brief title" = "brief_title",
+     #                    "Interventions" = "interventions",
+     #                     "Matching inclusion criteria" = "criteria",
+     #                    "Prior Therapy exclusions" = Exclusions,
+     #                     "Locations" = "locations",
+     #                    # "Centres" = "sites",
+     #                    # "Investigators" = "investigators",
+     #                     "Contacts" = "contacts",
+     #                    # "Study ID" = nct_id
+     #                    # "Overall status" = "overall_status"
+     #                    # Mechanism
+     #                     ) %>%
+     #        arrange( desc(combined_score)) %>% ## sort on score desc
+     #        dplyr::select(-combined_score) %>%
+     #        unique() %>%
+     #        kable("html", escape = FALSE) %>%
+     #        # kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+     #        kable_styling(bootstrap_options = c("hover", "condensed", "responsive")) %>%
+     #        #collapse_rows(columns = c(1,2,4,5), valign = "middle") %>%
+     #        #row_spec(row=3, hline_after = TRUE) %>%
+     #        kable_styling(fixed_thead = T))
+
+   }
+} else print("No matching studies based on selected options")
 
 
 
@@ -132,15 +147,18 @@ if(nrow(paramTable)>0) {
   
 Date of report: **`r today`**   
   
-Subject ID: **`r params$subject_ID`**  
-
-Cancer type: **`r params$cancer_type`**  
+Cancer type(s): **`r params$cancer_type`**  
+  
+Synonyms included for selected cancer type(s): **`r params$synonyms`**  
   
 Include matches on solid tumour? **`r params$include_solid`**  
-  
-Genes included in search: **`r paste(params$genes, collapse=", ")`**  
+    
+Genetic alterations included in search: **`r paste(params$genes, collapse=", ")`**  
   
 Drug mechanism filters: **`r paste(params$mechanism_filter, collapse=", ")`**  
+  
+Hide matches on cancer type alone: **`r params$hide_cancer_only`**  
+  
   
 
       

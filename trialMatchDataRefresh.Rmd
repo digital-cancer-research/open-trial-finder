@@ -69,7 +69,15 @@ dbListTables(con)
 ## conditionSynonyms specifies which cancer types are of interest, and which condition names (as used by clinicaltrials.gov) will be considered as matches for each
 
 ## synonyms define on basis of those in clinicaltrials.gov
-conditionSynonyms <- read.csv(file = "conditionSynonyms4.csv", stringsAsFactors = FALSE)
+#conditionSynonyms <- read.csv(file = "conditionSynonyms4.csv", stringsAsFactors = FALSE)
+## updated set of more granular cancer types
+conditionSynonyms <- read.csv(file = "conditionSynonyms5.csv", stringsAsFactors = FALSE)
+
+
+
+
+## trim leading/trailing whitespace
+conditionSynonyms$condition.synonyms <- str_squish(string = conditionSynonyms$condition.synonyms)
 
 ## remove redundancy, if any
 conditionSynonyms <- unique(conditionSynonyms)
@@ -758,51 +766,44 @@ eligibilities$feature <- NA
 eligibilities$match <- NA
 ```
   
-##### **Index on mutations**  
-     
+```{r define indexing function}
+indexOnPattern <- function(eligibilities, pattern, wordRange, featureLabel) {
+  table <- eligibilities
+  pattern <- pattern
+  wordRange <- wordRange
+  featureLabel <- featureLabel
+  ## get indices containing specified pattern
+  indices <- grep(pattern = pattern, x=table$criteria, ignore.case = T) 
+  # subset table 
+  table <- table[indices, ]
+  # label nature of change
+  table$feature <- featureLabel
   
-```{r index criteria on mutations}
-## create a copy of eligibilities table
-mutation.eligibilities <- eligibilities
-
-## define a pattern of word stems to filter for mutation-related criteria
-#mutantPattern <- "mutat|mutant|positiv|defect|deficien|alter|loss"
-## (OPTIONAL) drop matches containing "positive" as these tend to be IHC, not mutation
-mutantPattern <- "mutat|mutant|defect|deficien|alter|loss"
-## specify word range - mutantPattern must occur within this many words of a gene name
-mutantWordRange <- 6
-## define which rows contain a match for mutantPattern
-mutantIndices <- grep(pattern = mutantPattern, x=mutation.eligibilities$criteria, ignore.case = T)
-# subset table 
-mutation.eligibilities <- mutation.eligibilities[mutantIndices, ]
-# label nature of change
-mutation.eligibilities$feature <- "mutation"
-
-## loop through each criterion that contains mutant pattern
-for(i in 1:nrow(mutation.eligibilities)) {
-    criterion <- mutation.eligibilities$criteria[i]
+  ## loop through each criterion that contains pattern
+  for(i in 1:nrow(table)) {
+    criterion <- table$criteria[i]
     # also create an alternative criterion for patterns such as "BRCA1/2"
     alternative.criterion <- gsub(pattern = "./", replacement = "", x=criterion)
-    # now do the same and trim off the first character after the slash
-    criterion <- gsub(pattern = "/.", replacement = "", x=criterion)
     # concatenate
     criterion <- paste(criterion,alternative.criterion, sep = " " )
     # split into tokens
     criterion <- unlist(strsplit(x=criterion, split = " |\\(|\\)|,|-|/"))
+    ## criterion is now a vector of tokens (words, but also some empty elements)
+    ## remove any empty elements in criterion 
+    criterion <- criterion[criterion!=""]
     
-    
-    ## get indices of match(es) against mutantPattern
-    indices <- grep(pattern = mutantPattern, x = criterion, ignore.case = TRUE)
+    ## get indices of match(es) against pattern (need to squish preceding space)
+    indices <- grep(pattern = str_squish(pattern), x = criterion, ignore.case = TRUE)
     ## specify start and end point(s) based on specified word range
-    starts <- indices - mutantWordRange
-    ends <- indices + mutantWordRange
+    starts <- indices - wordRange
+    ends <- indices + wordRange
     range <- numeric(0)
     for(j in 1:length(starts)) { ## because there may be more than one match
       if(starts[j] <1) {starts[j] <- 1}
       range <- append(range,starts[j]:ends[j])
-    } ## now range contains the indices of the words either side of the     mutantPattern, within specified word range
+    } ## now range contains the indices of the words either side of the pattern, within specified word range
     range <- unique(range) ## if the ranges overlap, just get the unique elements
-    ## range is the indices of words within the criterion that are within the specified wordRange from mutantPattern... (i.e. the ones we want to keep)
+    ## range is the indices of words within the criterion that are within the specified wordRange from pattern (i.e. the ones we want to keep)
     ## subset the criterion retain only words within specified range
     criterion <- criterion[range]
     ## omit any NA values (i.e. where match is less than wordRange from end of sentence)
@@ -813,169 +814,96 @@ for(i in 1:nrow(mutation.eligibilities)) {
     criterion <- criterion[nchar(criterion)>2]
     ## drop any matches against the word "not"
     criterion <- criterion[criterion != "not"]
-    if(length(criterion)>0) mutation.eligibilities$match[i] <- list(criterion)
-  
+    if(length(criterion)>0) table$match[i] <- list(criterion)
   }
-## drop rows not indexed against a gene
-mutation.eligibilities <- mutation.eligibilities[!is.na(mutation.eligibilities$match), ]
+  ## drop rows not indexed against a gene
+  table <- table[!is.na(table$match), ]
+  ## unnest
+  table <- as.data.frame(unnest(table, cols = "match"))
+  
+  
+  ## join to Entrez symbols from humanGenes
+  table <- merge(x=table, by.x="match", y=humanGenes, by.y = "Aliases")
+  
+  ## rename Symbol to "controlled.match"
+  table <- rename(table, "controlled.match"="Symbol")
+  ## drop redundant rows
+  table <- unique(table)
+  ## return table
+  return(table)
+}
 
-## unnest
-mutation.eligibilities <- as.data.frame(unnest(mutation.eligibilities, cols = "match"))
 
-## join to Entrez symbols from humanGenes
-mutation.eligibilities <- merge(x=mutation.eligibilities, by.x="match", y=humanGenes, by.y = "Aliases")
 
-## rename Symbol to "controlled.match"
-mutation.eligibilities <- rename(mutation.eligibilities, "controlled.match"="Symbol")
+
+```
+
+  
+  
+  
+##### **Index on mutations**  
+     
+  
+```{r index criteria on mutations}
+
+## call indexing function
+## exclude matches containing "positive" as these tend to be IHC, not mutation
+## also exclude "loss" as this is included in rearrangementPattern
+
+mutation.eligibilities <- indexOnPattern(eligibilities = eligibilities, pattern = "mutat|mutant|defect|deficien|alter|loss of function|loss-of-function", wordRange = 6, featureLabel = "mutation")
 
 ## preview
 formattable(head(mutation.eligibilities))
 ```
   
-##### **Index on fusions**  
+##### **Index on fusions (not currently used)**  
      
   
 ```{r index criteria on fusions}
-## create a copy of eligibilities
-fusion.eligibilities <- eligibilities
 
-## define fusion pattern
-fusionPattern <- " fusion|rearrangement"
-## specify word range - fusionPattern must occur within this many words of a gene name
-fusionWordRange <- 6
-
-## define which rows contain a match for mutantPattern
-fusionIndices <- grep(pattern = fusionPattern, x=fusion.eligibilities$criteria, ignore.case = T)
-# subset table 
-fusion.eligibilities <- fusion.eligibilities[fusionIndices, ]
-# label nature of change
-fusion.eligibilities$feature <- "fusion"
-
-## loop through each criterion that contains pattern
-for(i in 1:nrow(fusion.eligibilities)) {
-    criterion <- fusion.eligibilities$criteria[i]
-    # also create an alternative criterion for patterns such as "BRCA1/2"
-    alternative.criterion <- gsub(pattern = "./", replacement = "", x=criterion)
-    # now do the same and trim off the first character after the slash
-    #criterion <- gsub(pattern = "/.", replacement = "", x=criterion)
-    # concatenate
-    criterion <- paste(criterion,alternative.criterion, sep = " " )
-    # split into tokens
-    criterion <- unlist(strsplit(x=criterion, split = " |\\(|\\)|,|-|/"))
-    
-    
-    ## get indices of match(es) against fusionPattern (need to squish preceding space)
-    indices <- grep(pattern = str_squish(fusionPattern), x = criterion, ignore.case = TRUE)
-    ## specify start and end point(s) based on specified word range
-    starts <- indices - fusionWordRange
-    ends <- indices + fusionWordRange
-    range <- numeric(0)
-    for(j in 1:length(starts)) { ## because there may be more than one match
-      if(starts[j] <1) {starts[j] <- 1}
-      range <- append(range,starts[j]:ends[j])
-    } ## now range contains the indices of the words either side of the     mutantPattern, within specified word range
-    range <- unique(range) ## if the ranges overlap, just get the unique elements
-    ## range is the indices of words within the criterion that are within the specified wordRange from mutantPattern... (i.e. the ones we want to keep)
-    ## subset the criterion retain only words within specified range
-    criterion <- criterion[range]
-    ## omit any NA values (i.e. where match is less than wordRange from end of sentence)
-    criterion <- criterion[!is.na(criterion)]
-    ## now subset and retain only words that are a valid gene alias
-    criterion <- unique(criterion[criterion %in% humanGenes$Aliases])
-    ## drop any aliases that are a single or 2 characters
-    criterion <- criterion[nchar(criterion)>2]
-    ## drop any matches against the word "not"
-    criterion <- criterion[criterion != "not"]
-    if(length(criterion)>0) fusion.eligibilities$match[i] <- list(criterion)
-  
-  }
-## drop rows not indexed against a gene
-fusion.eligibilities <- fusion.eligibilities[!is.na(fusion.eligibilities$match), ]
-## unnest
-fusion.eligibilities <- as.data.frame(unnest(fusion.eligibilities, cols = "match"))
-
-
-## join to Entrez symbols from humanGenes
-fusion.eligibilities <- merge(x=fusion.eligibilities, by.x="match", y=humanGenes, by.y = "Aliases")
-
-## rename Symbol to "controlled.match"
-fusion.eligibilities <- rename(fusion.eligibilities, "controlled.match"="Symbol")
+## NOT USED BECAUSE SUPERCEDED BY INDEX ON REARRANGEMENTS
+fusion.eligibilities <- indexOnPattern(eligibilities = eligibilities, pattern = " fusion|rearrangement", wordRange = 7, featureLabel = "fusion")
 
 ## preview
 formattable(head(fusion.eligibilities))
 ```
   
+##### **Index on rearrangements**  
+     
+  
+```{r index criteria on rearrangements}
+
+rearrangement.eligibilities <- indexOnPattern(eligibilities = eligibilities, pattern = " fusion|rearrangement|truncation|truncated|deletion|deleted|lost|duplication|duplicated", wordRange = 6, featureLabel = "rearrangement")
+
+## preview
+formattable(head(rearrangement.eligibilities))
+```
+    
+##### **Index on copy number loss**  
+     
+  
+```{r index criteria on copy number loss}
+## NOTE USE WORD RANGE OF 2 FOR LOSS, OTHERWISE GET TOO MANY FALSE HITS (including "loss of function" etc, which is indexed as a mutation)
+loss.eligibilities <- indexOnPattern(eligibilities = eligibilities, pattern = "loss", wordRange = 2, featureLabel = "loss")
+
+## preview
+formattable(head(loss.eligibilities))
+
+```
+    
+
+    
+  
 ##### **Index on amplifications**  
      
   
 ```{r index criteria on amplifications}
-## create a copy of eligibilities
-amplification.eligibilities <- eligibilities
 
-## define pattern
-amplificationPattern <- " amplification|overexpression"
-## specify word range - fusionPattern must occur within this many words of a gene name
-amplificationWordRange <- 5
-
-## define which rows contain a match for mutantPattern
-amplificationIndices <- grep(pattern = amplificationPattern, x=amplification.eligibilities$criteria, ignore.case = T)
-# subset table 
-amplification.eligibilities <- amplification.eligibilities[amplificationIndices, ]
-# label nature of change
-amplification.eligibilities$feature <- "amplification"
-
-## loop through each criterion that contains pattern
-for(i in 1:nrow(amplification.eligibilities)) {
-    criterion <- amplification.eligibilities$criteria[i]
-    # also create an alternative criterion for patterns such as "BRCA1/2"
-    alternative.criterion <- gsub(pattern = "./", replacement = "", x=criterion)
-    # now do the same and trim off the first character after the slash
-    criterion <- gsub(pattern = "/.", replacement = "", x=criterion)
-    # concatenate
-    criterion <- paste(criterion,alternative.criterion, sep = " " )
-    # split into tokens
-    criterion <- unlist(strsplit(x=criterion, split = " |\\(|\\)|,|-|/"))
-    
-    
-    ## get indices of match(es) against fusionPattern (need to squish preceding space)
-    indices <- grep(pattern = str_squish(amplificationPattern), x = criterion, ignore.case = TRUE)
-    ## specify start and end point(s) based on specified word range
-    starts <- indices - amplificationWordRange
-    ends <- indices + amplificationWordRange
-    range <- numeric(0)
-    for(j in 1:length(starts)) { ## because there may be more than one match
-      if(starts[j] <1) {starts[j] <- 1}
-      range <- append(range,starts[j]:ends[j])
-    } ## now range contains the indices of the words either side of the     mutantPattern, within specified word range
-    range <- unique(range) ## if the ranges overlap, just get the unique elements
-    ## range is the indices of words within the criterion that are within the specified wordRange from mutantPattern... (i.e. the ones we want to keep)
-    ## subset the criterion retain only words within specified range
-    criterion <- criterion[range]
-    ## omit any NA values (i.e. where match is less than wordRange from end of sentence)
-    criterion <- criterion[!is.na(criterion)]
-    ## now subset and retain only words that are a valid gene alias
-    criterion <- unique(criterion[criterion %in% humanGenes$Aliases])
-    ## drop any aliases that are a single or 2 characters
-    criterion <- criterion[nchar(criterion)>2]
-    ## drop any matches against the word "not"
-    criterion <- criterion[criterion != "not"]
-    if(length(criterion)>0) amplification.eligibilities$match[i] <- list(criterion)
-  
-  }
-## drop rows not indexed against a gene
-amplification.eligibilities <- amplification.eligibilities[!is.na(amplification.eligibilities$match), ]
-## unnest
-amplification.eligibilities <- as.data.frame(unnest(amplification.eligibilities, cols = "match"))
-
-
-## join to Entrez symbols from humanGenes
-amplification.eligibilities <- merge(x=amplification.eligibilities, by.x="match", y=humanGenes, by.y = "Aliases")
-
-## rename Symbol to "controlled.match"
-amplification.eligibilities <- rename(amplification.eligibilities, "controlled.match"="Symbol")
+amplification.eligibilities <- indexOnPattern(eligibilities = eligibilities, pattern = " amplification|overexpression", wordRange = 5, featureLabel = "amplification")
 
 ## preview
 formattable(head(amplification.eligibilities))
+
 ```
   
 
@@ -984,7 +912,7 @@ formattable(head(amplification.eligibilities))
 <<not developed yet>>    
 
   
-##### **Index on prior therapies**  
+##### **Store criteria related to prior therapies**  
      
   
 ```{r index criteria on prior therapies}
@@ -1017,7 +945,12 @@ formattable(head(therapy.eligibilities))
   
   
 ```{r row bind indexed eligbility tables}
-indexed.eligibilities <- unique(rbind(mutation.eligibilities, fusion.eligibilities,amplification.eligibilities, therapy.eligibilities))
+# indexed.eligibilities <- unique(rbind(mutation.eligibilities, fusion.eligibilities,  amplification.eligibilities, therapy.eligibilities))
+
+
+indexed.eligibilities <- unique(rbind(mutation.eligibilities, rearrangement.eligibilities, loss.eligibilities, amplification.eligibilities, therapy.eligibilities))
+
+
 
 ```
 

@@ -1,0 +1,174 @@
+---
+title: "digital ECMT cancer trial matching tool: shortlisted results"
+#output: html_document
+output: 
+  flexdashboard::flex_dashboard:
+    #source_code: embed
+    orientation: rows
+    #logo: digitalECMTlogo48px.PNG
+    theme: spacelab
+params: 
+  subject_ID: "Not provided"
+  cancer_type: "cancer type"
+  include_solid: "T/F"
+  synonyms: "condition synonyms"
+  genes: "mutations, fusions, amplifications"
+  mechanism_filter: "mechanism(s)"
+  hide_cancer_only: "T/F"
+  table: "json format"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+require(rjson)
+require(formattable)
+require(kableExtra)
+
+##get today's date
+today <- format(Sys.Date(), format = "%d %B %Y")
+```
+  
+
+  
+
+```{r load parameters}
+## view parameters
+## table is passed as a parameter in JSON format
+#params$table
+
+## get table from parameters and convert to data frame
+paramTable <- as.data.frame(fromJSON(params$table))
+
+#formattable(paramTable)
+
+```
+  
+Row {.tabset}
+-----------------------------------------------------------------------
+
+    
+### Shortlisted studies   
+  
+```{r display table}
+
+if(nrow(paramTable)>0) {
+  table <- paramTable
+   table[is.na(table)] <- "-"
+
+   if(nrow(table)>0) {
+     HTML(table %>%
+            unique() %>%
+            kable("html", escape = FALSE) %>%
+            # kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+            kable_styling(bootstrap_options = c("hover", "condensed", "responsive")) %>%
+            #collapse_rows(columns = c(1,2,4,5), valign = "middle") %>%
+            #row_spec(row=3, hline_after = TRUE) %>%
+            kable_styling(fixed_thead = T))  
+     
+     
+     
+   # HTML(table %>%
+   #          mutate(brief_title = cell_spec(x=table$brief_title,format="html", link = table$Link, new_tab = TRUE )) %>%
+   #          dplyr::select(-c(Link, TARGET.condition, conditions)) %>%
+   #          mutate(locations = cell_spec(x=table$locations,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+   #        mutate(sites = cell_spec(x=table$sites,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+   #         mutate(investigators = cell_spec(x=table$investigators,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+   #         mutate(contacts = cell_spec(x=table$contacts,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+   #         mutate(criteria = cell_spec(x=table$matching_criteria,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+   #         mutate(Exclusions = cell_spec(x=table$Exclusions,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+   #        aggregate( by=table['nct_id'], function(x) {paste(unique(x), collapse = ";\n")}) %>%
+   #        dplyr::select(combined_score,
+   #                      "Matching cancer type(s)" = "matching.condition",
+   #                       "Matching alteration(s)" = "gene_variant_type",
+   #                       "Drug rationale" = "intervention_rationale",
+   #                       "Eligibility" = "eligibility_rationale",
+   #                       "Brief title" = "brief_title",
+   #                      "Interventions" = "interventions",
+   #                       "Matching inclusion criteria" = "criteria",
+   #                      "Prior Therapy exclusions" = Exclusions,
+   #                       "Locations" = "locations",
+   #                      "Centres" = "sites",
+   #                       "Investigators" = "investigators",
+   #                       "Contacts" = "contacts",
+   #                      # "Study ID" = nct_id
+   #                       #"Overall status" = "overall_status"
+   # #                      "Interventions" = "interventions",
+   # #                      Mechanism
+   #                       ) %>%
+   #          arrange( desc(combined_score)) %>% ## sort on score desc
+   #          dplyr::select(-combined_score) %>%
+   #          unique() %>%
+   #          kable("html", escape = FALSE) %>%
+   #          # kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+   #          kable_styling(bootstrap_options = c("hover", "condensed", "responsive")) %>%
+   #          #collapse_rows(columns = c(1,2,4,5), valign = "middle") %>%
+   #          #row_spec(row=3, hline_after = TRUE) %>%
+   #          kable_styling(fixed_thead = T))
+
+   }
+} else print("No matching studies based on selected options")
+
+
+
+
+
+
+```
+  
+### Search details  
+  
+Date of report: **`r today`**   
+  
+Cancer type(s): **`r params$cancer_type`**  
+  
+Synonyms included for selected cancer type(s): **`r params$synonyms`**  
+  
+Include matches on solid tumour? **`r params$include_solid`**  
+    
+Genetic alterations included in search: **`r paste(params$genes, collapse=", ")`**  
+  
+Drug mechanism filters: **`r paste(params$mechanism_filter, collapse=", ")`**  
+  
+Hide matches on cancer type alone: **`r params$hide_cancer_only`**  
+  
+  
+
+      
+  
+### Study ranking details  
+
+  
+* Studies are filtered on cancer type, plus/minus solid tumour.  
+  
+* If one or more drug mechanisms are selected, only studies that include one or more matching interventions are displayed.  
+  
+* If one or more genetic alterations are selected, only studies relevant for those alterations are displayed, matches are ranked based on:  
+
+    * Study is enrolling patients with specified genetic alterations, and specified gene is targeted by a study drug.  
+
+    * Study is enrolling patients with specified genetic alterations, and a study drug targets a gene immediately downstream.   
+  
+  
+    * Study is enrolling patients with specified genetic alterations.   
+  
+  
+    * Study drug targets gene of interest.  
+  
+  
+    * Study drug targets a gene immediately downstream of specified genetic alteration.  
+    
+  
+### Acknowledgements
+  
+INTENDED USE: This tool is a prototype, intended for research use by Medical Professionals. Please note that it is not a comprehensive source of information about clinical trials, and is not for use in clinical decision making. 
+  
+    
+DATA SOURCES:  
+  
+  
+* Trial data are sourced from clinicaltrials.gov via the Clinical Trials Transformation Initiative: https://www.ctti-clinicaltrials.org/  
+  
+* Data regarding mechanisms of trial interventions are sourced from the NCI Thesaurus: https://ncithesaurus.nci.nih.gov/ncitbrowser/  
+  
+* Data regarding biological pathways are sourced from KEGG (https://www.kegg.jp/kegg/) using the R BioConductor package: https://www.bioconductor.org/  
+    
