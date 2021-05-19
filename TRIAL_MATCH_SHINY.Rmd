@@ -355,7 +355,7 @@ reactiveScoredMatches <- reactive({
 })
 ```
  
-```{r create reactive merged table}
+```{r define reactive mergedStudyTable}
 
 mergedStudyTable <-  reactive({
   ## get cancerStudies filtered on cancer type 
@@ -677,7 +677,9 @@ output$report <- downloadHandler(
 
 ## create an empty shortlist
 shortlistNames <- c("Matching cancer type(s)","Matching alteration(s)","Drug rationale","Eligibility","Brief title","Locations","Contacts","ID")
-shortlist <- data.frame(matrix(ncol=length(shortlistNames),nrow=0, dimnames=list(NULL, shortlistNames)))
+# shortlist <- data.frame(matrix(ncol=length(shortlistNames),nrow=0, dimnames=list(NULL, shortlistNames)))
+shortlist <- data.frame(matrix(ncol=length(shortlistNames),nrow=0))
+names(shortlist) <- shortlistNames
 
 ## define reactivity
 # initialise as empty dataframe
@@ -703,8 +705,70 @@ output$shortlistTable <- renderDT({
 
 ```
  
+```{r define reactive value to hold selected study IDs}
+# selectedStudyIDs <- reactive({
+#   ids <- unique(formattedTable()$ID[indicesSelectedRows()])
+#   
+#   ## return value
+#   return(ids)
+# })
+
+# namesMergedStudyTable <- reactive({
+#   names <- names(mergedStudyTable())
+#   return(names)
+#   
+# })
+
+
+```
+
+```{r define detailed reactive shortlist for download}
+
+## create an empty shortlist
+# detailedShortlistNames <- c("nct_id","interventions","locations","postcode","brief_title","overall_status","condition","site_name","site_status","investigators","contacts","Refresh.date","matching.condition","TARGET.condition","Link","postcode.lat","postcode.long","lat","long","ParentTerm","symbol","variant_type","gene_variant_type","intervention_rationale","eligibility_rationale","matching_criteria","combined_score")
+
+
+# detailedShortlistNames <- names( merge(x=cancerStudies, by.x=c("nct_id"), all.x=TRUE,
+#                      y=scoredMatches, by.y=c("nct_id")))
+# # 
+# detailedShortlist <- data.frame(matrix(ncol=length(detailedShortlistNames),nrow=0, dimnames=list(NULL, detailedShortlistNames)))
+# 
+# ## define reactivity
+# # initialise as empty dataframe
+# detailedShortlist <- reactiveVal(detailedShortlist)
+# #detailedShortlist <- reactiveVal(mergedStudyTable()[0,])
+
+
+
+## observe clicks on addToShortlist button
+# observeEvent(input$addToShortlist, {
+#     ## add corresponding rows from mergedStudyTable
+#     # get IDs for selected studies
+#     ids <- unique(formattedTable()[indicesSelectedRows(),])
+#     ids <- dplyr::select(unique(ids, ID))
+# 
+#     t = rbind(detailedShortlist(), filter(mergedStudyTable(), nct_id %in% ids) )
+#     ## drop duplicated rows
+#     t = unique(t)
+#     # update shortlist with new value
+#     detailedShortlist(t)
+#   })
+
+
+
+
+
+
+
+## define output
+# output$detailedShortlistTable <- renderDT({
+#    datatable(dplyr::select(detailedShortlist(), -ID), selection = 'single',rownames=FALSE, escape = 4, options = list(dom = 't', ordering=F,paging = FALSE,scrollX = TRUE,scrollY = "450px",scrollCollapse = TRUE,autoWidth = TRUE,columnDefs = list(list(width = '500px', targets = list(4))))
+#              )
+#   })
+
+```
  
- 
+  
  
  
 ```{r layout shortlist with download button}
@@ -786,20 +850,21 @@ output$downloadShortlist <- downloadHandler(
         tempReport <- file.path(tempdir(), "trial_report.Rmd")
         file.copy("trial_report.Rmd", tempReport, overwrite = TRUE)
 
-        table=mergedStudyTable()
+        # table=mergedStudyTable()
+        # ## filter and retain only studies on the shortlist
+        # shortlist = shortlist()
+        # table <- dplyr::filter(table, nct_id %in% shortlist$ID)
+        
         ## note that some of the studies on shortlist may not be in mergedStudyTable 
         ## INSTEAD, USE shortlist() AND APPEND MISSING COLUMNS FROM cancerStudies (interventions, centres, investigators), indexed.eligibilities (prior therapy exclusions) and and scoredMatches (full inclusion criteria) tables
         ## MAY NEED TO RENAME AND/OR REORDER TO MAKE IT WORK WITH trial_report.Rmd
-        
-        ## filter and retain only studies on the shortlist
-        shortlist = shortlist()
-        table <- dplyr::filter(table, nct_id %in% shortlist$ID)
-        
+        #table <- detailedShortlist()
+        table <- shortlist()
         
 
-          if(!is.na(map.selection$id )) {
-            table <- dplyr::filter(table, nct_id == map.selection$id )
-         }
+         #  if(!is.na(map.selection$id )) {
+         #    table <- dplyr::filter(table, nct_id == map.selection$id )
+         # }
         
         table[is.na(table)] <- "-"
         table=toJSON(table)

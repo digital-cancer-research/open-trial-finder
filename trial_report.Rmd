@@ -39,7 +39,7 @@ today <- format(Sys.Date(), format = "%d %B %Y")
 ## get table from parameters and convert to data frame
 paramTable <- as.data.frame(fromJSON(params$table))
 
-#formattable(paramTable)
+formattable(paramTable)
 
 ```
   
@@ -51,51 +51,51 @@ Row {.tabset}
   
 ```{r display table}
 
-if(nrow(paramTable)>0) {
-  table <- paramTable
-   table[is.na(table)] <- "-"
-   
-   if(nrow(table)>0) {
-   HTML(table %>%
-            mutate(brief_title = cell_spec(x=table$brief_title,format="html", link = table$Link, new_tab = TRUE )) %>%
-            dplyr::select(-c(Link, TARGET.condition, conditions)) %>%
-            mutate(locations = cell_spec(x=table$locations,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
-          mutate(sites = cell_spec(x=table$sites,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
-           mutate(investigators = cell_spec(x=table$investigators,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
-           mutate(contacts = cell_spec(x=table$contacts,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
-           mutate(criteria = cell_spec(x=table$matching_criteria,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
-           mutate(Exclusions = cell_spec(x=table$Exclusions,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
-          aggregate( by=table['nct_id'], function(x) {paste(unique(x), collapse = ";\n")}) %>%
-          dplyr::select(combined_score,
-                        "Matching cancer type(s)" = "matching.condition",
-                         "Matching alteration(s)" = "gene_variant_type",
-                         "Drug rationale" = "intervention_rationale",
-                         "Eligibility" = "eligibility_rationale",
-                         "Brief title" = "brief_title",
-                        "Interventions" = "interventions",
-                         "Matching inclusion criteria" = "criteria",
-                        "Prior Therapy exclusions" = Exclusions,
-                         "Locations" = "locations",
-                        "Centres" = "sites",
-                         "Investigators" = "investigators",
-                         "Contacts" = "contacts",
-                        # "Study ID" = nct_id
-                         #"Overall status" = "overall_status"
-   #                      "Interventions" = "interventions",
-   #                      Mechanism
-                         ) %>%
-            arrange( desc(combined_score)) %>% ## sort on score desc
-            dplyr::select(-combined_score) %>%
-            unique() %>%
-            kable("html", escape = FALSE) %>%
-            # kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
-            kable_styling(bootstrap_options = c("hover", "condensed", "responsive")) %>%
-            #collapse_rows(columns = c(1,2,4,5), valign = "middle") %>%
-            #row_spec(row=3, hline_after = TRUE) %>%
-            kable_styling(fixed_thead = T))
-
-   } 
-} else print("No matching studies based on selected options")
+# if(nrow(paramTable)>0) {
+#   table <- paramTable
+#    table[is.na(table)] <- "-"
+# 
+#    if(nrow(table)>0) {
+#    HTML(table %>%
+#             mutate(brief_title = cell_spec(x=table$brief_title,format="html", link = table$Link, new_tab = TRUE )) %>%
+#             dplyr::select(-c(Link, TARGET.condition, conditions)) %>%
+#             mutate(locations = cell_spec(x=table$locations,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+#           mutate(sites = cell_spec(x=table$sites,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+#            mutate(investigators = cell_spec(x=table$investigators,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+#            mutate(contacts = cell_spec(x=table$contacts,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+#            mutate(criteria = cell_spec(x=table$matching_criteria,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+#            mutate(Exclusions = cell_spec(x=table$Exclusions,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
+#           aggregate( by=table['nct_id'], function(x) {paste(unique(x), collapse = ";\n")}) %>%
+#           dplyr::select(combined_score,
+#                         "Matching cancer type(s)" = "matching.condition",
+#                          "Matching alteration(s)" = "gene_variant_type",
+#                          "Drug rationale" = "intervention_rationale",
+#                          "Eligibility" = "eligibility_rationale",
+#                          "Brief title" = "brief_title",
+#                         "Interventions" = "interventions",
+#                          "Matching inclusion criteria" = "criteria",
+#                         "Prior Therapy exclusions" = Exclusions,
+#                          "Locations" = "locations",
+#                         "Centres" = "sites",
+#                          "Investigators" = "investigators",
+#                          "Contacts" = "contacts",
+#                         # "Study ID" = nct_id
+#                          #"Overall status" = "overall_status"
+#    #                      "Interventions" = "interventions",
+#    #                      Mechanism
+#                          ) %>%
+#             arrange( desc(combined_score)) %>% ## sort on score desc
+#             dplyr::select(-combined_score) %>%
+#             unique() %>%
+#             kable("html", escape = FALSE) %>%
+#             # kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+#             kable_styling(bootstrap_options = c("hover", "condensed", "responsive")) %>%
+#             #collapse_rows(columns = c(1,2,4,5), valign = "middle") %>%
+#             #row_spec(row=3, hline_after = TRUE) %>%
+#             kable_styling(fixed_thead = T))
+# 
+#    }
+# } else print("No matching studies based on selected options")
 
 
 
