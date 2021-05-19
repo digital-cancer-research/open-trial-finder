@@ -590,7 +590,10 @@ formattedTable <- reactive({
 
 
 
-```{r define output}
+```{r define output for main results table}
+
+
+
 
 ## increase width of brief title column to 500 pixels
 output$datatable <- DT::renderDT(dplyr::select(formattedTable(),
@@ -600,16 +603,16 @@ output$datatable <- DT::renderDT(dplyr::select(formattedTable(),
                             "Drug rationale" = "intervention_rationale",
                             "Eligibility" = "eligibility_rationale",
                             "Brief title" = "brief_title",
-                            "Matching inclusion criteria" = "matching_criteria",
-                            "Prior Therapy exclusions" = Exclusions,
+                            # "Matching inclusion criteria" = "matching_criteria",
+                            # "Prior Therapy exclusions" = Exclusions,
                             "Locations" = "locations",
-                            "Centres" = "sites",
-                            "Investigators" = "investigators",
-                            "Contacts" = "contacts",
-                            "StudyID" = nct_id,
-                            "Overall status" = "overall_status",
-                            "Interventions" = "interventions",
-                            Mechanism
+                            # "Centres" = "sites",
+                            # "Investigators" = "investigators",
+                            "Contacts" = "contacts"
+                            # "StudyID" = nct_id,
+                            # "Overall status" = "overall_status",
+                            # "Interventions" = "interventions",
+                            # Mechanism
                             ),
  # output$datatable <- DT::renderDT(formattedTable(),                           
                   rownames=FALSE, escape = 4, 
@@ -647,7 +650,7 @@ fillCol(height = 600, flex = c(NA, 1),
           downloadButton("report", "Download table", class = "btn-primary")
           }), 
           shiny::renderUI({
-          actionButton("addToShortlist", "Shortlist selected studies", class = "btn-secondary")
+          actionButton("addToShortlist", "Shortlist selected studies", class = "btn-primary")
           })
           ),
         DT::DTOutput("datatable") 
@@ -807,7 +810,12 @@ observeEvent(input$addToShortlist, {
     shortlist(t)
   })
 
+```
 
+
+
+
+```{r define output for shortlist table}
 
 
 
@@ -820,16 +828,16 @@ output$shortlistTable <- DT::renderDT(dplyr::select(shortlist(),
                             "Drug rationale" = "intervention_rationale",
                             "Eligibility" = "eligibility_rationale",
                             "Brief title" = "brief_title",
-                            "Matching inclusion criteria" = "matching_criteria",
-                            "Prior Therapy exclusions" = Exclusions,
+                            # "Matching inclusion criteria" = "matching_criteria",
+                            # "Prior Therapy exclusions" = Exclusions,
                             "Locations" = "locations",
-                            "Centres" = "sites",
-                            "Investigators" = "investigators",
-                            "Contacts" = "contacts",
-                            "StudyID" = nct_id,
-                            "Overall status" = "overall_status",
-                            "Interventions" = "interventions",
-                            Mechanism
+                            # "Centres" = "sites",
+                            # "Investigators" = "investigators",
+                            "Contacts" = "contacts"
+                            # "StudyID" = nct_id,
+                            # "Overall status" = "overall_status",
+                            # "Interventions" = "interventions",
+                            # Mechanism
                             ),
                   rownames=FALSE, escape = 4, 
                   options = list(ordering=F,paging = FALSE,scrollX = TRUE,scrollY = "450px",scrollCollapse = TRUE,autoWidth = TRUE,columnDefs = list(list(width = '500px', targets = list(4)))
@@ -908,8 +916,8 @@ fillCol(height = 600, flex = c(NA, 1),
         #DT::DTOutput("shortlistTable"),
         inputPanel(
           shiny::renderUI({downloadButton("downloadShortlist", "Download shortlist", class = "btn-primary")}),
-          actionButton(inputId="removeSelected", "Remove selected studies", class = "btn-secondary"),
-          actionButton(inputId="clearShortlist", "Clear shortlist", class = "btn-dark")
+          actionButton(inputId="removeSelected", "Remove selected studies", class = "btn-primary"),
+          actionButton(inputId="clearShortlist", "Clear shortlist", class = "btn-primary")
           ),
         DT::DTOutput("shortlistTable") 
         # DT::DTOutput("shiny_table")
@@ -983,8 +991,11 @@ output$downloadShortlist <- downloadHandler(
       content = function(file) {
         # Copy the report file to a temporary directory before processing it, in
         # case we don't have write permissions to the current working dir (which can happen when deployed).
-        tempReport <- file.path(tempdir(), "trials_shortlist.Rmd")
-        file.copy("trials_shortlist.Rmd", tempReport, overwrite = TRUE)
+        tempReport <- file.path(tempdir(), "trial_report.Rmd")
+        file.copy("trial_report.Rmd", tempReport, overwrite = TRUE)
+        
+        # tempReport <- file.path(tempdir(), "trials_shortlist.Rmd")
+        # file.copy("trials_shortlist.Rmd", tempReport, overwrite = TRUE)
 
         # table=mergedStudyTable()
         # ## filter and retain only studies on the shortlist

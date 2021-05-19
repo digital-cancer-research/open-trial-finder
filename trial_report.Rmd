@@ -57,7 +57,9 @@ if(nrow(paramTable)>0) {
 
    if(nrow(table)>0) {
    HTML(table %>%
-            mutate(brief_title = cell_spec(x=table$brief_title,format="html", link = table$Link, new_tab = TRUE )) %>%
+           # mutate(brief_title = cell_spec(x=table$brief_title,format="html", new_tab = TRUE )) %>%  
+          # mutate(brief_title = cell_spec(x=table$brief_title,format="html", new_tab = TRUE )) %>%
+          mutate(brief_title = cell_spec(x=table$brief_title,format="html", link = table$Link, new_tab = TRUE )) %>%
             dplyr::select(-c(Link, TARGET.condition, conditions)) %>%
             mutate(locations = cell_spec(x=table$locations,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
           mutate(sites = cell_spec(x=table$sites,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
