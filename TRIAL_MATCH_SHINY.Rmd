@@ -382,6 +382,10 @@ mergedStudyTable <-  reactive({
   table <- merge(x=cancerstudies, by.x=c("nct_id"), all.x=TRUE, 
                      y=scoredmatches, by.y=c("nct_id"))
 
+  validate(
+            need(nrow(table)>0, "No results based on selections")
+        )
+  
    ## if combined_score is NA, set value to zero
    table$combined_score[is.na(table$combined_score)] <- 0
    ## if a mechanism has been selected, filter table
@@ -398,6 +402,8 @@ mergedStudyTable <-  reactive({
    
    ## add some html code to brief_title value with relevant link
    table$brief_title <- paste0('<a href="',table$Link,'" target="_blank">',table$brief_title ,  " </a>")
+   
+   
    
    ## return table
    return(unique(table))
@@ -532,9 +538,10 @@ observeEvent(input$studiesmap_click, {
 ## render as datatable
 formattedTable <- reactive({
   table <- mergedStudyTable()
-   validate(
+  validate(
             need(nrow(table)>0, "No matching studies based on selected options")
         )
+  
    table[is.na(table)] <- "-"
    if(!is.na(map.selection$id )) {
       table <- dplyr::filter(table, nct_id == map.selection$id )
@@ -568,7 +575,7 @@ formattedTable <- reactive({
         #                     Mechanism
         #                   
         #                        ))
-   # table <- arrange(table, desc(combined_score))
+   table <- arrange(table, desc(combined_score))
    table <- unique(table)
 
    return(table)
@@ -616,8 +623,16 @@ output$datatable <- DT::renderDT(dplyr::select(formattedTable(),
                             ),
  # output$datatable <- DT::renderDT(formattedTable(),                           
                   rownames=FALSE, escape = 4, 
-                  options = list(ordering=F,paging = FALSE,scrollX = TRUE,scrollY = "450px",scrollCollapse = TRUE,autoWidth = TRUE,columnDefs = list(list(width = '500px', targets = list(4)))
-  ))
+                  options = list(ordering=F,
+                                 paging = TRUE,
+                                 scrollX = TRUE,
+                                 scrollY = "60vh",
+                                 scrollCollapse = TRUE,
+                                 autoWidth = TRUE,
+                                 #language = list(emptyTable = 'My Custom No Data Message'),
+                                 columnDefs = list(list(width = '500px', targets = list(4)))
+                                )
+ )
 
 
 ## UNUSED CODE FOR OTHER OPTIONS...
@@ -840,8 +855,15 @@ output$shortlistTable <- DT::renderDT(dplyr::select(shortlist(),
                             # Mechanism
                             ),
                   rownames=FALSE, escape = 4, 
-                  options = list(ordering=F,paging = FALSE,scrollX = TRUE,scrollY = "450px",scrollCollapse = TRUE,autoWidth = TRUE,columnDefs = list(list(width = '500px', targets = list(4)))
-  ))
+                  options = list(ordering=F,
+                                 paging = TRUE,
+                                 scrollX = TRUE,
+                                 scrollY = "60vh",
+                                 scrollCollapse = TRUE,
+                                 autoWidth = TRUE,
+                                 columnDefs = list(list(width = '500px', targets = list(4)))
+                                )
+  )
 ```
  
 ```{r define reactive value to hold selected study IDs}
