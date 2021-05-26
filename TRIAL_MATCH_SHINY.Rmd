@@ -266,7 +266,9 @@ urlAlterations <- reactive({
     # drop repeated alterations
     alterations <- unique(alterations)
     } else alterations = NULL
-  ## return value
+    
+    
+    ## return value
   return(alterations)
 })
 
@@ -357,7 +359,18 @@ checkboxInput(inputId="confidenceFilter", label="Hide matches on cancer type alo
 ```{r filter scoredMatches table}
 reactiveScoredMatches <- reactive({
    table <- scoredMatches
-   table <- dplyr::filter(table, gene_variant_type %in% selectedAlterations())
+   ## deal with edge case where exclude matches on cancer type alone but no alterations selected
+   #if(!is.null(selectedAlterations())) {
+     table <- dplyr::filter(table, gene_variant_type %in% selectedAlterations())
+     # validate(
+     #        need(nrow(table)>0, "selected variants not present")
+     #        #need(!is.null(table), "table is NULL")
+     #    )
+     
+   #} else {table <- scoredMatches[NULL, ]}
+   
+   
+   
    ## return table
    return(unique(table))
 })
@@ -382,9 +395,10 @@ mergedStudyTable <-  reactive({
   table <- merge(x=cancerstudies, by.x=c("nct_id"), all.x=TRUE, 
                      y=scoredmatches, by.y=c("nct_id"))
 
-  validate(
-            need(nrow(table)>0, "No results based on selections")
-        )
+  # validate(
+  #           need(nrow(table)>0, "No results based on selections")
+  #           #need(!is.null(table), "table is NULL")
+  #       )
   
    ## if combined_score is NA, set value to zero
    table$combined_score[is.na(table$combined_score)] <- 0
@@ -399,6 +413,12 @@ mergedStudyTable <-  reactive({
    }
    ## if excluding matches on cancer type alone, filter table
    if(input$confidenceFilter==TRUE) {table <- filter(table, combined_score >0)}
+   
+   
+  validate(
+            need(nrow(table)>0, "No results based on selections")
+            #need(!is.null(table), "table is NULL")
+        )
    
    ## add some html code to brief_title value with relevant link
    table$brief_title <- paste0('<a href="',table$Link,'" target="_blank">',table$brief_title ,  " </a>")
@@ -542,14 +562,15 @@ formattedTable <- reactive({
             need(nrow(table)>0, "No matching studies based on selected options")
         )
   
-   table[is.na(table)] <- "-"
+   # table[is.na(table)] <- "-"
    if(!is.na(map.selection$id )) {
       table <- dplyr::filter(table, nct_id == map.selection$id )
    }
         # table$brief_title <- paste0('<a href="',table$Link,'" target="_blank">',table$brief_title ,  " </a>")
         #table$ID <- table$nct_id
    table <- arrange(table, desc(combined_score)) 
-   table <- aggregate(table, by=table['nct_id'], function(x) {paste(unique(x), collapse = ";\n")})
+   table <- aggregate(table, by=table['nct_id'], function(x) {paste(unique(na.omit(x)), collapse = ";\n")})
+   #table[is.na(table)] <- "-"
    ## aggregate leads to duplication of nct_id column
    table$StudyID <- table$nct_id
    ##drop nct_id column
@@ -836,7 +857,7 @@ observeEvent(input$addToShortlist, {
 
 
 # output$shortlistTable <- DT::renderDT(shortlist(),
-output$shortlistTable <- DT::renderDT(dplyr::select(shortlist(),
+output$shortlistTable <- DT::renderDT(unique(dplyr::select(shortlist(),
                             # combined_score,
                             "Matching cancer type(s)" = "matching.condition",
                             "Matching alteration(s)" = "gene_variant_type",
@@ -853,7 +874,7 @@ output$shortlistTable <- DT::renderDT(dplyr::select(shortlist(),
                             # "Overall status" = "overall_status",
                             # "Interventions" = "interventions",
                             # Mechanism
-                            ),
+                            )),
                   rownames=FALSE, escape = 4, 
                   options = list(ordering=F,
                                  paging = TRUE,
