@@ -5,7 +5,7 @@
 "world.cities.country":"UK", 
 "zoom.lat":"54.2361",
 "zoom.long":"-4.5481",
-"contact.email":"",
-"about.us":"",
-"privacy.statement":""
+"contact.email":"paul.oregan@digitalecmt.org",
+"about.us":"The digital ECMT is a clinical digital research group. Our mission is to innovate and apply digital science to transform decision-making in early clinical trials and the patient’s role. For more information, please visit our website at https://digitalecmt.org/.  ",
+"privacy.statement":"The digital ECMT privacy policy is available here: https://digitalecmt.org/privacy-policy/ . This cancer trial match tool does NOT use cookies. In order to analyse usage of this website, we use Matomo, which aggregates and analyses the actions you take, but does not collect or process any personal data or PII (personally identifiable information). "
 }
