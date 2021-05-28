@@ -265,8 +265,17 @@ urlAlterations <- reactive({
     alterations <- gsub(pattern = " CNA ", replacement = " ", x=alterations, ignore.case = TRUE)
     # drop repeated alterations
     alterations <- unique(alterations)
+    
+    ## if a variant is passed that is not in scoredMatches table, set to NULL
+    if(!(alterations %in% scoredMatches$gene_variant_type)) {
+      alterations <- NULL
+    }
+    
+    
     } else alterations = NULL
-  ## return value
+    
+    
+    ## return value
   return(alterations)
 })
 
@@ -307,9 +316,16 @@ selectedAlterations <- reactive({
     alterations <- urlAlterations()
     ## reset urlAlterations value
     urlAlterations() <- NULL
+    
+   
+    
+    
   } else if(!is.null(input$geneFilter)) {
     alterations <- input$geneFilter
   } else {alterations <- NULL}
+  
+
+  
   
   ## return value
   return(alterations)
@@ -357,7 +373,18 @@ checkboxInput(inputId="confidenceFilter", label="Hide matches on cancer type alo
 ```{r filter scoredMatches table}
 reactiveScoredMatches <- reactive({
    table <- scoredMatches
-   table <- dplyr::filter(table, gene_variant_type %in% selectedAlterations())
+   ## deal with edge case where exclude matches on cancer type alone but no alterations selected
+#   if(!is.null(selectedAlterations())) {
+     table <- dplyr::filter(table, gene_variant_type %in% selectedAlterations())
+     # validate(
+     #        need(nrow(table)>0, "selected variants not present")
+     #        #need(!is.null(table), "table is NULL")
+     #    )
+     
+   # } else {table <- scoredMatches[NULL, ]}
+   
+   
+   
    ## return table
    return(unique(table))
 })
@@ -368,6 +395,8 @@ reactiveScoredMatches <- reactive({
 # [4] "nct_id"                 "intervention_rationale" "eligibility_rationale" 
 # [7] "matching_criteria"      "combined_score"   
 
+
+## if selectedAlterations not in gene_variant_type, get a table with header but no rows
 ```
  
 ```{r define reactive mergedStudyTable}
@@ -382,9 +411,10 @@ mergedStudyTable <-  reactive({
   table <- merge(x=cancerstudies, by.x=c("nct_id"), all.x=TRUE, 
                      y=scoredmatches, by.y=c("nct_id"))
 
-  validate(
-            need(nrow(table)>0, "No results based on selections")
-        )
+  # validate(
+  #           need(nrow(table)>0, "No results based on selections")
+  #           #need(!is.null(table), "table is NULL")
+  #       )
   
    ## if combined_score is NA, set value to zero
    table$combined_score[is.na(table$combined_score)] <- 0
@@ -399,6 +429,12 @@ mergedStudyTable <-  reactive({
    }
    ## if excluding matches on cancer type alone, filter table
    if(input$confidenceFilter==TRUE) {table <- filter(table, combined_score >0)}
+   
+   
+  validate(
+            need(nrow(table)>0, "No results based on selections")
+            #need(!is.null(table), "table is NULL")
+        )
    
    ## add some html code to brief_title value with relevant link
    table$brief_title <- paste0('<a href="',table$Link,'" target="_blank">',table$brief_title ,  " </a>")
@@ -542,14 +578,15 @@ formattedTable <- reactive({
             need(nrow(table)>0, "No matching studies based on selected options")
         )
   
-   table[is.na(table)] <- "-"
+   # table[is.na(table)] <- "-"
    if(!is.na(map.selection$id )) {
       table <- dplyr::filter(table, nct_id == map.selection$id )
    }
         # table$brief_title <- paste0('<a href="',table$Link,'" target="_blank">',table$brief_title ,  " </a>")
         #table$ID <- table$nct_id
    table <- arrange(table, desc(combined_score)) 
-   table <- aggregate(table, by=table['nct_id'], function(x) {paste(unique(x), collapse = ";\n")})
+   table <- aggregate(table, by=table['nct_id'], function(x) {paste(unique(na.omit(x)), collapse = ";\n")})
+   #table[is.na(table)] <- "-"
    ## aggregate leads to duplication of nct_id column
    table$StudyID <- table$nct_id
    ##drop nct_id column
@@ -836,7 +873,7 @@ observeEvent(input$addToShortlist, {
 
 
 # output$shortlistTable <- DT::renderDT(shortlist(),
-output$shortlistTable <- DT::renderDT(dplyr::select(shortlist(),
+output$shortlistTable <- DT::renderDT(unique(dplyr::select(shortlist(),
                             # combined_score,
                             "Matching cancer type(s)" = "matching.condition",
                             "Matching alteration(s)" = "gene_variant_type",
@@ -853,7 +890,7 @@ output$shortlistTable <- DT::renderDT(dplyr::select(shortlist(),
                             # "Overall status" = "overall_status",
                             # "Interventions" = "interventions",
                             # Mechanism
-                            ),
+                            )),
                   rownames=FALSE, escape = 4, 
                   options = list(ordering=F,
                                  paging = TRUE,
@@ -1070,9 +1107,99 @@ output$downloadShortlist <- downloadHandler(
 
 
 ```
+  
+  
+
+```{r disconnect from database}
+dbDisconnect(con) 
+
+```
+
+  
+
+     
+
+### About  
+  
+#### About us  
+
+`r configuration$about.us`.    
 
 
+We would be grateful for feedback as to utility of this tool – if you have any feedback, or you would like to know more detail about this tool, please contact `r configuration$contact.email`.  
 
+#### What does this tool do?  
+  
+The digital ECMT cancer trial matching tool is intended to support clinicians in the matching of people with cancer to clinical trials based on their cancer type, genetic alterations and/or trial drug mechanism. This is an early version that could possibly change.  
+  
+  
+Potential matching trials are ranked according to the following order:   
+  
+  
+1.	Study is enrolling patients with specified genetic alterations, AND specified gene is targeted by a study drug.  
+
+2.	Study is enrolling patients with specified genetic alterations, AND a study drug targets a gene immediately downstream.  
+
+3.	Study is enrolling patients with specified genetic alterations.  
+
+4.	Study drug targets gene of interest.  
+
+5.	Study drug targets a gene immediately downstream of specified genetic alteration.  
+
+6.	Match on cancer type alone.  
+  
+  
+#### Data sources  
+  
+Trial data are sourced exclusively from clinicaltrials.gov via the Clinical Trials Transformation Initiative (https://www.ctti-clinicaltrials.org/ ).   
+
+Data regarding mechanisms of trial interventions are sourced from the NCI Thesaurus: https://ncithesaurus.nci.nih.gov/ncitbrowser/  
+
+Data regarding biological pathways are sourced from KEGG (https://www.kegg.jp/kegg/) using the R BioConductor package: https://www.bioconductor.org/  
+  
+#### Limitations  
+  
+**Please note that it is not a comprehensive source of information about clinical trials, and its utility not been validated for use in clinical decision making.**  
+
+Trials that are not included in clinicaltrials.gov will not be included in the search.  
+Only studies with at least one UK site are included. If you are interested in hosting a site for other countries, please contact paul.oregan@digitalecmt.org .  
+
+Only sites that are listed as “Recruiting” are included in the search.  
+
+Data are refreshed daily, but clinicians are advised to contact the relevant investigators to confirm recruitment status.  
+
+Study eligibility criteria are tagged with the relevant genetic alterations based on natural language processing – some criteria may be incorrectly tagged, and some relevant criteria may be missed.  
+  
+  
+### Legal  
+  
+  
+    
+* The digital ECMT cancer trial matching tool includes content intended for use by healthcare professionals. This tool does not give professional advice; physicians and other healthcare professionals who use this tool should exercise their own clinical judgment as to the information it provides. Individuals with any type of medical condition are specifically cautioned to seek professional medical advice before beginning any sort of health treatment. For medical concerns, including decisions about medications and other treatments, non-medical users should always consult their physician or other qualified healthcare professional.  
+
+* The tool’s content developers have carefully tried to create its content to conform to the standards of professional practice that prevailed at the time of development. However, standards and practices in medicine change as new data become available and the individual medical professional should consult a variety of sources.  
+
+*	We do not give medical advice, nor do we provide medical or diagnostic services. Medical information changes rapidly. Neither we nor our content providers guarantee that the content covers all possible uses, directions, precautions, drug interactions, or adverse effects that may be associated with any therapeutic treatments.  
+
+*	Your reliance upon information and content obtained by you at or through this site is solely at your own risk. Neither we nor our content providers assume any liability or responsibility for damage or injury (including death) to you, other persons, or property arising from any use of any product, information, idea, or instruction contained in the content or services provided to you.  
+  
+#### Privacy  
+  
+`r configuration$privacy.statement`.  
+ 
+  
+  
+
+```{r exit script }
+knitr::knit_exit()
+```
+ 
+  
+  
+
+
+  
+    
 ### Study ranking details  
 
   
@@ -1121,18 +1248,6 @@ DATA SOURCES:
   
   
 
-```{r disconnect from database}
-dbDisconnect(con) 
-
-```
-
-  
-
-
-```{r exit script }
-knitr::knit_exit()
-```
-  
   
 
 <!-- **Cancer types included in search:**   -->

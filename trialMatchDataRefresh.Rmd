@@ -826,7 +826,11 @@ indexOnPattern <- function(eligibilities, pattern, wordRange, featureLabel) {
   table <- merge(x=table, by.x="match", y=humanGenes, by.y = "Aliases")
   
   ## rename Symbol to "controlled.match"
-  table <- rename(table, "controlled.match"="Symbol")
+  # using rename gives unreliable results (?!)
+  # see https://stackoverflow.com/questions/26371279/dplyr-0-3-0-2-rename-idiom-unstable-when-reshape-package-is-loaded
+  #table <- rename(table, "controlled.match"="Symbol")
+  table$controlled.match <- table$Symbol
+  table <- dplyr::select(table, -Symbol)
   ## drop redundant rows
   table <- unique(table)
   ## return table
@@ -1054,7 +1058,9 @@ targetMatches$intervention_rationale <- paste0("Study drug (", targetMatches$int
 targetMatches <- unique(dplyr::select(targetMatches, -interventions.processed))
 
 ## rename drugTargetSymbol column
-targetMatches <- rename(targetMatches,"symbol"= "drugTargetSymbol")
+#targetMatches <- rename(targetMatches,"symbol"= "drugTargetSymbol")
+targetMatches$symbol <- targetMatches$drugTargetSymbol
+targetMatches <- dplyr::select(targetMatches, -drugTargetSymbol)
 
 ## add a score
 targetMatches$intervention_score <- 2
@@ -1092,10 +1098,14 @@ pathwayMatches$intervention_rationale <- paste0("Study drug (", pathwayMatches$i
 pathwayMatches <- unique(dplyr::select(pathwayMatches, -c(interventions.processed, downstream)))
 
 ## rename upstream column to drugTargetSymbol to match targetMatches
-pathwayMatches <- rename(pathwayMatches, "symbol"="upstream")
+#pathwayMatches <- rename(pathwayMatches, "symbol"="upstream")
+pathwayMatches$symbol <- pathwayMatches$upstream
+pathwayMatches <- dplyr::select(pathwayMatches, -upstream)
+
 
 ## add a score
 pathwayMatches$intervention_score <- 1
+
 ```
 
 ```{r row bind target and pathway matches}
@@ -1103,7 +1113,7 @@ pathwayMatches$intervention_score <- 1
 scoredMatches <- rbind(targetMatches, pathwayMatches)
 
 ## for genes that don't have a match in eligilityMatches, we want to be able to match on gene alone, regardless of variant_type... 
-scoredMatches$variant_type <- list(c("mutation", "fusion", "amplification"))
+scoredMatches$variant_type <- list(c("mutation", "rearrangement", "loss", "amplification"))
 
 ## unnest to multiply rows
 scoredMatches <- data.frame(unnest(scoredMatches, cols = "variant_type"))
