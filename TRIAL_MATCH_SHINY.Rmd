@@ -1177,7 +1177,6 @@ Study eligibility criteria are tagged with the relevant genetic alterations base
     
 * The digital ECMT cancer trial matching tool includes content intended for use by healthcare professionals. This tool does not give professional advice; physicians and other healthcare professionals who use this tool should exercise their own clinical judgment as to the information it provides. Individuals with any type of medical condition are specifically cautioned to seek professional medical advice before beginning any sort of health treatment. For medical concerns, including decisions about medications and other treatments, non-medical users should always consult their physician or other qualified healthcare professional.  
 
-* The tool’s content developers have carefully tried to create its content to conform to the standards of professional practice that prevailed at the time of development. However, standards and practices in medicine change as new data become available and the individual medical professional should consult a variety of sources.  
 
 *	We do not give medical advice, nor do we provide medical or diagnostic services. Medical information changes rapidly. Neither we nor our content providers guarantee that the content covers all possible uses, directions, precautions, drug interactions, or adverse effects that may be associated with any therapeutic treatments.  
 
