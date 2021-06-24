@@ -915,8 +915,8 @@ output$shortlistTable <- DT::renderDT(unique(dplyr::select(shortlist(),
                             "Drug rationale" = "intervention_rationale",
                             "Eligibility" = "eligibility_rationale",
                             "Brief title" = "brief_title",
-                            # "Matching inclusion criteria" = "matching_criteria",
-                            # "Prior Therapy exclusions" = Exclusions,
+                            "Matching inclusion criteria" = "matching_criteria",
+                            "Prior Therapy exclusions" = Exclusions,
                             "Locations" = "locations",
                             # "Centres" = "sites",
                             # "Investigators" = "investigators",
@@ -955,53 +955,6 @@ output$shortlistTable <- DT::renderDT(unique(dplyr::select(shortlist(),
 
 ```
 
-```{r define detailed reactive shortlist for download}
-
-## create an empty shortlist
-# detailedShortlistNames <- c("nct_id","interventions","locations","postcode","brief_title","overall_status","condition","site_name","site_status","investigators","contacts","Refresh.date","matching.condition","TARGET.condition","Link","postcode.lat","postcode.long","lat","long","ParentTerm","symbol","variant_type","gene_variant_type","intervention_rationale","eligibility_rationale","matching_criteria","combined_score")
-
-
-# detailedShortlistNames <- names( merge(x=cancerStudies, by.x=c("nct_id"), all.x=TRUE,
-#                      y=scoredMatches, by.y=c("nct_id")))
-# # 
-# detailedShortlist <- data.frame(matrix(ncol=length(detailedShortlistNames),nrow=0, dimnames=list(NULL, detailedShortlistNames)))
-# 
-# ## define reactivity
-# # initialise as empty dataframe
-# detailedShortlist <- reactiveVal(detailedShortlist)
-# #detailedShortlist <- reactiveVal(mergedStudyTable()[0,])
-
-
-
-## observe clicks on addToShortlist button
-# observeEvent(input$addToShortlist, {
-#     ## add corresponding rows from mergedStudyTable
-#     # get IDs for selected studies
-#     ids <- unique(formattedTable()[indicesSelectedRows(),])
-#     ids <- dplyr::select(unique(ids, ID))
-# 
-#     t = rbind(detailedShortlist(), filter(mergedStudyTable(), nct_id %in% ids) )
-#     ## drop duplicated rows
-#     t = unique(t)
-#     # update shortlist with new value
-#     detailedShortlist(t)
-#   })
-
-
-
-
-
-
-
-## define output
-# output$detailedShortlistTable <- renderDT({
-#    datatable(dplyr::select(detailedShortlist(), -ID), selection = 'single',rownames=FALSE, escape = 4, options = list(dom = 't', ordering=F,paging = FALSE,scrollX = TRUE,scrollY = "450px",scrollCollapse = TRUE,autoWidth = TRUE,columnDefs = list(list(width = '500px', targets = list(4))))
-#              )
-#   })
-
-```
- 
-  
  
  
 ```{r layout shortlist with download button}
