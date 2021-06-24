@@ -141,12 +141,15 @@ urlValues <- reactiveValues()
 
 ```{r parse cancer type from URL}
 
+
+
 #urlCancerType <- reactive({
 observe({
       query <- parseQueryString(session$clientData$url_search)
       if (!is.null(query[['cancerType']])) {
         urlValues$CancerType <- query[['cancerType']]
-        #updateTextInput(session, "cancerType", value = urlValues$CancerType)
+         
+        
       } 
 })
 ```
@@ -266,8 +269,9 @@ urlAlterations <- reactive({
     # drop repeated alterations
     alterations <- unique(alterations)
     
-    ## if a variant is passed that is not in scoredMatches table, set to NULL
-    if(!(alterations %in% scoredMatches$gene_variant_type)) {
+    
+    ## if none of the variants passed is in scoredMatches table, set value to NULL
+    if(length(intersect(alterations, scoredMatches$gene_variant_type))==0) {
       alterations <- NULL
     }
     
@@ -785,6 +789,9 @@ output$report <- downloadHandler(
             table <- dplyr::filter(table, nct_id == map.selection$id )
          }
         
+        
+        
+        
         table[is.na(table)] <- "-"
         table=toJSON(table)
         
@@ -1067,6 +1074,35 @@ output$downloadShortlist <- downloadHandler(
         #table <- detailedShortlist()
         table <- shortlist()
         
+        
+        ## if parameters (cancer type as minimum) have been passed in the URL, record which studies were shortlisted
+        if(!is.null(urlValues$CancerType)) {
+        ## create a separate table that will be written to database
+        shortlistTable <- table 
+        ## capture date and time downloaded
+        shortlistTable$datetime <- Sys.time()
+        ## capture the cancer type passed in url
+        shortlistTable$urlCancerType <- urlValues$CancerType
+        ## capture the alterations (if any) that have been passed in url
+        #print(paste0("urlAlterations() value: ", urlAlterations()))
+        #print(paste0("urlValues$alterations value: ", urlValues$alterations))
+        shortlistTable$urlAlterations <- NA
+        if(!is.null(urlValues$alterations)) {
+          shortlistTable$urlAlterations <- urlValues$alterations
+        }
+        ## print to console to aid development... 
+        #print(shortlistTable)
+        ## append to dedicated table in database (if table doesn't exist, it is created)
+        con2 <- dbConnect(RSQLite::SQLite(), "trialMatchData.sqlite")
+        dbWriteTable(conn = con2,name = "downloaded", value = shortlistTable, append=TRUE)
+        dbDisconnect(con2) 
+
+        }
+        
+        
+        
+        
+
 
          #  if(!is.na(map.selection$id )) {
          #    table <- dplyr::filter(table, nct_id == map.selection$id )
