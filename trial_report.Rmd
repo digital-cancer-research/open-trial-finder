@@ -73,8 +73,8 @@ if(nrow(paramTable)>0) {
                             "Locations" = "locations",
                             # "Centres" = "sites",
                             # "Investigators" = "investigators",
-                            "Central contacts" = "central_contacts",
-                            "Site contacts" = "contacts",
+                            # "Central contacts" = "central_contacts",
+                            "Contacts" = "contacts",
                             # "StudyID" = nct_id,
                             # "Overall status" = "overall_status",
                             

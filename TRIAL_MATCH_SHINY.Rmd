@@ -197,6 +197,8 @@ selectedCancerTypes <- reactive({
 reactiveCancerStudies <- reactive({
    cancer.types <- selectedCancerTypes()
    table <- dplyr::filter(cancerStudies, TARGET.condition %in% cancer.types)
+   ## append central contacts to front of site contact
+   table$contacts <- paste(na.omit(table$central_contacts), na.omit(table$contacts))
    ## return table
    return(unique(table))
 })
@@ -657,8 +659,8 @@ output$datatable <- DT::renderDT(dplyr::select(formattedTable(),
                             "Locations" = "locations",
                             # "Centres" = "sites",
                             # "Investigators" = "investigators",
-                            "Central contacts" = "central_contacts",
-                            "Site contacts" = "contacts"
+                            # "Central contacts" = "central_contacts",
+                            "Contacts" = "contacts"
                             # "StudyID" = nct_id,
                             # "Overall status" = "overall_status",
                             # "Interventions" = "interventions",
@@ -922,8 +924,8 @@ output$shortlistTable <- DT::renderDT(unique(dplyr::select(shortlist(),
                             "Locations" = "locations",
                             # "Centres" = "sites",
                             # "Investigators" = "investigators",
-                            "Central contacts" = "central_contacts",
-                            "Site contacts" = "contacts"
+                            # "Central contacts" = "central_contacts",
+                            "Contacts" = "contacts"
                             # "StudyID" = nct_id,
                             # "Overall status" = "overall_status",
                             # "Interventions" = "interventions",
