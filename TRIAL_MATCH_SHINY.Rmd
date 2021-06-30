@@ -1175,12 +1175,12 @@ Study eligibility criteria are tagged with the relevant genetic alterations base
   
   
     
-* The digital ECMT cancer trial matching tool includes content intended for use by healthcare professionals. This tool does not give professional advice; physicians and other healthcare professionals who use this tool should exercise their own clinical judgment as to the information it provides. Individuals with any type of medical condition are specifically cautioned to seek professional medical advice before beginning any sort of health treatment. For medical concerns, including decisions about medications and other treatments, non-medical users should always consult their physician or other qualified healthcare professional.  
+* The University of Manchester digital ECMT team’s cancer trial matching tool includes content intended for use only by healthcare professionals. This tool does not give professional advice; physicians and other healthcare professionals who use this tool should exercise their own clinical judgment as to the information it provides. Individuals with any type of medical condition are specifically cautioned to seek professional medical advice before beginning any sort of health treatment. For medical concerns, including decisions about medications and other treatments, non-medical users should always consult their physician or other qualified healthcare professional.  
 
 
-*	We do not give medical advice, nor do we provide medical or diagnostic services. Medical information changes rapidly. Neither we nor our content providers guarantee that the content covers all possible uses, directions, precautions, drug interactions, or adverse effects that may be associated with any therapeutic treatments.  
+*	We do not give medical advice, nor do we provide medical or diagnostic services. Medical information changes rapidly. Neither we nor our content providers guarantee that the content of this tool covers all possible uses, directions, precautions, drug interactions, or adverse effects that may be associated with any therapeutic treatments.  
 
-*	Your reliance upon information and content obtained by you at or through this site is solely at your own risk. Neither we nor our content providers assume any liability or responsibility for damage or injury (including death) to you, other persons, or property arising from any use of any product, information, idea, or instruction contained in the content or services provided to you.  
+*	In the absence of any negligence or other breach of duty by us: (1) your reliance upon information and content obtained by you at or through this site is solely at your own risk; and (2) neither we nor our content providers are responsible for any damage or injury (including death) to you, other persons, or property arising from any use of any product, information, idea, or instruction in the content of the tool.  
   
 #### Privacy  
   
