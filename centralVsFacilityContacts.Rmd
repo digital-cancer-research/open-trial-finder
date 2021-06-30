@@ -1,0 +1,221 @@
+---
+title: "central contacts vs facility contacts"
+author: "digital ECMT cancer trial matching tool"
+date: "29/06/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+require(RPostgreSQL)
+require(RODBC)
+require(formattable)
+require(org.Hs.eg.db)
+require(DBI)
+require(dplyr)
+require(tidyr)
+require(kableExtra)
+require(KEGGREST)
+require(stringr)
+#require(stringi)
+require(splitstackshape)
+require(reshape2)
+require(tictoc)
+require(maps)
+require(leaflet)
+require(PostcodesioR)
+require(rjson)
+require(RSQLite)
+require(igraph)
+
+## clean up first
+rm(list=ls())
+
+##get today's date
+today <- format(Sys.Date(), format = "%d %B %Y")
+```
+
+```{r connect to clinicaltrials}
+## load configuration data from JSON file
+configuration <- fromJSON(file = "trialMatchConfiguration.json")
+aact.username <- configuration$aact.username
+aact.password <- configuration$aact.password
+
+drv <- dbDriver("PostgreSQL")
+conn2 <- dbConnect(drv, dbname="aact",host="aact-db.ctti-clinicaltrials.org", port=5432, user=aact.username, password=aact.password )
+
+
+
+
+```
+
+ 
+```{r get study data}
+
+## get country name specified in configuration file
+country <- configuration$country
+## get interventional studies for country specified in configuration file
+## any indication
+## with sites in specified country that have a status of "Recruiting" or "Not yet recruiting"
+
+# form query
+openStudiesQ <- paste0("SELECT s.nct_id, s.brief_title, s.overall_status, c.name AS condition, i.name AS interventions, f.name AS site_name,
+f.city AS locations, f.zip AS postcode, f.status AS site_status,
+fi.name as investigators,
+fc.email AS facility_contacts, 
+fc.phone AS facility_phone,
+cc.email AS central_contact, 
+cc.phone AS central_phone
+FROM studies s
+INNER JOIN facilities f ON f.nct_id = s.nct_id
+INNER JOIN conditions c ON c.nct_id = s.nct_id
+INNER JOIN interventions i ON i.nct_id = s.nct_id
+LEFT JOIN central_contacts cc ON cc.nct_id = s.nct_id
+LEFT JOIN facility_contacts fc ON f.id = fc.facility_id
+LEFT JOIN facility_investigators fi ON f.id=fi.facility_id
+WHERE f.country LIKE ('",
+country,
+"')
+  AND s.study_type LIKE ('Interventional')
+  AND s.overall_status IN ('Recruiting')
+  AND f.status IN ('Recruiting', 'Not yet recruiting')")
+
+
+## get data from clinicaltrials.gov
+openStudies <- dbGetQuery(conn2,openStudiesQ)
+
+## add a column to indicate refresh date
+openStudies$Refresh.date <- today
+
+```
+
+  
+```{r create table of cancer types}
+## conditionSynonyms specifies which cancer types are of interest, and which condition names (as used by clinicaltrials.gov) will be considered as matches for each
+
+## synonyms define on basis of those in clinicaltrials.gov
+#conditionSynonyms <- read.csv(file = "conditionSynonyms4.csv", stringsAsFactors = FALSE)
+## updated set of more granular cancer types
+conditionSynonyms <- read.csv(file = "conditionSynonyms5.csv", stringsAsFactors = FALSE)
+
+
+
+
+## trim leading/trailing whitespace
+conditionSynonyms$condition.synonyms <- str_squish(string = conditionSynonyms$condition.synonyms)
+
+## remove redundancy, if any
+conditionSynonyms <- unique(conditionSynonyms)
+
+## display conditions and synonyms used
+# formattable(as.data.frame(conditionSynonyms %>% 
+#                   group_by(controlled.cancer.type) %>%
+#                   summarise(
+#                   synonyms = paste(condition.synonyms, collapse = ", "))))
+
+## preview
+formattable(head(conditionSynonyms))
+
+## create as a table in database
+#dbWriteTable(conn = con,name = "cancers", value = conditionSynonyms, overwrite=TRUE)
+
+## check it has saved
+#dbListTables(con)
+
+```
+ 
+
+```{r loop through synonyms and look for matches against condition name}
+## add a column to hold matching condition
+openStudies$matching.condition <- NA
+openStudies$TARGET.condition <- NA
+
+## create an empty version to which matching rows will be added after looping through condition synonyms
+cancerStudies <- openStudies[0, ]
+
+# loop through condition synonyms
+for(i in 1:nrow(conditionSynonyms)) {
+  synonym <- as.character(conditionSynonyms$condition.synonyms[i])
+  targetCondition <- as.character(conditionSynonyms$controlled.cancer.type[i])
+  ## look for a match in condition name
+  matching.rows <- grep(pattern = synonym, x=openStudies$condition, ignore.case = TRUE)
+  ## create a temporary data frame to hold matches
+  temp <- openStudies[matching.rows, ]
+  if(nrow(temp)>0) {
+    temp$matching.condition <- synonym
+  temp$TARGET.condition <- targetCondition
+  cancerStudies <- rbind(cancerStudies, temp)
+  }
+}
+
+## overwrite openStudies with openStudies2
+#openStudies <- openStudies2
+## delete copy of openStudies to save memory
+rm(openStudies)
+
+## remove redundant rows, if any
+cancerStudies <- unique(cancerStudies)
+
+cancerStudies <- unique(dplyr::filter(cancerStudies, site_status == "Recruiting"))
+
+```
+
+
+
+
+```{r analysis central vs facility contacts, echo=T}
+## how many studies
+length(unique(cancerStudies$nct_id))
+
+studyIDswithFacilityContacts <- unique(cancerStudies$nct_id[!is.na(cancerStudies$facility_contacts)]) 
+## how many studies have at least one facility contact
+length(studyIDswithFacilityContacts)
+
+
+studyIDswithCentralContacts <- unique(cancerStudies$nct_id[!is.na(cancerStudies$central_contact )])
+## how many studies have a central contact
+length(studyIDswithCentralContacts)
+
+## how many have central but no facility contacts
+length(setdiff(x=studyIDswithCentralContacts, y=studyIDswithFacilityContacts))
+
+
+## how many central contact email addresses
+length(unique(cancerStudies$central_contact))
+
+
+## how many central contact email addresses end in .uk?
+length(grep(x= unique(cancerStudies$central_contact), pattern = ".*\\.uk"))
+## what are they
+unique(cancerStudies$central_contact)[grep(x= unique(cancerStudies$central_contact), pattern = ".*\\.uk")]
+```
+
+
+
+
+
+```{r study level analysis}
+## how many studies are missing a facility contact, but have a central contact with a .uk email address?
+
+# simplify studies table
+simple <- unique(dplyr::select(cancerStudies, nct_id,locations, central_contact, facility_contacts))
+
+## retain only those with missing facility contacts
+missingFacilityContacts <- filter(simple, is.na(facility_contacts))
+
+## retain only those with central contact ending in .uk
+missingFacilityContacts <- missingFacilityContacts[grep(x= missingFacilityContacts$central_contact, pattern = ".*\\.uk"), ]
+
+## how many studies remaining
+length(unique(missingFacilityContacts$nct_id))
+
+# group by study id
+missingFacilityContacts <- missingFacilityContacts %>%
+       aggregate( by=missingFacilityContacts['nct_id'], function(x) {paste(unique(x), collapse = ";\n")}) %>%
+    as.data.frame()
+
+formattable(missingFacilityContacts)
+```
+
+
+
