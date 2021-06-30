@@ -1094,6 +1094,12 @@ output$downloadShortlist <- downloadHandler(
         ## if scoredMatches is empty, will just get empty columns
         fullTable <- merge(x=reactiveCancerStudies(), by.x=c("nct_id"), all.x=TRUE, 
                      y=reactiveScoredMatches(), by.y=c("nct_id"))  
+        ## aggregate interventions column
+        fullTable <- fullTable %>%
+            group_by(across(c(-interventions))) %>%
+            summarise("interventions" = paste(na.omit(unique(interventions)), collapse = ", ")) %>%
+            as.data.frame()
+        
         fullTable$datetime <- datetime
         fullTable$urlCancerType <- urlCancerType
         fullTable$urlAlterations <- urlAlterations
