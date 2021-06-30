@@ -64,7 +64,7 @@ f.city AS locations, f.zip AS postcode, f.status AS site_status,
 fi.name as investigators,
 fc.email AS facility_contacts, 
 fc.phone AS facility_phone,
-cc.email AS central_contact, 
+cc.email AS central_contacts, 
 cc.phone AS central_phone
 FROM studies s
 INNER JOIN facilities f ON f.nct_id = s.nct_id

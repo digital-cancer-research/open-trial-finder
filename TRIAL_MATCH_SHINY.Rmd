@@ -46,13 +46,12 @@ refresh.date <- unique(cancerStudies$Refresh.date)
 
 ## contains study details, mapped to a controlled set of cancer types in the "TARGET.condition"  column
 ## names are
-# [1] "interventions"      "locations"          "postcode"          
-#  [4] "nct_id"             "brief_title"        "overall_status"    
-#  [7] "condition"          "site_name"          "site_status"       
-# [10] "investigators"      "contacts"           "Refresh.date"      
-# [13] "matching.condition" "TARGET.condition"   "Link"              
-# [16] "postcode.lat"       "postcode.long"      "lat"               
-# [19] "long"               "ParentTerm"  
+#  [1] "interventions"      "locations"          "postcode"           "nct_id"            
+#  [5] "brief_title"        "overall_status"     "condition"          "site_name"         
+#  [9] "site_status"        "investigators"      "contacts"           "central_contacts"  
+# [13] "Refresh.date"       "matching.condition" "TARGET.condition"   "Link"              
+# [17] "postcode.lat"       "postcode.long"      "lat"                "long"              
+# [21] "ParentTerm" 
 # no columns are aggregated
 
 ## filter and retain only studies with overall status of "Recruiting"
@@ -80,11 +79,12 @@ cancer.study.locations <- cancer.study.locations[complete.cases(cancer.study.loc
 ```{r aggregate cancerStudies into compact form}
 ## aggregating interventions was causing some study:intervention combinations to be missed out
 cancerStudies <- cancerStudies %>%
-       group_by_at(vars(-c( locations, postcode, condition, site_name, site_status, investigators, contacts, lat, long, Refresh.date))) %>%
+       group_by_at(vars(-c( locations, postcode, condition, site_name, site_status, investigators, contacts,central_contacts, lat, long, Refresh.date))) %>%
        summarize(locations = toString(sort(unique(na.omit(locations)))),
                  sites = toString(sort(unique(na.omit(site_name)))),
                  conditions = toString(sort(unique(na.omit(condition)))),
                  investigators = toString(sort(unique(na.omit(investigators)))),
+                 central_contacts = toString(sort(unique(na.omit(central_contacts)))),
                  contacts = toString(sort(unique(na.omit(contacts))))) %>%
        as.data.frame()
 ```
@@ -202,11 +202,10 @@ reactiveCancerStudies <- reactive({
 })
 
 ## names of reactiveCancerStudies are
-# [1] "nct_id"             "interventions"      "brief_title"        "overall_status"    
+#  [1] "nct_id"             "interventions"      "brief_title"        "overall_status"    
 #  [5] "matching.condition" "TARGET.condition"   "Link"               "Mechanism"         
 #  [9] "locations"          "sites"              "conditions"         "investigators"     
-# [13] "contacts"           "Exclusions"        
-
+# [13] "central_contacts"   "contacts"           "Exclusions"
 
 ```
  
@@ -451,13 +450,14 @@ mergedStudyTable <-  reactive({
 
 
 ## names of mergedStudyTable are 
-# [1] "nct_id"                 "interventions"          "brief_title"           
+#  [1] "nct_id"                 "interventions"          "brief_title"           
 #  [4] "overall_status"         "matching.condition"     "TARGET.condition"      
 #  [7] "Link"                   "Mechanism"              "locations"             
 # [10] "sites"                  "conditions"             "investigators"         
-# [13] "contacts"               "Exclusions"             "symbol"                
-# [16] "variant_type"           "gene_variant_type"      "intervention_rationale"
-# [19] "eligibility_rationale"  "matching_criteria"      "combined_score"    
+# [13] "central_contacts"       "contacts"               "Exclusions"            
+# [16] "symbol"                 "variant_type"           "gene_variant_type"     
+# [19] "intervention_rationale" "eligibility_rationale"  "matching_criteria"     
+# [22] "combined_score"  
   
 
 ## mergedStudyTable is the master set of data, all info for all matching studies based on user selections
@@ -623,13 +623,14 @@ formattedTable <- reactive({
 })
 
 ## names of formattedTable are same as mergedStudyTable... 
-# [1] "nct_id"                 "interventions"          "brief_title"           
+#  [1] "nct_id"                 "interventions"          "brief_title"           
 #  [4] "overall_status"         "matching.condition"     "TARGET.condition"      
 #  [7] "Link"                   "Mechanism"              "locations"             
 # [10] "sites"                  "conditions"             "investigators"         
-# [13] "contacts"               "Exclusions"             "symbol"                
-# [16] "variant_type"           "gene_variant_type"      "intervention_rationale"
-# [19] "eligibility_rationale"  "matching_criteria"      "combined_score" 
+# [13] "central_contacts"       "contacts"               "Exclusions"            
+# [16] "symbol"                 "variant_type"           "gene_variant_type"     
+# [19] "intervention_rationale" "eligibility_rationale"  "matching_criteria"     
+# [22] "combined_score"  
 ## but formattedTable may be subsetted based on map clicks (without losing full set of data from mergedStudyTable)
 
 ```
@@ -656,7 +657,8 @@ output$datatable <- DT::renderDT(dplyr::select(formattedTable(),
                             "Locations" = "locations",
                             # "Centres" = "sites",
                             # "Investigators" = "investigators",
-                            "Contacts" = "contacts"
+                            "Central contacts" = "central_contacts",
+                            "Site contacts" = "contacts"
                             # "StudyID" = nct_id,
                             # "Overall status" = "overall_status",
                             # "Interventions" = "interventions",
@@ -920,7 +922,8 @@ output$shortlistTable <- DT::renderDT(unique(dplyr::select(shortlist(),
                             "Locations" = "locations",
                             # "Centres" = "sites",
                             # "Investigators" = "investigators",
-                            "Contacts" = "contacts"
+                            "Central contacts" = "central_contacts",
+                            "Site contacts" = "contacts"
                             # "StudyID" = nct_id,
                             # "Overall status" = "overall_status",
                             # "Interventions" = "interventions",
