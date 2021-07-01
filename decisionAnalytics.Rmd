@@ -162,7 +162,11 @@ rm(studiesResults)
 
 ## remove redundant rows, if any
 cancerStudies <- unique(cancerStudies)
+```
 
+
+
+```{r get eligibility criteria }
 
 ## get eligibility criteria (before connection times out)
 studyIDs <- unique(cancerStudies$nct_id)
@@ -181,6 +185,36 @@ eligibilities <- dbGetQuery(conn2,getEligibilities)
   
 
 Number of studies with results (solid cancer studies only): `r length(unique(cancerStudies$nct_id))`  
+  
+```{r filter and retain only single arm studies}
+cancerStudies <- unique(dplyr::filter(cancerStudies, number_of_arms == 1))
 
+```
+
+Number of single-arm studies with results (solid cancer studies only): `r length(unique(cancerStudies$nct_id))`  
+  
+```{r get results for selected studies}
+
+studyIDs <- unique(cancerStudies$nct_id)
+
+## form SQL query
+studyIDsForSQL <- paste0("\'",paste(studyIDs, collapse = "\',\'"), "\'")
+
+
+
+getResultsQ <- paste0("select * 
+from outcome_measurements om
+inner join result_groups rg on rg.id = om.result_group_id
+where rg.result_type = 'Outcome'
+and rg.nct_id in (",
+"", studyIDsForSQL,
+")")
+
+## get criteria from clinicaltrials.gov
+results  <- dbGetQuery(conn2,getResultsQ)
+
+
+
+```
 
     
