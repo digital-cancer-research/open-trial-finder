@@ -187,7 +187,7 @@ eligibilities <- dbGetQuery(conn2,getEligibilities)
 Number of studies with results (solid cancer studies only): `r length(unique(cancerStudies$nct_id))`  
   
 ```{r filter and retain only single arm studies}
-cancerStudies <- unique(dplyr::filter(cancerStudies, number_of_arms == 1))
+#cancerStudies <- unique(dplyr::filter(cancerStudies, number_of_arms == 1))
 
 ```
 
@@ -202,7 +202,7 @@ studyIDsForSQL <- paste0("\'",paste(studyIDs, collapse = "\',\'"), "\'")
 
 
 
-getResultsQ <- paste0("select * 
+getResultsQ <- paste0("select om.nct_id, rg.title as result_group_title, rg.result_type, om.title as outcome_title, om.param_type, om.param_value, om.param_value_num, om.dispersion_type, om.dispersion_lower_limit, om.dispersion_upper_limit 
 from outcome_measurements om
 inner join result_groups rg on rg.id = om.result_group_id
 where rg.result_type = 'Outcome'
@@ -216,5 +216,71 @@ results  <- dbGetQuery(conn2,getResultsQ)
 
 
 ```
+  
+We need to have details of interventions applicable to results - get this info from the design_groups - design_group_interventions - interventions tables. design_groups.title may match result_groups.title (may need to ignore case).  
+  
+```{r get design group info}
+getDesignGroupsQ <- paste0("select dg.nct_id, dg.title as design_group_title, i.name as intervention_name, ion.name as intervention_other_names 
+from design_groups dg
+inner join design_group_interventions dgi on dg.id = dgi.design_group_id
+inner join interventions i on dgi.intervention_id = i.id
+left join intervention_other_names ion on i.id = ion.intervention_id
+where dg.nct_id in (",
+"", studyIDsForSQL,
+")")
+
+## get criteria from clinicaltrials.gov
+designGroups  <- dbGetQuery(conn2,getDesignGroupsQ)
+
+
+
+## do design group titles match result group titles?
+## how many design group titles?
+length(unique(tolower(designGroups$design_group_title)))
+
+## how many result group titles?
+length(unique(tolower(results$result_group_title)))
+
+## how many result group titles can't be matched to design group titles?
+# The elements of setdiff(x,y) are those elements in x but not in y.
+length(setdiff(x=unique(tolower(results$result_group_title)), 
+        y = unique(tolower(designGroups$design_group_title))))
+
+
+
+
+
+## how many design group titles can't be matched to a result group title?
+length(setdiff(y=unique(tolower(results$result_group_title)), 
+        x = unique(tolower(designGroups$design_group_title))))
+
+```
+
+    
+    
+    
+```{r join design groups to results}
+
+designGroups$design_group_title <- tolower(designGroups$design_group_title)
+results$result_group_title <- tolower(results$result_group_title)
+
+resultsInterventions <- merge(x=designGroups, by.x=c("nct_id", "design_group_title"), 
+      y=results, by.y = c("nct_id", "result_group_title"))
+
+## 
+
+
+```
+  
+We now have `r length(unique(resultsInterventions$nct_id))` with results that can be mapped to interventions  
+
+```{r preview resultsInterventions table}
+
+formattable(head(resultsInterventions, 20))
+
+
+
+```
+
 
     
