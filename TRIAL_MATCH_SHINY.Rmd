@@ -46,13 +46,12 @@ refresh.date <- unique(cancerStudies$Refresh.date)
 
 ## contains study details, mapped to a controlled set of cancer types in the "TARGET.condition"  column
 ## names are
-# [1] "interventions"      "locations"          "postcode"          
-#  [4] "nct_id"             "brief_title"        "overall_status"    
-#  [7] "condition"          "site_name"          "site_status"       
-# [10] "investigators"      "contacts"           "Refresh.date"      
-# [13] "matching.condition" "TARGET.condition"   "Link"              
-# [16] "postcode.lat"       "postcode.long"      "lat"               
-# [19] "long"               "ParentTerm"  
+#  [1] "interventions"      "locations"          "postcode"           "nct_id"            
+#  [5] "brief_title"        "overall_status"     "condition"          "site_name"         
+#  [9] "site_status"        "investigators"      "contacts"           "central_contacts"  
+# [13] "Refresh.date"       "matching.condition" "TARGET.condition"   "Link"              
+# [17] "postcode.lat"       "postcode.long"      "lat"                "long"              
+# [21] "ParentTerm" 
 # no columns are aggregated
 
 ## filter and retain only studies with overall status of "Recruiting"
@@ -80,11 +79,12 @@ cancer.study.locations <- cancer.study.locations[complete.cases(cancer.study.loc
 ```{r aggregate cancerStudies into compact form}
 ## aggregating interventions was causing some study:intervention combinations to be missed out
 cancerStudies <- cancerStudies %>%
-       group_by_at(vars(-c( locations, postcode, condition, site_name, site_status, investigators, contacts, lat, long, Refresh.date))) %>%
+       group_by_at(vars(-c( locations, postcode, condition, site_name, site_status, investigators, contacts,central_contacts, lat, long, Refresh.date))) %>%
        summarize(locations = toString(sort(unique(na.omit(locations)))),
                  sites = toString(sort(unique(na.omit(site_name)))),
                  conditions = toString(sort(unique(na.omit(condition)))),
                  investigators = toString(sort(unique(na.omit(investigators)))),
+                 central_contacts = toString(sort(unique(na.omit(central_contacts)))),
                  contacts = toString(sort(unique(na.omit(contacts))))) %>%
        as.data.frame()
 ```
@@ -141,12 +141,15 @@ urlValues <- reactiveValues()
 
 ```{r parse cancer type from URL}
 
+
+
 #urlCancerType <- reactive({
 observe({
       query <- parseQueryString(session$clientData$url_search)
       if (!is.null(query[['cancerType']])) {
         urlValues$CancerType <- query[['cancerType']]
-        #updateTextInput(session, "cancerType", value = urlValues$CancerType)
+         
+        
       } 
 })
 ```
@@ -194,16 +197,17 @@ selectedCancerTypes <- reactive({
 reactiveCancerStudies <- reactive({
    cancer.types <- selectedCancerTypes()
    table <- dplyr::filter(cancerStudies, TARGET.condition %in% cancer.types)
+   ## append central contacts to front of site contact
+   table$contacts <- paste(na.omit(table$central_contacts), na.omit(table$contacts))
    ## return table
    return(unique(table))
 })
 
 ## names of reactiveCancerStudies are
-# [1] "nct_id"             "interventions"      "brief_title"        "overall_status"    
+#  [1] "nct_id"             "interventions"      "brief_title"        "overall_status"    
 #  [5] "matching.condition" "TARGET.condition"   "Link"               "Mechanism"         
 #  [9] "locations"          "sites"              "conditions"         "investigators"     
-# [13] "contacts"           "Exclusions"        
-
+# [13] "central_contacts"   "contacts"           "Exclusions"
 
 ```
  
@@ -266,8 +270,9 @@ urlAlterations <- reactive({
     # drop repeated alterations
     alterations <- unique(alterations)
     
-    ## if a variant is passed that is not in scoredMatches table, set to NULL
-    if(!(alterations %in% scoredMatches$gene_variant_type)) {
+    
+    ## if none of the variants passed is in scoredMatches table, set value to NULL
+    if(length(intersect(alterations, scoredMatches$gene_variant_type))==0) {
       alterations <- NULL
     }
     
@@ -447,13 +452,14 @@ mergedStudyTable <-  reactive({
 
 
 ## names of mergedStudyTable are 
-# [1] "nct_id"                 "interventions"          "brief_title"           
+#  [1] "nct_id"                 "interventions"          "brief_title"           
 #  [4] "overall_status"         "matching.condition"     "TARGET.condition"      
 #  [7] "Link"                   "Mechanism"              "locations"             
 # [10] "sites"                  "conditions"             "investigators"         
-# [13] "contacts"               "Exclusions"             "symbol"                
-# [16] "variant_type"           "gene_variant_type"      "intervention_rationale"
-# [19] "eligibility_rationale"  "matching_criteria"      "combined_score"    
+# [13] "central_contacts"       "contacts"               "Exclusions"            
+# [16] "symbol"                 "variant_type"           "gene_variant_type"     
+# [19] "intervention_rationale" "eligibility_rationale"  "matching_criteria"     
+# [22] "combined_score"  
   
 
 ## mergedStudyTable is the master set of data, all info for all matching studies based on user selections
@@ -619,13 +625,14 @@ formattedTable <- reactive({
 })
 
 ## names of formattedTable are same as mergedStudyTable... 
-# [1] "nct_id"                 "interventions"          "brief_title"           
+#  [1] "nct_id"                 "interventions"          "brief_title"           
 #  [4] "overall_status"         "matching.condition"     "TARGET.condition"      
 #  [7] "Link"                   "Mechanism"              "locations"             
 # [10] "sites"                  "conditions"             "investigators"         
-# [13] "contacts"               "Exclusions"             "symbol"                
-# [16] "variant_type"           "gene_variant_type"      "intervention_rationale"
-# [19] "eligibility_rationale"  "matching_criteria"      "combined_score" 
+# [13] "central_contacts"       "contacts"               "Exclusions"            
+# [16] "symbol"                 "variant_type"           "gene_variant_type"     
+# [19] "intervention_rationale" "eligibility_rationale"  "matching_criteria"     
+# [22] "combined_score"  
 ## but formattedTable may be subsetted based on map clicks (without losing full set of data from mergedStudyTable)
 
 ```
@@ -652,6 +659,7 @@ output$datatable <- DT::renderDT(dplyr::select(formattedTable(),
                             "Locations" = "locations",
                             # "Centres" = "sites",
                             # "Investigators" = "investigators",
+                            # "Central contacts" = "central_contacts",
                             "Contacts" = "contacts"
                             # "StudyID" = nct_id,
                             # "Overall status" = "overall_status",
@@ -785,6 +793,37 @@ output$report <- downloadHandler(
             table <- dplyr::filter(table, nct_id == map.selection$id )
          }
         
+        
+        ## if parameters (cancer type as minimum) have been passed in the URL, record studies when full table is dowloaded
+        if(!is.null(urlValues$CancerType)) {
+        ## get timestamp
+        datetime <- Sys.time()
+        ## get cancer type passed in url
+        urlCancerType <- urlValues$CancerType
+        ## get alterations (if any) passed in url
+        urlAlterations <- NA
+        if(!is.null(urlValues$alterations)) {
+          urlAlterations <- urlValues$alterations
+        }
+        
+        ## create a separate table that will be written to database
+        fullResultsTable <- table 
+        ## capture date and time downloaded
+        fullResultsTable$datetime <- datetime
+        ## capture the cancer type passed in url
+        fullResultsTable$urlCancerType <- urlCancerType
+        ## capture the alterations (if any) that have been passed in url
+        fullResultsTable$urlAlterations <- urlAlterations
+        
+        ## append to dedicated table in database (if table doesn't exist, it is created)
+        con3 <- dbConnect(RSQLite::SQLite(), "trialMatchData.sqlite")
+        dbWriteTable(conn = con3,name = "allDownloaded", value = fullResultsTable, append=TRUE)
+        dbDisconnect(con3) 
+
+        }
+        
+        
+        
         table[is.na(table)] <- "-"
         table=toJSON(table)
         
@@ -880,11 +919,12 @@ output$shortlistTable <- DT::renderDT(unique(dplyr::select(shortlist(),
                             "Drug rationale" = "intervention_rationale",
                             "Eligibility" = "eligibility_rationale",
                             "Brief title" = "brief_title",
-                            # "Matching inclusion criteria" = "matching_criteria",
-                            # "Prior Therapy exclusions" = Exclusions,
+                            "Matching inclusion criteria" = "matching_criteria",
+                            "Prior Therapy exclusions" = Exclusions,
                             "Locations" = "locations",
                             # "Centres" = "sites",
                             # "Investigators" = "investigators",
+                            # "Central contacts" = "central_contacts",
                             "Contacts" = "contacts"
                             # "StudyID" = nct_id,
                             # "Overall status" = "overall_status",
@@ -920,53 +960,6 @@ output$shortlistTable <- DT::renderDT(unique(dplyr::select(shortlist(),
 
 ```
 
-```{r define detailed reactive shortlist for download}
-
-## create an empty shortlist
-# detailedShortlistNames <- c("nct_id","interventions","locations","postcode","brief_title","overall_status","condition","site_name","site_status","investigators","contacts","Refresh.date","matching.condition","TARGET.condition","Link","postcode.lat","postcode.long","lat","long","ParentTerm","symbol","variant_type","gene_variant_type","intervention_rationale","eligibility_rationale","matching_criteria","combined_score")
-
-
-# detailedShortlistNames <- names( merge(x=cancerStudies, by.x=c("nct_id"), all.x=TRUE,
-#                      y=scoredMatches, by.y=c("nct_id")))
-# # 
-# detailedShortlist <- data.frame(matrix(ncol=length(detailedShortlistNames),nrow=0, dimnames=list(NULL, detailedShortlistNames)))
-# 
-# ## define reactivity
-# # initialise as empty dataframe
-# detailedShortlist <- reactiveVal(detailedShortlist)
-# #detailedShortlist <- reactiveVal(mergedStudyTable()[0,])
-
-
-
-## observe clicks on addToShortlist button
-# observeEvent(input$addToShortlist, {
-#     ## add corresponding rows from mergedStudyTable
-#     # get IDs for selected studies
-#     ids <- unique(formattedTable()[indicesSelectedRows(),])
-#     ids <- dplyr::select(unique(ids, ID))
-# 
-#     t = rbind(detailedShortlist(), filter(mergedStudyTable(), nct_id %in% ids) )
-#     ## drop duplicated rows
-#     t = unique(t)
-#     # update shortlist with new value
-#     detailedShortlist(t)
-#   })
-
-
-
-
-
-
-
-## define output
-# output$detailedShortlistTable <- renderDT({
-#    datatable(dplyr::select(detailedShortlist(), -ID), selection = 'single',rownames=FALSE, escape = 4, options = list(dom = 't', ordering=F,paging = FALSE,scrollX = TRUE,scrollY = "450px",scrollCollapse = TRUE,autoWidth = TRUE,columnDefs = list(list(width = '500px', targets = list(4))))
-#              )
-#   })
-
-```
- 
-  
  
  
 ```{r layout shortlist with download button}
@@ -1067,6 +1060,64 @@ output$downloadShortlist <- downloadHandler(
         #table <- detailedShortlist()
         table <- shortlist()
         
+        
+        ## if parameters (cancer type as minimum) have been passed in the URL, record which studies were shortlisted
+        if(!is.null(urlValues$CancerType)) {
+        ## get timestamp
+        datetime <- Sys.time()
+        ## get cancer type passed in url
+        urlCancerType <- urlValues$CancerType
+        ## get alterations (if any) passed in url
+        urlAlterations <- NA
+        if(!is.null(urlValues$alterations)) {
+          urlAlterations <- urlValues$alterations
+        }
+        
+        ## create a separate table that will be written to database
+        shortlistTable <- table 
+        ## capture date and time downloaded
+        shortlistTable$datetime <- datetime
+        ## capture the cancer type passed in url
+        shortlistTable$urlCancerType <- urlCancerType
+        ## capture the alterations (if any) that have been passed in url
+        #print(paste0("urlAlterations() value: ", urlAlterations()))
+        #print(paste0("urlValues$alterations value: ", urlValues$alterations))
+        shortlistTable$urlAlterations <- urlAlterations
+        # if(!is.null(urlValues$alterations)) {
+        #   shortlistTable$urlAlterations <- urlValues$alterations
+        # }
+        ## print to console to aid development... 
+        #print(shortlistTable)
+        
+        ## in addition, save a copy of the full set of results obtained
+        ## left join, i.e. keep matches on cancer type alone
+        ## if scoredMatches is empty, will just get empty columns
+        fullTable <- merge(x=reactiveCancerStudies(), by.x=c("nct_id"), all.x=TRUE, 
+                     y=reactiveScoredMatches(), by.y=c("nct_id"))  
+        ## aggregate interventions column
+        fullTable <- fullTable %>%
+            group_by(across(c(-interventions))) %>%
+            summarise("interventions" = paste(na.omit(unique(interventions)), collapse = ", ")) %>%
+            as.data.frame()
+        
+        fullTable$datetime <- datetime
+        fullTable$urlCancerType <- urlCancerType
+        fullTable$urlAlterations <- urlAlterations
+        
+        
+        
+        ## append to dedicated table in database (if table doesn't exist, it is created)
+        con2 <- dbConnect(RSQLite::SQLite(), "trialMatchData.sqlite")
+        dbWriteTable(conn = con2,name = "shortlisted", value = shortlistTable, append=TRUE)
+        dbWriteTable(conn = con2,name = "fullresults", value = fullTable, append=TRUE)
+        dbDisconnect(con2) 
+
+        }
+        
+        
+        
+        
+
 
          #  if(!is.na(map.selection$id )) {
          #    table <- dplyr::filter(table, nct_id == map.selection$id )
@@ -1193,79 +1244,4 @@ Study eligibility criteria are tagged with the relevant genetic alterations base
 knitr::knit_exit()
 ```
  
-  
-  
-
-
-  
-    
-### Study ranking details  
-
-  
-* Studies are filtered on cancer type, plus/minus solid tumour.  
-  
-* If one or more drug mechanisms are selected, only studies that include one or more matching interventions are displayed.  
-  
-* If one or more genetic alterations are selected, only studies relevant for those alterations are displayed, matches are ranked based on:  
-
-    * Study is enrolling patients with specified genetic alterations, and specified gene is targeted by a study drug.  
-
-    * Study is enrolling patients with specified genetic alterations, and a study drug targets a gene immediately downstream.   
-  
-  
-    * Study is enrolling patients with specified genetic alterations.   
-  
-  
-    * Study drug targets gene of interest.  
-  
-  
-    * Study drug targets a gene immediately downstream of specified genetic alteration.  
-  
-  
-
-  
-### Acknowledgements
-  
-`r configuration$about.us`  
-   
-   
-`r configuration$privacy.statement`  
-
-  
-INTENDED USE: This tool is a prototype, intended for research use by Medical Professionals. Please note that it is not a comprehensive source of information about clinical trials, and is not for use in clinical decision making. If you have any questions, please contact `r configuration$contact.email` for more information.  
-  
-    
-DATA SOURCES:  
-  
-  
-* Trial data are sourced from clinicaltrials.gov via the Clinical Trials Transformation Initiative: https://www.ctti-clinicaltrials.org/  
-  
-* Data regarding mechanisms of trial interventions are sourced from the NCI Thesaurus: https://ncithesaurus.nci.nih.gov/ncitbrowser/  
-  
-* Data regarding biological pathways are sourced from KEGG (https://www.kegg.jp/kegg/) using the R BioConductor package: https://www.bioconductor.org/  
-  
-  
-  
-
-  
-
-<!-- **Cancer types included in search:**   -->
-
-```{r reactive label}
-# synonymsLabel <- reactive({
-#    synonyms <- paste(unique(conditionSynonyms$condition.synonyms[conditionSynonyms$controlled.cancer.type==input$cancerTypeFilter]), collapse = ", ")
-#    synonyms
-# })
-
-## uncomment this line if you want to show synonyms included in matches for each cancer type
-# shiny::renderText({
-#    paste(synonymsLabel(), collapse = "\n")
-# })
-
-
-```
-
-    
-  
-  
   

@@ -301,11 +301,13 @@ country <- configuration$country
 openStudiesQ <- paste0("SELECT s.nct_id, s.brief_title, s.overall_status, c.name AS condition, i.name AS interventions, f.name AS site_name,
 f.city AS locations, f.zip AS postcode, f.status AS site_status,
 fi.name as investigators,
-fc.email AS contacts
+fc.email AS contacts,
+cc.email AS central_contacts 
 FROM studies s
 INNER JOIN facilities f ON f.nct_id = s.nct_id
 INNER JOIN conditions c ON c.nct_id = s.nct_id
 INNER JOIN interventions i ON i.nct_id = s.nct_id
+LEFT JOIN central_contacts cc ON cc.nct_id = s.nct_id
 LEFT JOIN facility_contacts fc ON f.id = fc.facility_id
 LEFT JOIN facility_investigators fi ON f.id=fi.facility_id
 WHERE f.country LIKE ('",
