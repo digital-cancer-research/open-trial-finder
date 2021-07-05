@@ -22,6 +22,7 @@ require(htmltools)
 require(rjson)
 require(RSQLite)
 require(DT)
+require(DBI)
 
 #require(DT)
 
@@ -316,18 +317,17 @@ shiny::renderUI({
 # if url values passed, these are stored
 # however, if url values are added/deleted from geneFilter, this reactive value is updated accordingly
 selectedAlterations <- reactive({
-  
+
+  ## if URL alterations but nothing on geneFilter, URL alterations are used  
   if(!is.null(urlAlterations()) & is.null(input$geneFilter)) {
     alterations <- urlAlterations()
     ## reset urlAlterations value
     urlAlterations() <- NULL
-    
-   
-    
-    
-  } else if(!is.null(input$geneFilter)) {
+  } else if(!is.null(input$geneFilter)) {   ## if geneFilter is not null, use those
     alterations <- input$geneFilter
-  } else {alterations <- NULL}
+  #} else {alterations <- NULL}
+  } else if(is.null(urlAlterations()) & is.null(input$geneFilter)) {
+    alterations <- NULL}
   
 
   
@@ -379,14 +379,14 @@ checkboxInput(inputId="confidenceFilter", label="Hide matches on cancer type alo
 reactiveScoredMatches <- reactive({
    table <- scoredMatches
    ## deal with edge case where exclude matches on cancer type alone but no alterations selected
-#   if(!is.null(selectedAlterations())) {
+   if(!is.null(selectedAlterations())) {
      table <- dplyr::filter(table, gene_variant_type %in% selectedAlterations())
      # validate(
      #        need(nrow(table)>0, "selected variants not present")
      #        #need(!is.null(table), "table is NULL")
      #    )
      
-   # } else {table <- scoredMatches[NULL, ]}
+    } else {table <- scoredMatches[NULL, ]}
    
    
    
@@ -416,10 +416,10 @@ mergedStudyTable <-  reactive({
   table <- merge(x=cancerstudies, by.x=c("nct_id"), all.x=TRUE, 
                      y=scoredmatches, by.y=c("nct_id"))
 
-  # validate(
-  #           need(nrow(table)>0, "No results based on selections")
-  #           #need(!is.null(table), "table is NULL")
-  #       )
+  validate(
+            need(nrow(table)>0, "No results based on selections")
+            #need(!is.null(table), "table is NULL")
+        )
   
    ## if combined_score is NA, set value to zero
    table$combined_score[is.na(table$combined_score)] <- 0
