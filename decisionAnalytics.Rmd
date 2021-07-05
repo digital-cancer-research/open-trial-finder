@@ -1,0 +1,504 @@
+---
+title: "Decision analysis"
+author: "digital ECMT"
+date: "01/07/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE, warning=FALSE, message=FALSE, results=F} 
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+##NOTE: the following packages are required to run this script, but should be installed (e.g. using code snippets below) before runnning the script, NOT as part of the script itself
+
+# options(repos = "http://cran.us.r-project.org")
+# install.packages("BiocManager")
+# BiocManager::install("AnnotationDbi")
+# BiocManager::install("org.Hs.eg.db")
+# BiocManager::install("KEGGREST")
+# BiocManager::install("KEGGlincs")
+# BiocManager::install("hgu133a.db")
+require(KEGGlincs)
+require(KEGGgraph)
+
+require(RPostgreSQL)
+require(RODBC)
+require(formattable)
+require(org.Hs.eg.db)
+require(DBI)
+require(dplyr)
+require(tidyr)
+require(kableExtra)
+require(KEGGREST)
+require(stringr)
+#require(stringi)
+require(splitstackshape)
+require(reshape2)
+require(tictoc)
+require(maps)
+require(leaflet)
+require(PostcodesioR)
+require(rjson)
+require(RSQLite)
+require(igraph)
+
+## clean up first
+rm(list=ls())
+
+##get today's date
+today <- format(Sys.Date(), format = "%d %B %Y")
+
+
+
+```
+
+**Date of data refresh: `r today`**  
+  
+### **Objective**  
+  
+Decision analysis for clinical decision "*Which genomic features should I use to match patients to clinical trials?*"  
+  
+Where possible options are combinations of: *match on inclusion criteria*, *match on drug target*, *match on pathway*, or match on cancer type alone.  
+  
+### **Approach**  
+  
+Retrieve studies with results from clinicaltrials.gov.  
+Index on cancer type.  
+Index on genetic inclusion criteria.  
+Index on intevention target.  
+Index on intervention pathway.  
+  
+Get outcome results for (each arm of) each study.  
+  
+Take a set of patients (e.g. prior patients who had a meeting outcome of "clinical trial recommended").  
+   
+   
+#### **1. Retrieve studies with results from clinicaltrials.gov**  
+  
+  
+```{r connect to clinicaltrialsgov}  
+## specify user name and password for AACT account
+## see https://aact.ctti-clinicaltrials.org/ for how to create an account
+
+## load configuration data from JSON file
+configuration <- fromJSON(file = "trialMatchConfiguration.json")
+aact.username <- configuration$aact.username
+aact.password <- configuration$aact.password
+
+drv <- dbDriver("PostgreSQL")
+conn2 <- dbConnect(drv, dbname="aact",host="aact-db.ctti-clinicaltrials.org", port=5432, user=aact.username, password=aact.password )
+```
+ 
+```{r get studies with results}
+
+## get interventional studies 
+## any indication
+## any location
+## with results
+
+# form query
+studiesResultsQ <- "SELECT s.nct_id, s.brief_title, s.overall_status, c.name AS condition, s.number_of_arms, s.number_of_groups, i.name AS interventions, cv.were_results_reported
+FROM studies s
+INNER JOIN conditions c ON c.nct_id = s.nct_id
+INNER JOIN interventions i ON i.nct_id = s.nct_id
+inner join calculated_values cv on cv.nct_id = s.nct_id
+WHERE s.study_type LIKE ('Interventional')
+  AND s.overall_status IN ('Completed')
+  and cv.were_results_reported = 'true'"
+
+
+## get data from clinicaltrials.gov
+studiesResults <- dbGetQuery(conn2,studiesResultsQ)
+
+## add a column to indicate refresh date
+studiesResults$Refresh.date <- today
+
+
+```
+
+Number of studies with results (any indication): `r length(unique(studiesResults$nct_id))`  
+  
+  
+```{r create table of cancer types}
+## conditionSynonyms specifies which cancer types are of interest, and which condition names (as used by clinicaltrials.gov) will be considered as matches for each
+
+## synonyms define on basis of those in clinicaltrials.gov
+conditionSynonyms <- read.csv(file = "conditionSynonyms5.csv", stringsAsFactors = FALSE)
+
+## trim leading/trailing whitespace
+conditionSynonyms$condition.synonyms <- str_squish(string = conditionSynonyms$condition.synonyms)
+
+## remove redundancy, if any
+conditionSynonyms <- unique(conditionSynonyms)
+
+```
+   
+
+```{r loop through synonyms and look for matches against condition name}
+## add a column to hold matching condition
+studiesResults$matching.condition <- NA
+studiesResults$TARGET.condition <- NA
+
+## create an empty version to which matching rows will be added after looping through condition synonyms
+cancerStudies <- studiesResults[0, ]
+
+# loop through condition synonyms
+for(i in 1:nrow(conditionSynonyms)) {
+  synonym <- as.character(conditionSynonyms$condition.synonyms[i])
+  targetCondition <- as.character(conditionSynonyms$controlled.cancer.type[i])
+  ## look for a match in condition name
+  matching.rows <- grep(pattern = synonym, x=studiesResults$condition, ignore.case = TRUE)
+  ## create a temporary data frame to hold matches
+  temp <- studiesResults[matching.rows, ]
+  if(nrow(temp)>0) {
+    temp$matching.condition <- synonym
+  temp$TARGET.condition <- targetCondition
+  cancerStudies <- rbind(cancerStudies, temp)
+  }
+}
+
+## overwrite openStudies with openStudies2
+#openStudies <- openStudies2
+## delete copy of openStudies to save memory
+rm(studiesResults)
+
+## remove redundant rows, if any
+cancerStudies <- unique(cancerStudies)
+```
+
+
+
+```{r get eligibility criteria }
+
+## get eligibility criteria (before connection times out)
+studyIDs <- unique(cancerStudies$nct_id)
+
+## form SQL query
+studyIDsForSQL <- paste0("\'",paste(studyIDs, collapse = "\',\'"), "\'")
+getEligibilities <- paste0("select e.nct_id, e.criteria 
+from eligibilities e
+where e.nct_id in (",
+"", studyIDsForSQL,
+")")
+
+## get criteria from clinicaltrials.gov
+eligibilities <- dbGetQuery(conn2,getEligibilities)
+```
+  
+
+Number of studies with results (solid cancer studies only): `r length(unique(cancerStudies$nct_id))`  
+  
+```{r filter and retain only single arm studies}
+#cancerStudies <- unique(dplyr::filter(cancerStudies, number_of_arms == 1))
+
+```
+
+Number of single-arm studies with results (solid cancer studies only): `r length(unique(cancerStudies$nct_id))`  
+  
+```{r get results for selected studies}
+
+studyIDs <- unique(cancerStudies$nct_id)
+
+## form SQL query
+studyIDsForSQL <- paste0("\'",paste(studyIDs, collapse = "\',\'"), "\'")
+
+
+
+getResultsQ <- paste0("select om.nct_id, rg.title as result_group_title, rg.result_type, om.title as outcome_title, om.param_type, om.param_value, om.param_value_num, om.dispersion_type, om.dispersion_lower_limit, om.dispersion_upper_limit 
+from outcome_measurements om
+inner join result_groups rg on rg.id = om.result_group_id
+where rg.result_type = 'Outcome'
+and rg.nct_id in (",
+"", studyIDsForSQL,
+")")
+
+## get criteria from clinicaltrials.gov
+results  <- dbGetQuery(conn2,getResultsQ)
+
+
+
+```
+  
+We need to have details of interventions applicable to results - get this info from the design_groups - design_group_interventions - interventions tables. design_groups.title may match result_groups.title (may need to ignore case).  
+  
+```{r get design group info}
+getDesignGroupsQ <- paste0("select dg.nct_id, dg.title as design_group_title, i.name as intervention_name, ion.name as intervention_other_names 
+from design_groups dg
+inner join design_group_interventions dgi on dg.id = dgi.design_group_id
+inner join interventions i on dgi.intervention_id = i.id
+left join intervention_other_names ion on i.id = ion.intervention_id
+where dg.nct_id in (",
+"", studyIDsForSQL,
+")")
+
+## get criteria from clinicaltrials.gov
+designGroups  <- dbGetQuery(conn2,getDesignGroupsQ)
+
+
+
+## do design group titles match result group titles?
+## how many design group titles?
+length(unique(tolower(designGroups$design_group_title)))
+
+## how many result group titles?
+length(unique(tolower(results$result_group_title)))
+
+## how many result group titles can't be matched to design group titles?
+# The elements of setdiff(x,y) are those elements in x but not in y.
+length(setdiff(x=unique(tolower(results$result_group_title)), 
+        y = unique(tolower(designGroups$design_group_title))))
+
+
+
+
+
+## how many design group titles can't be matched to a result group title?
+length(setdiff(y=unique(tolower(results$result_group_title)), 
+        x = unique(tolower(designGroups$design_group_title))))
+
+```
+
+    
+    
+    
+```{r join design groups to results}
+
+designGroups$design_group_title <- tolower(designGroups$design_group_title)
+results$result_group_title <- tolower(results$result_group_title)
+
+resultsInterventions <- merge(x=designGroups, by.x=c("nct_id", "design_group_title"), 
+      y=results, by.y = c("nct_id", "result_group_title"))
+
+## 
+
+
+```
+  
+We now have `r length(unique(resultsInterventions$nct_id))` with results that can be mapped to interventions  
+
+```{r preview resultsInterventions table}
+
+formattable(head(resultsInterventions, 20))
+
+
+
+```
+  
+Get molecular target(s) of each intervention from KEGG...  
+  
+  
+
+```{r download and create NCIthesaurus table}
+
+tic("download, parse and write NCI thesaurus to file")
+
+## specify URL for NCI thesaurus - this should always be the most recent? 
+NCItURL <- "https://evs.nci.nih.gov/ftp1/NCI_Thesaurus/Thesaurus.FLAT.zip"
+
+destFlatFilename <- "NCIt_FLAT.zip"
+download.file(url=NCItURL,destfile = destFlatFilename)
+unzip(zipfile = paste0(getwd(),"/",destFlatFilename))
+
+NCIt <- read.table("Thesaurus.txt",header = FALSE, sep = "\t", comment.char = "", fill = TRUE, stringsAsFactors = FALSE, quote = "")
+names(NCIt) <- c("ID","URL","ParentID","Synonyms","Description","PreferredTerm","Type","Class")
+
+## a drug may have more than one class, so need to multiply rows
+## split and unnest the Class column of NCIt
+NCIt$Class <- strsplit(NCIt$Class, split = "\\|")
+NCIt <- unnest(data = NCIt, Class)
+
+## subset to retain only relevant classes
+NCItPharmacologics <- NCIt[which(NCIt$Class %in% c("Pharmacologic Substance","Amino Acid, Peptide, or Protein","Immunologic Factor","Clinical Drug","Therapeutic or Preventive Procedure", "Health Care Activity")), ]
+
+## additional classes related to prior therapy
+#  "Therapeutic or Preventive Procedure", "Health Care Activity"
+
+
+## one drug can have more than one parent, so need to split into multiple rows...
+## split ParentID column on pipe symbol
+NCItPharmacologics$ParentID <- strsplit(NCItPharmacologics$ParentID, split = "\\|")
+## unnest the ID column to multiply rows
+NCItPharmacologics <- unnest(data=NCItPharmacologics,ParentID)
+
+## join parent synonyms
+## first, get the synonyms and IDs for parents
+NCItParents <- NCIt[which(NCIt$ID %in% NCItPharmacologics$ParentID), which(names(NCIt) %in% c("ID", "Synonyms"))]
+
+## each parent term may have more than one synonym
+## for simplicity, we will retain only the first synonym for each parent term
+NCItParents$Synonyms <- gsub("\\|.*","",NCItParents$Synonyms)
+
+## merge parents on entity ID = parent ID
+NCItPharmacologics <- merge(x=NCItPharmacologics,y=NCItParents,by.x="ParentID",by.y="ID",all.x=TRUE)
+## reorder and rename
+NCItPharmacologics <- dplyr::select(NCItPharmacologics,ID,Class,PreferredTerm,Synonyms="Synonyms.x",Description,ParentTerm="Synonyms.y",ParentID)
+
+## split the Synonyms column on pipe symbol
+NCItPharmacologics$Synonyms <- strsplit(NCItPharmacologics$Synonyms, split="\\|")
+## unnest the Synonyms column to multiply rows
+NCItPharmacologics <- unnest(data = NCItPharmacologics,Synonyms)
+
+## add a column with lower case drug synonyms for joining
+NCItPharmacologics$SynonymsLower <- tolower(NCItPharmacologics$Synonyms)
+
+## convert to dataframe
+NCItPharmacologics <- as.data.frame(NCItPharmacologics)
+
+## convert from tibble to data frame
+NCIthesaurus <- as.data.frame(NCItPharmacologics)
+
+## add a column to indicate date downloaded
+NCIthesaurus$downloaded <- Sys.Date()
+
+## drop redundant rows, if any
+NCIthesaurus <- unique(NCIthesaurus)
+
+toc()
+
+```
+   
+   
+
+```{r get molecular targets for interventions in the resultsInterventions table}
+## first, get all interventions (note that there will be some redundancy due to case)
+drugs.targets <- unique(dplyr::select(resultsInterventions,"interventions" = "intervention_name"))
+## keep interventions column as verbatim so can join later
+## make a duplicate column
+drugs.targets$interventions.processed <- drugs.targets$interventions
+
+
+## split and unnest on " + "
+drugs.targets$interventions.processed <- strsplit(drugs.targets$interventions.processed, split = " \\+ ")
+drugs.targets <- unnest(data = drugs.targets, interventions.processed)
+
+# also split and unneston the word " plus "
+drugs.targets$interventions.processed <- strsplit(drugs.targets$interventions.processed, split = " plus ")
+drugs.targets <- unnest(data = drugs.targets, interventions.processed)
+
+# also split and unneston the word " and "
+drugs.targets$interventions.processed <- strsplit(drugs.targets$interventions.processed, split = " and ")
+drugs.targets <- unnest(data = drugs.targets, interventions.processed)
+
+# also split and unnest on  " & "
+drugs.targets$interventions.processed <- strsplit(drugs.targets$interventions.processed, split = " \\& ")
+drugs.targets <- unnest(data = drugs.targets, interventions.processed)
+
+# also split and unnest on  " or "
+drugs.targets$interventions.processed <- strsplit(drugs.targets$interventions.processed, split = " or ")
+drugs.targets <- unnest(data = drugs.targets, interventions.processed)
+
+# also split and unnest on  " (+) "
+drugs.targets$interventions.processed <- strsplit(drugs.targets$interventions.processed, split = " \\(\\+\\) ")
+drugs.targets <- unnest(data = drugs.targets, interventions.processed)
+
+# also split and unnest on  " with "
+drugs.targets$interventions.processed <- strsplit(drugs.targets$interventions.processed, split = " with ")
+drugs.targets <- unnest(data = drugs.targets, interventions.processed)
+
+## also split on brackets
+drugs.targets$interventions.processed <- strsplit(drugs.targets$interventions.processed, split = " \\(")
+drugs.targets <- unnest(data = drugs.targets, interventions.processed)
+# remove closing bracket
+drugs.targets$interventions.processed <- gsub(pattern = "\\)", replacement = "", x=drugs.targets$interventions.processed)
+
+
+## trim off anything related to dose
+# pattern is (a number, with or without a decimal point) with/without a space, followed by "mg", anything after "mg is removed
+drugs.targets$interventions.processed <- gsub(pattern = " \\d+\\.?\\d+ ?mg.*", replacement = "", x=drugs.targets$interventions.processed, ignore.case = T)
+
+
+## join to NCIthesaurus so that any intervention not represented in the thesaurus is dropped
+drugs.targets <- merge(x=drugs.targets, 
+      by.x = "interventions.processed", 
+      y= unique(dplyr::select(NCIthesaurus, Synonyms, Description, ParentTerm)), 
+      by.y = "Synonyms")
+
+## try to map each processed intervention to a Drug IDs from KEGG
+## add an empty column to hold drug ID
+drugs.targets$drugID <- NA
+tic("get IDs for drugs")
+for(i in 1:nrow(drugs.targets)) {
+  drugid <- NA
+  drugSynonym <- as.character(drugs.targets$interventions.processed[i])
+  #print(drugSynonym)
+  ## get (onlY) first drug ID
+  tryCatch({drugid <- names(keggFind(database = "drug", query = drugSynonym))[1]},
+             error=function(cond) {return(NA)})
+  if(length(drugid)>0 ) {
+    #print(drugid)
+    drugs.targets$drugID[i] <- drugid}
+}
+toc()
+
+## separate off drug IDs
+targets <- as.data.frame(unique(dplyr::select(drugs.targets, drugID)))
+## add a column to hold drug target ID
+targets$drugTargetID <- NA
+## add a column to hold Entrez symbol for drug target
+targets$drugTargetSymbol <- NA
+## drop rows without a drugID
+targets <- targets[!is.na(targets$drugID),]
+
+## use drug IDs to get gene IDs for target genes
+for(i in 1:nrow(targets)) {
+  drugid <- targets$drugID[i]
+  geneid <- NA
+  tryCatch({geneid <- keggGet(drugid)[[1]]$TARGET$TARGET},
+             error=function(cond) {return(NA)})
+  #print(geneid)
+  if(length(geneid)>0) targets$drugTargetID[i] <- geneid
+}
+
+## parse the drugTargetID values - trim off extra characters and unnest where multiple targets per drug
+## drop any columns that don't contain "HSA:"
+
+#trim everything up to "HSA:"
+targets$drugTargetID <- gsub(pattern = ".*\\HSA:", replacement = "", x=targets$drugTargetID)
+# trim everything after square bracket
+targets$drugTargetID  <- gsub(pattern = "\\].*", replacement = "", x=targets$drugTargetID )
+# split on space into individual ids, where applicable
+targets$drugTargetID <- strsplit(targets$drugTargetID, split = " ")
+targets <- unnest(data = targets, drugTargetID)
+targets <- as.data.frame(targets)
+## drop rows where drugTargetID is NA
+targets <- targets[!is.na(targets$drugTargetID), ]
+
+# paste on a "hsa:"
+targets$drugTargetID <- paste0("hsa:",targets$drugTargetID)
+
+## use drugTargetId to get names (Entrez Symbols) for target genes
+for(i in 1:nrow(targets)) {
+  targetId <- targets$drugTargetID[i]
+  #print(paste0("i= ", i, "; ID = ", targetId))
+  name <- NA
+  tryCatch({name <- keggGet(targetId)[[1]]$NAME[1]},
+             error=function(cond) {return(NA)})
+  if(length(targetId)>0) {
+    #name <- keggGet(targetId)[[1]]$NAME[1]
+    #print(name)
+    targets$drugTargetSymbol[i] <- name
+  }
+}
+
+## drugTargetSymbol may hold several comma separated values
+## first value appears to be Entrez symbol
+## trim off everything after first comma
+targets$drugTargetSymbol <- gsub(pattern = ",.*", replacement = "", x=targets$drugTargetSymbol )
+
+## join drugTargetSymbol values to drugs.targets table
+drugs.targets <- merge(x=drugs.targets, by.x="drugID", all.x=TRUE,
+                       y=unique(dplyr::select(targets, drugID, drugTargetSymbol)), by.y = "drugID")
+
+## reorder columns
+drugs.targets <- unique(dplyr::select(drugs.targets,"interventions.verbatim"= "interventions", interventions.processed, Description, ParentTerm, drugTargetSymbol))
+```
+
+
+
+
+  
+  
+ 
+  
+  
+  
+
+    
