@@ -26,6 +26,8 @@ require(kableExtra)
 
 ##get today's date
 today <- format(Sys.Date(), format = "%d %B %Y")
+
+
 ```
   
 
@@ -71,7 +73,8 @@ if(nrow(paramTable)>0) {
                             "Locations" = "locations",
                             # "Centres" = "sites",
                             # "Investigators" = "investigators",
-                            "Contacts" = "contacts"
+                            # "Central contacts" = "central_contacts",
+                            "Contacts" = "contacts",
                             # "StudyID" = nct_id,
                             # "Overall status" = "overall_status",
                             
@@ -159,44 +162,75 @@ Drug mechanism filters: **`r paste(params$mechanism_filter, collapse=", ")`**
   
 Hide matches on cancer type alone: **`r params$hide_cancer_only`**  
   
+### About  
   
+#### About us  
+
+The digital ECMT is a clinical digital research group. Our mission is to innovate and apply digital science to transform decision-making in early clinical trials and the patient’s role. For more information, please visit our website at https://digitalecmt.org/. .
+
+
+We would be grateful for feedback as to utility of this tool – if you have any feedback, or you would like to know more detail about this tool, please contact paul.oregan@digitalecmt.org.  
+
+#### What does this tool do?  
+  
+The digital ECMT cancer trial matching tool is intended to support clinicians in the matching of people with cancer to clinical trials based on their cancer type, genetic alterations and/or trial drug mechanism. This is an early version that could possibly change.  
+  
+  
+Potential matching trials are ranked according to the following order:   
+  
+  
+1.	Study is enrolling patients with specified genetic alterations, AND specified gene is targeted by a study drug.  
+
+2.	Study is enrolling patients with specified genetic alterations, AND a study drug targets a gene immediately downstream.  
+
+3.	Study is enrolling patients with specified genetic alterations.  
+
+4.	Study drug targets gene of interest.  
+
+5.	Study drug targets a gene immediately downstream of specified genetic alteration.  
+
+6.	Match on cancer type alone.  
+  
+  
+#### Data sources  
+  
+Trial data are sourced exclusively from clinicaltrials.gov via the Clinical Trials Transformation Initiative (https://www.ctti-clinicaltrials.org/ ).   
+
+Data regarding mechanisms of trial interventions are sourced from the NCI Thesaurus: https://ncithesaurus.nci.nih.gov/ncitbrowser/  
+
+Data regarding biological pathways are sourced from KEGG (https://www.kegg.jp/kegg/) using the R BioConductor package: https://www.bioconductor.org/  
+  
+#### Limitations  
+  
+**Please note that it is not a comprehensive source of information about clinical trials, and its utility not been validated for use in clinical decision making.**  
+
+Trials that are not included in clinicaltrials.gov will not be included in the search.  
+Only studies with at least one UK site are included. If you are interested in hosting a site for other countries, please contact paul.oregan@digitalecmt.org .  
+
+Only sites that are listed as “Recruiting” are included in the search.  
+
+Data are refreshed daily, but clinicians are advised to contact the relevant investigators to confirm recruitment status.  
+
+Study eligibility criteria are tagged with the relevant genetic alterations based on natural language processing – some criteria may be incorrectly tagged, and some relevant criteria may be missed.  
+  
+  
+### Legal  
+  
+  
+    
+* The University of Manchester digital ECMT team’s cancer trial matching tool includes content intended for use only by healthcare professionals. This tool does not give professional advice; physicians and other healthcare professionals who use this tool should exercise their own clinical judgment as to the information it provides. Individuals with any type of medical condition are specifically cautioned to seek professional medical advice before beginning any sort of health treatment. For medical concerns, including decisions about medications and other treatments, non-medical users should always consult their physician or other qualified healthcare professional.  
+
+
+*	We do not give medical advice, nor do we provide medical or diagnostic services. Medical information changes rapidly. Neither we nor our content providers guarantee that the content of this tool covers all possible uses, directions, precautions, drug interactions, or adverse effects that may be associated with any therapeutic treatments.  
+
+*	In the absence of any negligence or other breach of duty by us: (1) your reliance upon information and content obtained by you at or through this site is solely at your own risk; and (2) neither we nor our content providers are responsible for any damage or injury (including death) to you, other persons, or property arising from any use of any product, information, idea, or instruction in the content of the tool.  
+  
+#### Privacy  
+  
+The digital ECMT privacy policy is available here: https://digitalecmt.org/privacy-policy/ . This cancer trial match tool does NOT use cookies. In order to analyse usage of this website, we use Matomo, which aggregates and analyses the actions you take, but does not collect or process any personal data or PII (personally identifiable information).  
+ 
+  
+    
 
       
   
-### Study ranking details  
-
-  
-* Studies are filtered on cancer type, plus/minus solid tumour.  
-  
-* If one or more drug mechanisms are selected, only studies that include one or more matching interventions are displayed.  
-  
-* If one or more genetic alterations are selected, only studies relevant for those alterations are displayed, matches are ranked based on:  
-
-    * Study is enrolling patients with specified genetic alterations, and specified gene is targeted by a study drug.  
-
-    * Study is enrolling patients with specified genetic alterations, and a study drug targets a gene immediately downstream.   
-  
-  
-    * Study is enrolling patients with specified genetic alterations.   
-  
-  
-    * Study drug targets gene of interest.  
-  
-  
-    * Study drug targets a gene immediately downstream of specified genetic alteration.  
-    
-  
-### Acknowledgements
-  
-INTENDED USE: This tool is a prototype, intended for research use by Medical Professionals. Please note that it is not a comprehensive source of information about clinical trials, and is not for use in clinical decision making. 
-  
-    
-DATA SOURCES:  
-  
-  
-* Trial data are sourced from clinicaltrials.gov via the Clinical Trials Transformation Initiative: https://www.ctti-clinicaltrials.org/  
-  
-* Data regarding mechanisms of trial interventions are sourced from the NCI Thesaurus: https://ncithesaurus.nci.nih.gov/ncitbrowser/  
-  
-* Data regarding biological pathways are sourced from KEGG (https://www.kegg.jp/kegg/) using the R BioConductor package: https://www.bioconductor.org/  
-    
