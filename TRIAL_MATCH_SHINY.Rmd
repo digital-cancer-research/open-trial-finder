@@ -24,9 +24,6 @@ require(RSQLite)
 require(DT)
 require(DBI)
 
-#require(DT)
-
-
 ## load configuration data from JSON file
 configuration <- fromJSON(file = "trialMatchConfiguration.json")
 ```
@@ -37,7 +34,6 @@ con <- dbConnect(RSQLite::SQLite(), "trialMatchData.sqlite")
 
 ```
 
-  
 ```{r read cancer study data into memory}
 ## read cancerStudies table into memory
 cancerStudies <- dbGetQuery(con, "SELECT * FROM cancerStudies")
@@ -75,7 +71,6 @@ cancer.study.locations <- unique(dplyr::select(cancerStudies, nct_id, lat, long)
 ## (BUT WILL BE IN THE TABLE UNDERNEATH)
 cancer.study.locations <- cancer.study.locations[complete.cases(cancer.study.locations), ]
 ```
-
 
 ```{r aggregate cancerStudies into compact form}
 ## aggregating interventions was causing some study:intervention combinations to be missed out
@@ -141,12 +136,10 @@ urlValues <- reactiveValues()
 ```
 
 ```{r parse cancer type from URL}
-#urlCancerType <- reactive({
 observe({
       query <- parseQueryString(session$clientData$url_search)
       if (!is.null(query[['cancerType']])) {
         urlValues$CancerType <- query[['cancerType']]
-         
       } 
 })
 ```
@@ -185,7 +178,6 @@ selectedCancerTypes <- reactive({
   ## print to console to aid development... 
   #print(paste0("selectedCancerTypes value: ", cancer.types))
   
-  
   ## return value
   cancer.types
 })
@@ -195,10 +187,7 @@ selectedCancerTypes <- reactive({
 ```{r define reactive cancerStudies table}
 reactiveCancerStudies <- reactive({
    cancer.types <- selectedCancerTypes()
-   
-   
-   
-   
+
    table <- dplyr::filter(cancerStudies, TARGET.condition %in% cancer.types)
    ## print to console to aid development... 
    #print(paste0("head of reactiveCancerStudies1: ", head(table)))
@@ -218,7 +207,7 @@ reactiveCancerStudies <- reactive({
 ```
  
 ```{r define reactive synonymsLabel to hold cancer type synonyms}
-
+## this value will be passed to downloaded report as a record of synonyms included in search
 synonymsLabel <- reactive({
    synonyms <- paste(unique(conditionSynonyms$condition.synonyms[conditionSynonyms$controlled.cancer.type==input$cancerTypeFilter]), collapse = ", ")
    synonyms
@@ -227,34 +216,21 @@ synonymsLabel <- reactive({
 
 ```
 
-
-
 **Rank matching studies based on genetic alterations**    
 
 ```{r parse alterations from URL}
 ## try this on command line
 # parseQueryString("http://127.0.0.1:5793/TRIAL_MATCH_SHINY.Rmd?cancerType=Breast&alterations=ERBB2%20amplification,KRAS%20mutation")
 
-
-
 observe({
       query <- parseQueryString(session$clientData$url_search)
       if (!is.null(query[['alterations']])) {
-        # urlValues$alterations <- query[['alterations']]
-        # urlValues$alterations <- urlValues$alterations
-        
         # get alterations from url
         alterations <- query[['alterations']]
         
-        
         urlValues$alterations <- alterations
-        #updateTextInput(session, "alterations", value = urlValues$alterations)
       } 
 })
-
-
-
-
 
 ```
 
@@ -275,13 +251,6 @@ urlAlterations <- reactive({
     alterations <- gsub(pattern = " CNA ", replacement = " ", x=alterations, ignore.case = TRUE)
     # drop repeated alterations
     alterations <- unique(alterations)
-    
-    
-    # ## if none of the variants passed is in scoredMatches table, set value to NULL
-    # if(length(intersect(alterations, scoredMatches$gene_variant_type))==0) {
-    #   alterations <- NULL
-    # }
-    
     
     } else alterations = NULL
     
@@ -307,11 +276,7 @@ output$reactiveGeneFilter <- renderUI({
    
    gene_variant_type.list <- sort(unique(scoredMatches$gene_variant_type))
    
-   # selectInput(inputId = "geneFilter", label=NULL, choices = gene_variant_type.list, selected = urlAlterations(), multiple = TRUE,  selectize = TRUE, width = NULL, size = NULL)
-
    selectInput(inputId = "geneFilter", label=NULL, choices = gene_variant_type.list, selected = intersect(urlAlterations(),gene_variant_type.list), multiple = TRUE,  selectize = TRUE, width = NULL, size = NULL)
-   
-   
    
 })
 
@@ -329,24 +294,8 @@ selectedAlterations <- reactive({
   ## just return value of input$geneFilter
   ## if URL alterations have been passed, these will be preselected in the filter
   ## if nothing is selected, NULL is returned
-  
   alterations <- input$geneFilter
   
-  
-  
-
-  ## if URL alterations but nothing on geneFilter, URL alterations are used
-  # if(!is.null(urlAlterations()) & is.null(input$geneFilter)) {
-  #   alterations <- urlAlterations()
-  #   ## reset urlAlterations value
-  #   urlAlterations() <- NULL
-  # } else if(!is.null(input$geneFilter)) {   ## if geneFilter is not null, use those
-  #   alterations <- input$geneFilter
-  # #} else {alterations <- NULL}
-  # } else if(is.null(urlAlterations()) & is.null(input$geneFilter)) {
-  #   alterations <- NULL}
-  
-
   ## print to console to aid development... 
   #print(paste0("selectedAlterations value: ", alterations))
   
@@ -363,7 +312,6 @@ selectedAlterations <- reactive({
 ```{r define reactive mechanism filter}
 ## dropdown should display all mechanisms available for selected cancer type, regardless of which alterations have been selected
 ## if matches on solid tumour have been excluded, mechanisms for those matches should not be displayed
-
 
 ## define how filter values will be populated
 output$reactive.mechanism.filter <- renderUI({
@@ -387,32 +335,11 @@ checkboxInput(inputId="confidenceFilter", label="Hide matches on cancer type alo
 ```{r filter scoredMatches table}
 reactiveScoredMatches <- reactive({
    table <- scoredMatches
-   
-   ## print to console to aid development... 
-   #print(paste0("head of reactiveScoredMatches1: ", head(table)))
-   
+
    ## filter based on selectedAlterations
    ## if null, a table with no rows is returned
    ## if selectedAlterations not in gene_variant_type, get a table with header but no rows
    table <- dplyr::filter(table, gene_variant_type %in% selectedAlterations())
-   
-   
-   #table <- dplyr::filter(table, gene_variant_type %in% input$geneFilter)
-   
-   
-   
-   
-   ## deal with edge case where exclude matches on cancer type alone but no alterations selected
-   # if(!is.null(selectedAlterations())) {
-   #   table <- dplyr::filter(table, gene_variant_type %in% selectedAlterations())
-   #   # validate(
-   #   #        need(nrow(table)>0, "selected variants not present")
-   #   #        #need(!is.null(table), "table is NULL")
-   #   #    )
-   #   
-   #  } else {table <- scoredMatches[NULL, ]}
-   
-   
    
    ## return table
    return(unique(table))
@@ -423,8 +350,6 @@ reactiveScoredMatches <- reactive({
 # [1] "symbol"                 "variant_type"           "gene_variant_type"     
 # [4] "nct_id"                 "intervention_rationale" "eligibility_rationale" 
 # [7] "matching_criteria"      "combined_score"   
-
-
 
 ```
  
@@ -439,10 +364,9 @@ mergedStudyTable <-  reactive({
   ## if scoredMatches is empty, will just get empty columns
   table <- merge(x=cancerstudies, by.x=c("nct_id"), all.x=TRUE, 
                      y=scoredmatches, by.y=c("nct_id"))
-
+  ## display error message if table is empty 
   validate(
             need(nrow(table)>0, "No results based on selections")
-            #need(!is.null(table), "table is NULL")
         )
   
    ## if combined_score is NA, set value to zero
@@ -459,7 +383,7 @@ mergedStudyTable <-  reactive({
    ## if excluding matches on cancer type alone, filter table
    if(input$confidenceFilter==TRUE) {table <- filter(table, combined_score >0)}
    
-   
+  ## display error message if table is empty 
   validate(
             need(nrow(table)>0, "No results based on selections")
             #need(!is.null(table), "table is NULL")
@@ -467,8 +391,6 @@ mergedStudyTable <-  reactive({
    
    ## add some html code to brief_title value with relevant link
    table$brief_title <- paste0('<a href="',table$Link,'" target="_blank">',table$brief_title ,  " </a>")
-   
-   
    
    ## return table
    return(unique(table))
@@ -546,103 +468,32 @@ observeEvent(input$studiesmap_click, {
   
 ### Study details  
 
-
-```{r render reactive kable}
-
-# ## render as kable
-# shiny::renderUI({
-#    table <- mergedStudyTable()
-#    table[is.na(table)] <- "-"
-#    if(!is.na(map.selection$id )) {
-#       table <- dplyr::filter(table, nct_id == map.selection$id )
-#    }
-#    if(nrow(table)>0) {
-#    HTML(table %>%
-#             mutate(brief_title = cell_spec(x=table$brief_title,format="html", link = table$Link, new_tab = TRUE )) %>%
-#             dplyr::select(-c(Link, TARGET.condition, conditions)) %>%
-#             mutate(locations = cell_spec(x=table$locations,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
-#           mutate(sites = cell_spec(x=table$sites,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
-#            mutate(investigators = cell_spec(x=table$investigators,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
-#            mutate(contacts = cell_spec(x=table$contacts,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
-#            mutate(criteria = cell_spec(x=table$matching_criteria,format="html", extra_css = "display: -webkit-box;-webkit-line-clamp: 5; -webkit-box-orient: vertical;  overflow: auto;")) %>%
-#           aggregate( by=table['nct_id'], function(x) {paste(unique(x), collapse = ";\n")}) %>%
-#           #arrange( desc(combined_score)) %>% ## sort on score desc
-#           #as.data.frame() %>%
-#           dplyr::select(combined_score, 
-#                         "Matching cancer type(s)" = "matching.condition",
-#                          "Matching alteration(s)" = "gene_variant_type",
-#                          "Drug rationale" = "intervention_rationale",
-#                          "Eligibility" = "eligibility_rationale",
-#                          "Brief title" = "brief_title",
-#                         # "Matching inclusion criteria" = "criteria",
-#                         # "Prior Therapy exclusions" = Exclusions,
-#                          "Locations" = "locations",
-#                         # "Centres" = "sites",
-#                         # "Investigators" = "investigators",
-#                          "Contacts" = "contacts",
-#                         # "Study ID" = nct_id
-#                          #"Overall status" = "overall_status"
-#    #                      "Interventions" = "interventions",
-#    #                      Mechanism
-#                          ) %>%
-#             arrange( desc(combined_score)) %>% ## sort on score desc
-#             dplyr::select(-combined_score) %>%
-#             unique() %>%
-#             kable("html", escape = FALSE) %>%
-#             # kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
-#             kable_styling(bootstrap_options = c("hover", "condensed", "responsive")) %>%
-#             #collapse_rows(columns = c(1,2,4,5), valign = "middle") %>%
-#             #row_spec(row=3, hline_after = TRUE) %>%
-#             kable_styling(fixed_thead = T))
-# 
-#    } else print("No matching studies fround")
-# })
-```
-
 ```{r define reactive formattedTable catch error for empty}
 
 ## render as datatable
 formattedTable <- reactive({
   table <- mergedStudyTable()
+  ## display error message if table is empty 
   validate(
             need(nrow(table)>0, "No matching studies based on selected options")
         )
-  
-   # table[is.na(table)] <- "-"
-   if(!is.na(map.selection$id )) {
+  ## if a study has been selected on map, just display that study
+  if(!is.na(map.selection$id )) {
       table <- dplyr::filter(table, nct_id == map.selection$id )
    }
-        # table$brief_title <- paste0('<a href="',table$Link,'" target="_blank">',table$brief_title ,  " </a>")
-        #table$ID <- table$nct_id
+   
    table <- arrange(table, desc(combined_score)) 
    table <- aggregate(table, by=table['nct_id'], function(x) {paste(unique(na.omit(x)), collapse = ";\n")})
-   #table[is.na(table)] <- "-"
-   ## aggregate leads to duplication of nct_id column
+   
+   ## aggregate leads to duplication of nct_id column, so create a duplicate column called StudyID, then drop the nct_id column... 
    table$StudyID <- table$nct_id
-   ##drop nct_id column
+   ## now drop nct_id column
    table <- dplyr::select(table, -nct_id)
    ## now rename back to nct_id
    table <- rename(table, nct_id = StudyID)
-        # table <- unique(dplyr::select(table,
-        #                     combined_score,
-        #                     "Matching cancer type(s)" = "matching.condition",
-        #                     "Matching alteration(s)" = "gene_variant_type",
-        #                     "Drug rationale" = "intervention_rationale",
-        #                     "Eligibility" = "eligibility_rationale",
-        #                     "Brief title" = "brief_title",
-        #                     "Matching inclusion criteria" = "criteria",
-        #                     "Prior Therapy exclusions" = Exclusions,
-        #                     "Locations" = "locations",
-        #                     "Centres" = "sites",
-        #                     "Investigators" = "investigators",
-        #                     "Contacts" = "contacts",
-        #                     "StudyID" = nct_id,
-        #                     "Overall status" = "overall_status",
-        #                     "Interventions" = "interventions",
-        #                     Mechanism
-        #                   
-        #                        ))
+   ## sort of ranking score descending
    table <- arrange(table, desc(combined_score))
+   ## drop redundant rows, if any
    table <- unique(table)
 
    return(table)
@@ -661,14 +512,7 @@ formattedTable <- reactive({
 
 ```
 
-
-
-
-
 ```{r define output for main results table}
-
-
-
 
 ## increase width of brief title column to 500 pixels
 output$datatable <- DT::renderDT(dplyr::select(formattedTable(),
@@ -690,7 +534,6 @@ output$datatable <- DT::renderDT(dplyr::select(formattedTable(),
                             # "Interventions" = "interventions",
                             # Mechanism
                             ),
- # output$datatable <- DT::renderDT(formattedTable(),                           
                   rownames=FALSE, escape = 4, 
                   options = list(ordering=F,
                                  paging = TRUE,
@@ -698,7 +541,6 @@ output$datatable <- DT::renderDT(dplyr::select(formattedTable(),
                                  scrollY = "60vh",
                                  scrollCollapse = TRUE,
                                  autoWidth = TRUE,
-                                 #language = list(emptyTable = 'My Custom No Data Message'),
                                  columnDefs = list(list(width = '500px', targets = list(4)))
                                 )
  )
@@ -746,29 +588,11 @@ fillCol(height = 600, flex = c(NA, 1),
 ```{r detect selection of rows}
 ## see also https://yihui.shinyapps.io/DT-proxy/ 
 
-# ## define a reactive value that will hold number selected rows
-# countSelectedRows <- reactive({
-#   count <- length(input$datatable_rows_selected)
-#   ## return value
-#   return(count)
-# })
-
-
-
-
 ## NOTE: if datatable is sorted, row indices may not match those of formattedTable()
 
-## define reactive value that will hold NCT IDs for studies selected from datatable
-# create empty vector
-#selectedStudyIDS <- character(0)
-## define reactivity
-# initialise as empty dataframe
-#selectedStudyIDS <- reactiveVal(selectedStudyIDS)
 ## detect clicks on results table
 proxy = dataTableProxy('datatable')
 observeEvent(input$select1, {
-   # proxy %>% selectRows(as.numeric(input$rows))
-  
   selectRows(proxy = proxy, selected = as.numeric(input$rows))
   })
 
@@ -777,28 +601,15 @@ indicesSelectedRows <- reactive({
   return(input$datatable_rows_selected)
 })
 
-
-
-## update selectedStudyIDS based on selected rows
-# selectedStudyIDS <- reactive({
-#   indices <- input$datatable_rows_selected
-#   ids <- unique(output$datatable$StudyID[indices])
-#   return(ids)
-# })
-
-
-
 ```
 
 ```{r download handler for full results}
 ## see also https://shiny.rstudio.com/articles/generating-reports.html 
 
-
 output$report <- downloadHandler(
       # For PDF output, change this to "report.pdf"
       filename = "trial_report.html",
       content = function(file) {
-        #file.copy("trial_report.Rmd", overwrite = TRUE)
         # Copy the report file to a temporary directory before processing it, in
         # case we don't have write permissions to the current working dir (which
         # can happen when deployed).
@@ -806,17 +617,10 @@ output$report <- downloadHandler(
         file.copy("trial_report.Rmd", tempReport, overwrite = TRUE)
 
         table=mergedStudyTable()
-        
-        
-        
-        ## filter and retain only studies on the shortlist
-        # shortlist = shortlist()
-        # table <- dplyr::filter(table, nct_id %in% shortlist$ID)
 
           if(!is.na(map.selection$id )) {
             table <- dplyr::filter(table, nct_id == map.selection$id )
          }
-        
         
         ## if parameters (cancer type as minimum) have been passed in the URL, record studies when full table is dowloaded
         if(!is.null(urlValues$CancerType)) {
@@ -845,8 +649,6 @@ output$report <- downloadHandler(
         dbDisconnect(con3) 
 
         }
-        
-        
         
         table[is.na(table)] <- "-"
         table=toJSON(table)
@@ -877,9 +679,6 @@ output$report <- downloadHandler(
 )
 
 
-
-
-
 ```
 
   
@@ -890,35 +689,23 @@ output$report <- downloadHandler(
 ```{r define reactive shortlist}
 ## based on https://stackoverflow.com/questions/52427281/add-and-delete-rows-of-dt-datatable-in-r-shiny
 
-## NB USING INDICES OF SELECTED ROWS IN OUTPUT TABLE ONLY WORKS IF ROW ORDERING OF OUTPUT TABLE IS ALWAYS THE SAME AS THAT FOR FORMATTEDTABLE(), (i.e. ok as long as sorting out output table by user is disabled, and rendering of output table only involves renaming columns, not reordering rows)
-
-
-
-## create an empty shortlist
-# shortlistNames <- c("Matching cancer type(s)","Matching alteration(s)","Drug rationale","Eligibility","Brief title","Locations","Contacts","ID")
-# # shortlist <- data.frame(matrix(ncol=length(shortlistNames),nrow=0, dimnames=list(NULL, shortlistNames)))
-
+## create an empty shortlist...
+## first, get names to match those of mergedStudyTable
 shortlistNames <- names(merge(x=cancerStudies, by.x=c("nct_id"), all.x=TRUE, 
                      y=scoredMatches, by.y=c("nct_id")))
 
-
+## next, create an empty dataframe with correct number of columns, no rows
 shortlist <- data.frame(matrix(ncol=length(shortlistNames),nrow=0))
+## next, assign the column names
 names(shortlist) <- shortlistNames
 
-
-
-
-## define reactivity
-# initialise as empty dataframe
+## define as a reactive value
 shortlist <- reactiveVal(shortlist)
 
-
-
-## observe clicks on addToShortlist button
+## observe and act on clicks on addToShortlist button
 observeEvent(input$addToShortlist, {
     ## add selected rows
     t = rbind(shortlist(), formattedTable()[indicesSelectedRows(), ])
-    #t = rbind(shortlist(), formattedTable()[nct_id %in% selectedStudyIDS(),] )
     ## drop duplicated rows
     t = unique(t)
     # update shortlist with new value
@@ -932,10 +719,6 @@ observeEvent(input$addToShortlist, {
 
 ```{r define output for shortlist table}
 
-
-
-
-# output$shortlistTable <- DT::renderDT(shortlist(),
 output$shortlistTable <- DT::renderDT(unique(dplyr::select(shortlist(),
                             # combined_score,
                             "Matching cancer type(s)" = "matching.condition",
@@ -966,37 +749,17 @@ output$shortlistTable <- DT::renderDT(unique(dplyr::select(shortlist(),
                                 )
   )
 ```
- 
-```{r define reactive value to hold selected study IDs}
-# selectedStudyIDs <- reactive({
-#   ids <- unique(formattedTable()$ID[indicesSelectedRows()])
-#   
-#   ## return value
-#   return(ids)
-# })
 
-# namesMergedStudyTable <- reactive({
-#   names <- names(mergedStudyTable())
-#   return(names)
-#   
-# })
-
-
-```
-
- 
  
 ```{r layout shortlist with download button}
 
 fillCol(height = 600, flex = c(NA, 1), 
-        #DT::DTOutput("shortlistTable"),
         inputPanel(
           shiny::renderUI({downloadButton("downloadShortlist", "Download shortlist", class = "btn-primary")}),
           actionButton(inputId="removeSelected", "Remove selected studies", class = "btn-primary"),
           actionButton(inputId="clearShortlist", "Clear shortlist", class = "btn-primary")
           ),
         DT::DTOutput("shortlistTable") 
-        # DT::DTOutput("shiny_table")
         )
 
 ```
@@ -1016,23 +779,16 @@ indicesRowsToDelete <- reactive({
   return(input$shortlistTable_rows_selected)
 })
 
-# ## define reactive value that will hold indices of selected rows
-# indicesSelectedRows <- reactive({
-#   return(input$datatable_rows_selected)
-# })
 
 observeEvent(input$removeSelected, {
     ## add selected rows
-    #t = rbind(shortlist(), formattedTable()[indicesSelectedRows(),] )
     t = shortlist()
     if(!is.null(indicesRowsToDelete())) {
       ## drop selected rows
       t = t[-indicesRowsToDelete(), ]
   
     }
-    ## drop selected rows
-    # t = shortlist()[-indicesRowsToDelete(), ]
-  
+    
     ## drop duplicated rows
     t = unique(t)
     # update shortlist with new value
@@ -1042,10 +798,8 @@ observeEvent(input$removeSelected, {
 
 ## observe clicks on clearShortlist button
 observeEvent(input$clearShortlist, {
-    ## add selected rows
-    #t = rbind(shortlist(), formattedTable()[indicesSelectedRows(),] )
     
-    ## drop selected rows
+    ## drop all rows
     t = shortlist()[0, ]
   
     ## drop duplicated rows
@@ -1069,89 +823,61 @@ output$downloadShortlist <- downloadHandler(
         # case we don't have write permissions to the current working dir (which can happen when deployed).
         tempReport <- file.path(tempdir(), "trial_report.Rmd")
         file.copy("trial_report.Rmd", tempReport, overwrite = TRUE)
-        
-        # tempReport <- file.path(tempdir(), "trials_shortlist.Rmd")
-        # file.copy("trials_shortlist.Rmd", tempReport, overwrite = TRUE)
-
-        # table=mergedStudyTable()
-        # ## filter and retain only studies on the shortlist
-        # shortlist = shortlist()
-        # table <- dplyr::filter(table, nct_id %in% shortlist$ID)
-        
-        ## note that some of the studies on shortlist may not be in mergedStudyTable 
-        ## INSTEAD, USE shortlist() AND APPEND MISSING COLUMNS FROM cancerStudies (interventions, centres, investigators), indexed.eligibilities (prior therapy exclusions) and and scoredMatches (full inclusion criteria) tables
-        ## MAY NEED TO RENAME AND/OR REORDER TO MAKE IT WORK WITH trial_report.Rmd
-        #table <- detailedShortlist()
+        ## pass the shortlist
         table <- shortlist()
         
         
         ## if parameters (cancer type as minimum) have been passed in the URL, record which studies were shortlisted
         if(!is.null(urlValues$CancerType)) {
-        ## get timestamp
-        datetime <- Sys.time()
-        ## get cancer type passed in url
-        urlCancerType <- urlValues$CancerType
-        ## get alterations (if any) passed in url
-        urlAlterations <- NA
-        if(!is.null(urlValues$alterations)) {
-          urlAlterations <- urlValues$alterations
-        }
+              ## get timestamp
+              datetime <- Sys.time()
+              ## get cancer type passed in url
+              urlCancerType <- urlValues$CancerType
+              ## get alterations (if any) passed in url
+              urlAlterations <- NA
+              if(!is.null(urlValues$alterations)) {
+                urlAlterations <- urlValues$alterations
+                }
         
-        ## create a separate table that will be written to database
-        shortlistTable <- table 
-        ## capture date and time downloaded
-        shortlistTable$datetime <- datetime
-        ## capture the cancer type passed in url
-        shortlistTable$urlCancerType <- urlCancerType
-        ## capture the alterations (if any) that have been passed in url
-        #print(paste0("urlAlterations() value: ", urlAlterations()))
-        #print(paste0("urlValues$alterations value: ", urlValues$alterations))
-        shortlistTable$urlAlterations <- urlAlterations
-        # if(!is.null(urlValues$alterations)) {
-        #   shortlistTable$urlAlterations <- urlValues$alterations
-        # }
-        ## print to console to aid development... 
-        #print(shortlistTable)
+              ## create a separate table that will be written to database
+              shortlistTable <- table 
+              ## capture date and time downloaded
+              shortlistTable$datetime <- datetime
+              ## capture the cancer type passed in url
+              shortlistTable$urlCancerType <- urlCancerType
+              ## capture the alterations (if any) that have been passed in url
+              shortlistTable$urlAlterations <- urlAlterations
         
-        ## in addition, save a copy of the full set of results obtained
-        ## left join, i.e. keep matches on cancer type alone
-        ## if scoredMatches is empty, will just get empty columns
-        fullTable <- merge(x=reactiveCancerStudies(), by.x=c("nct_id"), all.x=TRUE, 
-                     y=reactiveScoredMatches(), by.y=c("nct_id"))  
-        ## aggregate interventions column
-        fullTable <- fullTable %>%
-            group_by(across(c(-interventions))) %>%
-            summarise("interventions" = paste(na.omit(unique(interventions)), collapse = ", ")) %>%
-            as.data.frame()
         
-        fullTable$datetime <- datetime
-        fullTable$urlCancerType <- urlCancerType
-        fullTable$urlAlterations <- urlAlterations
+              ## in addition, save a copy of the full set of results obtained
+              ## left join, i.e. keep matches on cancer type alone
+              ## if scoredMatches is empty, will just get empty columns
+              fullTable <- merge(x=reactiveCancerStudies(), by.x=c("nct_id"), all.x=TRUE, 
+                           y=reactiveScoredMatches(), by.y=c("nct_id"))  
+              ## aggregate interventions column
+              fullTable <- fullTable %>%
+                  group_by(across(c(-interventions))) %>%
+                  summarise("interventions" = paste(na.omit(unique(interventions)), collapse = ", ")) %>%
+                  as.data.frame()
+              
+              fullTable$datetime <- datetime
+              fullTable$urlCancerType <- urlCancerType
+              fullTable$urlAlterations <- urlAlterations
         
         
         
-        ## append to dedicated table in database (if table doesn't exist, it is created)
-        con2 <- dbConnect(RSQLite::SQLite(), "trialMatchData.sqlite")
-        dbWriteTable(conn = con2,name = "shortlisted", value = shortlistTable, append=TRUE)
-        dbWriteTable(conn = con2,name = "fullresults", value = fullTable, append=TRUE)
-        dbDisconnect(con2) 
+              ## append to dedicated table in database (if table doesn't exist, it is created)
+              con2 <- dbConnect(RSQLite::SQLite(), "trialMatchData.sqlite")
+              dbWriteTable(conn = con2,name = "shortlisted", value = shortlistTable, append=TRUE)
+              dbWriteTable(conn = con2,name = "fullresults", value = fullTable, append=TRUE)
+              dbDisconnect(con2) 
 
         }
         
-        
-        
-        
 
-
-         #  if(!is.na(map.selection$id )) {
-         #    table <- dplyr::filter(table, nct_id == map.selection$id )
-         # }
-        
         table[is.na(table)] <- "-"
         table=toJSON(table)
         
-       
-
         # Set up parameters to pass to Rmd document
         params <- list(subject_ID="not provided", 
                        cancer_type= input$cancerTypeFilter,
@@ -1175,10 +901,6 @@ output$downloadShortlist <- downloadHandler(
        )
    }
 )
-
-
-
-
 
 
 ```
