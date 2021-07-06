@@ -141,16 +141,12 @@ urlValues <- reactiveValues()
 ```
 
 ```{r parse cancer type from URL}
-
-
-
 #urlCancerType <- reactive({
 observe({
       query <- parseQueryString(session$clientData$url_search)
       if (!is.null(query[['cancerType']])) {
         urlValues$CancerType <- query[['cancerType']]
          
-        
       } 
 })
 ```
@@ -172,11 +168,6 @@ shiny::renderUI({
 
 ```
 
-```{r static cancer type filter}
-## display filter for cancer type
-# selectInput(inputId = "cancerTypeFilter", label=NULL, choices = available.cancer.types, selected = NULL, multiple = FALSE,  selectize = TRUE, width = NULL, size = NULL)
-```
-
 ```{r include matches on solid tumour}
 
 checkboxInput(inputId="solidTumourFilter", label="Include matches on solid tumour?", value = TRUE, width = NULL)
@@ -185,9 +176,16 @@ checkboxInput(inputId="solidTumourFilter", label="Include matches on solid tumou
 ```
 
 ```{r define a reactive value that will hold selected cancer type}
+
+## if solid tumours selected, solid is added as an additional cancer type
 selectedCancerTypes <- reactive({
   if(input$solidTumourFilter==FALSE) {cancer.types <- input$cancerTypeFilter}
   else {cancer.types <- c(input$cancerTypeFilter, "Solid")}
+  
+  ## print to console to aid development... 
+  #print(paste0("selectedCancerTypes value: ", cancer.types))
+  
+  
   ## return value
   cancer.types
 })
@@ -197,7 +195,14 @@ selectedCancerTypes <- reactive({
 ```{r define reactive cancerStudies table}
 reactiveCancerStudies <- reactive({
    cancer.types <- selectedCancerTypes()
+   
+   
+   
+   
    table <- dplyr::filter(cancerStudies, TARGET.condition %in% cancer.types)
+   ## print to console to aid development... 
+   #print(paste0("head of reactiveCancerStudies1: ", head(table)))
+   
    ## append central contacts to front of site contact
    table$contacts <- paste(na.omit(table$central_contacts), na.omit(table$contacts))
    ## return table
@@ -272,10 +277,10 @@ urlAlterations <- reactive({
     alterations <- unique(alterations)
     
     
-    ## if none of the variants passed is in scoredMatches table, set value to NULL
-    if(length(intersect(alterations, scoredMatches$gene_variant_type))==0) {
-      alterations <- NULL
-    }
+    # ## if none of the variants passed is in scoredMatches table, set value to NULL
+    # if(length(intersect(alterations, scoredMatches$gene_variant_type))==0) {
+    #   alterations <- NULL
+    # }
     
     
     } else alterations = NULL
@@ -302,8 +307,12 @@ output$reactiveGeneFilter <- renderUI({
    
    gene_variant_type.list <- sort(unique(scoredMatches$gene_variant_type))
    
-   selectInput(inputId = "geneFilter", label=NULL, choices = gene_variant_type.list, selected = urlAlterations(), multiple = TRUE,  selectize = TRUE, width = NULL, size = NULL)
+   # selectInput(inputId = "geneFilter", label=NULL, choices = gene_variant_type.list, selected = urlAlterations(), multiple = TRUE,  selectize = TRUE, width = NULL, size = NULL)
 
+   selectInput(inputId = "geneFilter", label=NULL, choices = gene_variant_type.list, selected = intersect(urlAlterations(),gene_variant_type.list), multiple = TRUE,  selectize = TRUE, width = NULL, size = NULL)
+   
+   
+   
 })
 
 # display filter
@@ -317,20 +326,29 @@ shiny::renderUI({
 # if url values passed, these are stored
 # however, if url values are added/deleted from geneFilter, this reactive value is updated accordingly
 selectedAlterations <- reactive({
-
-  ## if URL alterations but nothing on geneFilter, URL alterations are used  
-  if(!is.null(urlAlterations()) & is.null(input$geneFilter)) {
-    alterations <- urlAlterations()
-    ## reset urlAlterations value
-    urlAlterations() <- NULL
-  } else if(!is.null(input$geneFilter)) {   ## if geneFilter is not null, use those
-    alterations <- input$geneFilter
-  #} else {alterations <- NULL}
-  } else if(is.null(urlAlterations()) & is.null(input$geneFilter)) {
-    alterations <- NULL}
+  ## just return value of input$geneFilter
+  ## if URL alterations have been passed, these will be preselected in the filter
+  ## if nothing is selected, NULL is returned
+  
+  alterations <- input$geneFilter
+  
+  
   
 
+  ## if URL alterations but nothing on geneFilter, URL alterations are used
+  # if(!is.null(urlAlterations()) & is.null(input$geneFilter)) {
+  #   alterations <- urlAlterations()
+  #   ## reset urlAlterations value
+  #   urlAlterations() <- NULL
+  # } else if(!is.null(input$geneFilter)) {   ## if geneFilter is not null, use those
+  #   alterations <- input$geneFilter
+  # #} else {alterations <- NULL}
+  # } else if(is.null(urlAlterations()) & is.null(input$geneFilter)) {
+  #   alterations <- NULL}
   
+
+  ## print to console to aid development... 
+  #print(paste0("selectedAlterations value: ", alterations))
   
   ## return value
   return(alterations)
@@ -365,28 +383,34 @@ shiny::renderUI({
 ```{r display cancer type alone filter}
 checkboxInput(inputId="confidenceFilter", label="Hide matches on cancer type alone?", value = FALSE, width = NULL)
 ```
-      
-```{r download button}
-
-# display button
-# shiny::renderUI({
-#    downloadButton("report", "Download table") 
-# })
-
-```
 
 ```{r filter scoredMatches table}
 reactiveScoredMatches <- reactive({
    table <- scoredMatches
+   
+   ## print to console to aid development... 
+   #print(paste0("head of reactiveScoredMatches1: ", head(table)))
+   
+   ## filter based on selectedAlterations
+   ## if null, a table with no rows is returned
+   ## if selectedAlterations not in gene_variant_type, get a table with header but no rows
+   table <- dplyr::filter(table, gene_variant_type %in% selectedAlterations())
+   
+   
+   #table <- dplyr::filter(table, gene_variant_type %in% input$geneFilter)
+   
+   
+   
+   
    ## deal with edge case where exclude matches on cancer type alone but no alterations selected
-   if(!is.null(selectedAlterations())) {
-     table <- dplyr::filter(table, gene_variant_type %in% selectedAlterations())
-     # validate(
-     #        need(nrow(table)>0, "selected variants not present")
-     #        #need(!is.null(table), "table is NULL")
-     #    )
-     
-    } else {table <- scoredMatches[NULL, ]}
+   # if(!is.null(selectedAlterations())) {
+   #   table <- dplyr::filter(table, gene_variant_type %in% selectedAlterations())
+   #   # validate(
+   #   #        need(nrow(table)>0, "selected variants not present")
+   #   #        #need(!is.null(table), "table is NULL")
+   #   #    )
+   #   
+   #  } else {table <- scoredMatches[NULL, ]}
    
    
    
@@ -401,7 +425,7 @@ reactiveScoredMatches <- reactive({
 # [7] "matching_criteria"      "combined_score"   
 
 
-## if selectedAlterations not in gene_variant_type, get a table with header but no rows
+
 ```
  
 ```{r define reactive mergedStudyTable}
