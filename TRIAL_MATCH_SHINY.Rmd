@@ -646,7 +646,10 @@ output$report <- downloadHandler(
         ## append to dedicated table in database (if table doesn't exist, it is created)
         con3 <- dbConnect(RSQLite::SQLite(), "trialMatchData.sqlite")
         dbWriteTable(conn = con3,name = "allDownloaded", value = fullResultsTable, append=TRUE)
-        dbDisconnect(con3) 
+        dbDisconnect(con3)
+        ## use existing connection to database
+        # dbWriteTable(conn = con,name = "allDownloaded", value = fullResultsTable, append=TRUE)
+
 
         }
         
@@ -870,7 +873,11 @@ output$downloadShortlist <- downloadHandler(
               con2 <- dbConnect(RSQLite::SQLite(), "trialMatchData.sqlite")
               dbWriteTable(conn = con2,name = "shortlisted", value = shortlistTable, append=TRUE)
               dbWriteTable(conn = con2,name = "fullresults", value = fullTable, append=TRUE)
-              dbDisconnect(con2) 
+              dbDisconnect(con2)
+              
+              ## use existing database connection
+              # dbWriteTable(conn = con,name = "shortlisted", value = shortlistTable, append=TRUE)
+              # dbWriteTable(conn = con,name = "fullresults", value = fullTable, append=TRUE)
 
         }
         
