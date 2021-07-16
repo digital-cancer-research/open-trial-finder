@@ -9,7 +9,6 @@ output: html_document
 ```{r setup, include=FALSE, warning=FALSE, message=FALSE, results=F} 
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ##NOTE: the following packages are required to run this script, but should be installed (e.g. using code snippets below) before runnning the script, NOT as part of the script itself
-
 # options(repos = "http://cran.us.r-project.org")
 # install.packages("BiocManager")
 # BiocManager::install("AnnotationDbi")
@@ -17,29 +16,32 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 # BiocManager::install("KEGGREST")
 # BiocManager::install("KEGGlincs")
 # BiocManager::install("hgu133a.db")
-require(KEGGlincs)
-require(KEGGgraph)
-
-require(RPostgreSQL)
-require(RODBC)
-require(formattable)
-require(org.Hs.eg.db)
-require(DBI)
-require(dplyr)
-require(tidyr)
-require(kableExtra)
-require(KEGGREST)
-require(stringr)
+require(KEGGlincs)        ## GPL-3
+require(KEGGgraph)        ## GPL >= 2
+require(org.Hs.eg.db)     ## Artistic-2.0
+require(KEGGREST)         ## Artistic 2.0
+require(DBI)              ## LGPL-2.1 | LGPL-3 
+# require(RPostgreSQL)    ## GPL-2
+require(RODBC)            ## GPL-2 | GPL-3
+require(RPostgres)        ## GPL-3
+require(RSQLite)          ## LGPL-2.1 | LGPL-3
+# require(rjson)          ## GPL-2
+require(jsonlite)         ## MIT
+require(dplyr)            ## MIT
+require(tidyr)            ## MIT
+require(formattable)      ## MIT
+require(kableExtra)       ## MIT
+require(stringr)          ## MIT
 #require(stringi)
-require(splitstackshape)
-require(reshape2)
-require(tictoc)
-require(maps)
-require(leaflet)
-require(PostcodesioR)
-require(rjson)
-require(RSQLite)
-require(igraph)
+require(splitstackshape)  ## GPL-3
+require(reshape2)         ## MIT
+require(tictoc)           ## Apache License (== 2.0
+require(maps)             ## GPL-2
+require(leaflet)          ## GPL-3
+require(PostcodesioR)     ## GPL-3
+require(igraph)           ## GPL-2 | GPL-3
+
+
 
 ## clean up first
 rm(list=ls())
@@ -280,11 +282,30 @@ dbListTables(con)
 ## see https://aact.ctti-clinicaltrials.org/ for how to create an account
 
 ## load configuration data from JSON file
-configuration <- fromJSON(file = "trialMatchConfiguration.json")
+## configuration <- rjson::fromJSON(file = "trialMatchConfiguration.json")
+
+## jsonlite is MIT
+configuration <- jsonlite::fromJSON(txt = "trialMatchConfiguration.json")
 aact.username <- configuration$aact.username
 aact.password <- configuration$aact.password
 
-drv <- dbDriver("PostgreSQL")
+# drv <- dbDriver("PostgreSQL")    ## need RPostgreSQL library to do this
+# conn2 <- dbConnect(drv, dbname="aact",host="aact-db.ctti-clinicaltrials.org", port=5432, user=aact.username, password=aact.password )
+
+
+
+## connect via odbc 
+## need PostgreSQL driver installation
+# conn2 <- DBI::dbConnect(odbc::odbc(),
+#                       Driver   = "PostgreSQL",
+#                       Server   = "aact-db.ctti-clinicaltrials.org",
+#                       Database = "aact",
+#                       UID      = aact.username,
+#                       PWD      = aact.password,
+#                       Port     = 5432)
+
+## connect via RPostgres (GPL-3 licence)
+drv = RPostgres::Postgres()
 conn2 <- dbConnect(drv, dbname="aact",host="aact-db.ctti-clinicaltrials.org", port=5432, user=aact.username, password=aact.password )
 ```
  
