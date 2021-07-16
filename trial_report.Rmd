@@ -18,12 +18,36 @@ params:
   table: "json format"
 ---
 
+
+```{r copyright notice}
+ # 
+ # This file is part of the cancer-trial-match distribution (https://github.com/digital-ECMT/cancer-trial-match).
+ # Copyright (C) 2021 digital ECMT
+ # 
+ # This program is free software: you can redistribute it and/or modify  
+ # it under the terms of the GNU General Public License as published by  
+ # the Free Software Foundation, version 3 or later.
+ #
+ # This program is distributed in the hope that it will be useful, but 
+ # WITHOUT ANY WARRANTY; without even the implied warranty of 
+ # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU 
+ # General Public License for more details.
+ #
+ # You should have received a copy of the GNU General Public License 
+ # along with this program. If not, see <http://www.gnu.org/licenses/>.
+ #
+
+
+```
+
+
+
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE)
-# require(rjson)
-require(jsonlite)
-require(formattable)
-require(kableExtra)
+require(jsonlite)       ## MIT
+require(formattable)    ## MIT
+require(kableExtra)     ## MIT
 
 ##get today's date
 today <- format(Sys.Date(), format = "%d %B %Y")

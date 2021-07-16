@@ -11,6 +11,30 @@ output:
 runtime: shiny
 
 ---
+
+
+```{r copyright notice}
+ # 
+ # This file is part of the cancer-trial-match distribution (https://github.com/digital-ECMT/cancer-trial-match).
+ # Copyright (C) 2021 digital ECMT
+ # 
+ # This program is free software: you can redistribute it and/or modify  
+ # it under the terms of the GNU General Public License as published by  
+ # the Free Software Foundation, version 3 or later.
+ #
+ # This program is distributed in the hope that it will be useful, but 
+ # WITHOUT ANY WARRANTY; without even the implied warranty of 
+ # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU 
+ # General Public License for more details.
+ #
+ # You should have received a copy of the GNU General Public License 
+ # along with this program. If not, see <http://www.gnu.org/licenses/>.
+ #
+
+```
+
+
+
 ```{r setup, include=FALSE}
 
 require(flexdashboard)      ## MIT
@@ -20,7 +44,6 @@ require(kableExtra)         ## MIT
 require(shinyWidgets)       ## GPL-3
 require(leaflet)            ## GPL-3
 require(htmltools)          ## GPL-2 | GPL-3
-# require(rjson)              ## GPL-2
 require(jsonlite)           ## MIT
 require(RSQLite)            ## LGPL-2.1 | LGPL-3
 require(DT)                 ## GPL-3
@@ -33,11 +56,15 @@ configuration <- jsonlite::fromJSON(txt = "trialMatchConfiguration.json")
 # configuration <- rjson::fromJSON(file = "trialMatchConfiguration.json")
 ```
   
+  
+  
 ```{r connect to SQLite DB}
 # Create an RSQLite database
 con <- dbConnect(RSQLite::SQLite(), "trialMatchData.sqlite")
 
 ```
+
+
 
 ```{r read cancer study data into memory}
 ## read cancerStudies table into memory

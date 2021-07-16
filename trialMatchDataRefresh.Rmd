@@ -6,6 +6,29 @@ output: html_document
 
 ---
 
+```{r copyright notice}
+ # 
+ # This file is part of the cancer-trial-match distribution (https://github.com/digital-ECMT/cancer-trial-match).
+ # Copyright (C) 2021 digital ECMT
+ # 
+ # This program is free software: you can redistribute it and/or modify  
+ # it under the terms of the GNU General Public License as published by  
+ # the Free Software Foundation, version 3 or later.
+ #
+ # This program is distributed in the hope that it will be useful, but 
+ # WITHOUT ANY WARRANTY; without even the implied warranty of 
+ # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU 
+ # General Public License for more details.
+ #
+ # You should have received a copy of the GNU General Public License 
+ # along with this program. If not, see <http://www.gnu.org/licenses/>.
+ #
+
+
+```
+
+
+
 ```{r setup, include=FALSE, warning=FALSE, message=FALSE, results=F} 
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ##NOTE: the following packages are required to run this script, but should be installed (e.g. using code snippets below) before runnning the script, NOT as part of the script itself
@@ -21,27 +44,22 @@ require(KEGGgraph)        ## GPL >= 2
 require(org.Hs.eg.db)     ## Artistic-2.0
 require(KEGGREST)         ## Artistic 2.0
 require(DBI)              ## LGPL-2.1 | LGPL-3 
-# require(RPostgreSQL)    ## GPL-2
 require(RODBC)            ## GPL-2 | GPL-3
 require(RPostgres)        ## GPL-3
 require(RSQLite)          ## LGPL-2.1 | LGPL-3
-# require(rjson)          ## GPL-2
 require(jsonlite)         ## MIT
 require(dplyr)            ## MIT
 require(tidyr)            ## MIT
 require(formattable)      ## MIT
 require(kableExtra)       ## MIT
 require(stringr)          ## MIT
-#require(stringi)
 require(splitstackshape)  ## GPL-3
 require(reshape2)         ## MIT
 require(tictoc)           ## Apache License (== 2.0
-require(maps)             ## GPL-2
 require(leaflet)          ## GPL-3
 require(PostcodesioR)     ## GPL-3
 require(igraph)           ## GPL-2 | GPL-3
-
-
+require(tidygeocoder)     ## MIT
 
 ## clean up first
 rm(list=ls())
@@ -427,38 +445,53 @@ cancerStudies <- merge(x=cancerStudies, by.x="postcode", all.x=TRUE, y =location
 
 ```
 
-
-```{r get lat long values based on city name}
+```{r get lat long values from city name using tidygeocoder}
 ## should be able to get lat and long values for about 85% of sites (90% of studies) based on city name alone
 
 ## try and fill values based on city name
 # remove any commas and anything after a comma
 cancerStudies$locations <- gsub(pattern = ",.*", replacement = "", x=cancerStudies$locations)
-# get names of cities that are still missing latitude (and longitude) values
-data("world.cities")
+
+## use tidygeocoder (MIT licence)
+## need append country from config file after city name...
+cities <- as.data.frame(tidygeocoder::geo(address = unique(paste0(cancerStudies$locations, ", ", configuration$country)), method = 'osm'))
+  
+## trim off the suffix
+cities$address <- gsub(pattern=paste0(", ", configuration$country), replacement = "", x=cities$address)
+
+## join back on study location == address
+cancerStudies <- merge(x=cancerStudies, by.x="locations", all.x=TRUE, y=dplyr::select(cities, address, lat, long), by.y="address")
 
 
-## get country specified in configuration file
-## accepted values are: 
-# Afghanistan, Albania, Algeria, American Samoa, Andorra, Angola, Anguilla, Antigua and Barbuda, Argentina, Armenia, Aruba, Australia, Austria, Azerbaijan, Azores, Bahamas, Bahrain, Bangladesh, Barbados, Belarus, Belgium, Belize, Benin, Bermuda, Bhutan, Bolivia, Bosnia and Herzegovina, Botswana, Brazil, British Virgin Islands, Brunei, Bulgaria, Burkina Faso, Burundi, Cambodia, Cameroon, Canada, Canary Islands, Cape Verde, Cayman Islands, Central African Republic, Chad, Chile, China, Colombia, Comoros, Congo, Congo Democratic Republic, Cook Islands, Costa Rica, Croatia, Cuba, Cyprus, Czech Republic, Denmark, Djibouti, Dominica, Dominican Republic, East Timor, Easter Island, Ecuador, Egypt, El Salvador, Equatorial Guinea, Eritrea, Estonia, Ethiopia, Falkland Islands, Faroe Islands, Fiji, Finland, France, French Guiana, French Polynesia, Gabon, Gambia, Georgia, Germany, Ghana, Gibraltar, Greece, Greenland, Grenada, Guadeloupe, Guam, Guatemala, Guernsey and Alderney, Guinea, Guinea-Bissau, Guyana, Haiti, Honduras, Hungary, Iceland, India, Indonesia, Iran, Iraq, Ireland, Isle of Man, Israel, Italy, Ivory Coast, Jamaica, Japan, Jersey, Jordan, Kazakhstan, Kenya, Kiribati, Korea North, Korea South, Kuwait, Kyrgyzstan, Laos, Latvia, Lebanon, Lesotho, Liberia, Libya, Liechtenstein, Lithuania, Luxembourg, Macedonia, Madagascar, Madeira, Madiera, Malawi, Malaysia, Maldives, Mali, Malta, Marshall Islands, Martinique, Mauritania, Mauritius, Mayotte, Mexico, Micronesia, Moldova, Monaco, Mongolia, Montserrat, Morocco, Mozambique, Myanmar, Namibia, Nauru, Nepal, Netherlands, Netherlands Antilles, New Caledonia, New Zealand, Nicaragua, Niger, Nigeria, Niue, Norfolk Island, Northern Mariana Islands, Norway, Oman, Pakistan, Palau, Palestine, Panama, Papua New Guinea, Paraguay, Peru, Philippines, Pitcairn, Poland, Portugal, Puerto Rico, Qatar, Reunion, Romania, Russia, Rwanda, Saint-Barthelemy, Saint-Martin, Saint Helena, Saint Kitts and Nevis, Saint Lucia, Saint Pierre and Miquelon, Saint Vincent and The Grenadines, Samoa, San Marino, Sao Tome and Principe, Saudi Arabia, Senegal, Serbia and Montenegro, Seychelles, Sicily, Sierra Leone, Singapore, Slovakia, Slovenia, Solomon Islands, Somalia, South Africa, Spain, Sri Lanka, Sudan, Suriname, Svalbard and Jan Mayen, Swaziland, Sweden, Switzerland, Syria, Taiwan, Tajikistan, Tanzania, Thailand, Togo, Tokelau, Tonga, Trinidad and Tobago, Tunisia, Turkey, Turkmenistan, Turks and Caicos, Tuvalu, Uganda, UK, Ukraine, United Arab Emirates, Uruguay, US Virgin Islands, USA, Uzbekistan, Vanuatu, Vatican City, Venezuela, Vietnam, Wallis and Futuna, Western Sahara, Yemen, Zambia, Zimbabwe
-world.cities.country <- configuration$world.cities.country
 
 
-cities <- world.cities %>% filter(country.etc == world.cities.country)
-## join on study location == city name
-cancerStudies <- merge(x=cancerStudies, by.x="locations", all.x=TRUE, y=dplyr::select(cities, name, lat, long), by.y="name")
+```
 
-# ## where latitude value from postcode lookup is missing, use the latitude from city name lookup
-# cancerStudies$latitude[is.na(cancerStudies$latitude)] <- cancerStudies$lat[is.na(cancerStudies$latitude)]
-# ## do the same for longitude values
-# cancerStudies$longitude[is.na(cancerStudies$longitude)] <- cancerStudies$long[is.na(cancerStudies$longitude)]
+
+
+
+
+```{r get lat long values based on city name}
+# ## should be able to get lat and long values for about 85% of sites (90% of studies) based on city name alone
 # 
-# ## drop lat and long columns
-# cancerStudies <- dplyr::select(cancerStudies, -c(lat, long))
+# ## try and fill values based on city name
+# # remove any commas and anything after a comma
+# cancerStudies$locations <- gsub(pattern = ",.*", replacement = "", x=cancerStudies$locations)
+# # get names of cities that are still missing latitude (and longitude) values
+# data("world.cities")
 # 
-# ## rename latitude and longitude columns
-# # use new_name = old_name syntax
-# cancerStudies <- rename(cancerStudies, c("lat"="latitude" ,"long"="longitude"))
+# 
+# ## get country specified in configuration file
+# ## accepted values are: 
+# # Afghanistan, Albania, Algeria, American Samoa, Andorra, Angola, Anguilla, Antigua and Barbuda, Argentina, Armenia, Aruba, Australia, Austria, Azerbaijan, Azores, Bahamas, Bahrain, Bangladesh, Barbados, Belarus, Belgium, Belize, Benin, Bermuda, Bhutan, Bolivia, Bosnia and Herzegovina, Botswana, Brazil, British Virgin Islands, Brunei, Bulgaria, Burkina Faso, Burundi, Cambodia, Cameroon, Canada, Canary Islands, Cape Verde, Cayman Islands, Central African Republic, Chad, Chile, China, Colombia, Comoros, Congo, Congo Democratic Republic, Cook Islands, Costa Rica, Croatia, Cuba, Cyprus, Czech Republic, Denmark, Djibouti, Dominica, Dominican Republic, East Timor, Easter Island, Ecuador, Egypt, El Salvador, Equatorial Guinea, Eritrea, Estonia, Ethiopia, Falkland Islands, Faroe Islands, Fiji, Finland, France, French Guiana, French Polynesia, Gabon, Gambia, Georgia, Germany, Ghana, Gibraltar, Greece, Greenland, Grenada, Guadeloupe, Guam, Guatemala, Guernsey and Alderney, Guinea, Guinea-Bissau, Guyana, Haiti, Honduras, Hungary, Iceland, India, Indonesia, Iran, Iraq, Ireland, Isle of Man, Israel, Italy, Ivory Coast, Jamaica, Japan, Jersey, Jordan, Kazakhstan, Kenya, Kiribati, Korea North, Korea South, Kuwait, Kyrgyzstan, Laos, Latvia, Lebanon, Lesotho, Liberia, Libya, Liechtenstein, Lithuania, Luxembourg, Macedonia, Madagascar, Madeira, Madiera, Malawi, Malaysia, Maldives, Mali, Malta, Marshall Islands, Martinique, Mauritania, Mauritius, Mayotte, Mexico, Micronesia, Moldova, Monaco, Mongolia, Montserrat, Morocco, Mozambique, Myanmar, Namibia, Nauru, Nepal, Netherlands, Netherlands Antilles, New Caledonia, New Zealand, Nicaragua, Niger, Nigeria, Niue, Norfolk Island, Northern Mariana Islands, Norway, Oman, Pakistan, Palau, Palestine, Panama, Papua New Guinea, Paraguay, Peru, Philippines, Pitcairn, Poland, Portugal, Puerto Rico, Qatar, Reunion, Romania, Russia, Rwanda, Saint-Barthelemy, Saint-Martin, Saint Helena, Saint Kitts and Nevis, Saint Lucia, Saint Pierre and Miquelon, Saint Vincent and The Grenadines, Samoa, San Marino, Sao Tome and Principe, Saudi Arabia, Senegal, Serbia and Montenegro, Seychelles, Sicily, Sierra Leone, Singapore, Slovakia, Slovenia, Solomon Islands, Somalia, South Africa, Spain, Sri Lanka, Sudan, Suriname, Svalbard and Jan Mayen, Swaziland, Sweden, Switzerland, Syria, Taiwan, Tajikistan, Tanzania, Thailand, Togo, Tokelau, Tonga, Trinidad and Tobago, Tunisia, Turkey, Turkmenistan, Turks and Caicos, Tuvalu, Uganda, UK, Ukraine, United Arab Emirates, Uruguay, US Virgin Islands, USA, Uzbekistan, Vanuatu, Vatican City, Venezuela, Vietnam, Wallis and Futuna, Western Sahara, Yemen, Zambia, Zimbabwe
+# world.cities.country <- configuration$world.cities.country
+# 
+# 
+# cities <- world.cities %>% filter(country.etc == world.cities.country)
+# ## join on study location == city name
+# cancerStudies <- merge(x=cancerStudies, by.x="locations", all.x=TRUE, y=dplyr::select(cities, name, lat, long), by.y="name")
+# 
+
 
 ```
   
