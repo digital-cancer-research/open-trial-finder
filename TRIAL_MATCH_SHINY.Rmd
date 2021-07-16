@@ -11,28 +11,60 @@ output:
 runtime: shiny
 
 ---
+
+
+```{r copyright notice}
+ # 
+ # This file is part of the cancer-trial-match distribution (https://github.com/digital-ECMT/cancer-trial-match).
+ # Copyright (C) 2021 digital ECMT
+ # 
+ # This program is free software: you can redistribute it and/or modify  
+ # it under the terms of the GNU General Public License as published by  
+ # the Free Software Foundation, version 3 or later.
+ #
+ # This program is distributed in the hope that it will be useful, but 
+ # WITHOUT ANY WARRANTY; without even the implied warranty of 
+ # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU 
+ # General Public License for more details.
+ #
+ # You should have received a copy of the GNU General Public License 
+ # along with this program. If not, see <http://www.gnu.org/licenses/>.
+ #
+
+```
+
+
+
 ```{r setup, include=FALSE}
-require(flexdashboard)
-require(dplyr)
-require(tidyr)
-require(kableExtra)
-require(shinyWidgets)
-require(leaflet)
-require(htmltools)
-require(rjson)
-require(RSQLite)
-require(DT)
-require(DBI)
+
+require(flexdashboard)      ## MIT
+require(dplyr)              ## MIT
+require(tidyr)              ## MIT
+require(kableExtra)         ## MIT
+require(shinyWidgets)       ## GPL-3
+require(leaflet)            ## GPL-3
+require(htmltools)          ## GPL-2 | GPL-3
+require(jsonlite)           ## MIT
+require(RSQLite)            ## LGPL-2.1 | LGPL-3
+require(DT)                 ## GPL-3
+require(DBI)                ## LGPL-2.1 | LGPL-3
+
+
 
 ## load configuration data from JSON file
-configuration <- fromJSON(file = "trialMatchConfiguration.json")
+configuration <- jsonlite::fromJSON(txt = "trialMatchConfiguration.json")
+# configuration <- rjson::fromJSON(file = "trialMatchConfiguration.json")
 ```
+  
+  
   
 ```{r connect to SQLite DB}
 # Create an RSQLite database
 con <- dbConnect(RSQLite::SQLite(), "trialMatchData.sqlite")
 
 ```
+
+
 
 ```{r read cancer study data into memory}
 ## read cancerStudies table into memory
@@ -365,7 +397,7 @@ mergedStudyTable <-  reactive({
   table <- merge(x=cancerstudies, by.x=c("nct_id"), all.x=TRUE, 
                      y=scoredmatches, by.y=c("nct_id"))
   ## display error message if table is empty 
-  validate(
+  shiny::validate(
             need(nrow(table)>0, "No results based on selections")
         )
   
@@ -384,7 +416,7 @@ mergedStudyTable <-  reactive({
    if(input$confidenceFilter==TRUE) {table <- filter(table, combined_score >0)}
    
   ## display error message if table is empty 
-  validate(
+  shiny::validate(
             need(nrow(table)>0, "No results based on selections")
             #need(!is.null(table), "table is NULL")
         )
@@ -474,7 +506,7 @@ observeEvent(input$studiesmap_click, {
 formattedTable <- reactive({
   table <- mergedStudyTable()
   ## display error message if table is empty 
-  validate(
+  shiny::validate(
             need(nrow(table)>0, "No matching studies based on selected options")
         )
   ## if a study has been selected on map, just display that study
@@ -654,7 +686,8 @@ output$report <- downloadHandler(
         }
         
         table[is.na(table)] <- "-"
-        table=toJSON(table)
+        # table=rjson::toJSON(table)
+        table = jsonlite::toJSON(table)
         
        
         # Set up parameters to pass to Rmd document
@@ -883,7 +916,9 @@ output$downloadShortlist <- downloadHandler(
         
 
         table[is.na(table)] <- "-"
-        table=toJSON(table)
+        ## table=rjson::toJSON(table)
+        table = jsonlite::toJSON(table)
+
         
         # Set up parameters to pass to Rmd document
         params <- list(subject_ID="not provided", 
