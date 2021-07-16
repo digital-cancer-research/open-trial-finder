@@ -12,7 +12,7 @@ runtime: shiny
 
 ---
 ```{r setup, include=FALSE}
-require(jsonlite)           ## MIT
+
 require(flexdashboard)      ## MIT
 require(dplyr)              ## MIT
 require(tidyr)              ## MIT
@@ -20,8 +20,8 @@ require(kableExtra)         ## MIT
 require(shinyWidgets)       ## GPL-3
 require(leaflet)            ## GPL-3
 require(htmltools)          ## GPL-2 | GPL-3
-require(rjson)              ## GPL-2
-
+# require(rjson)              ## GPL-2
+require(jsonlite)           ## MIT
 require(RSQLite)            ## LGPL-2.1 | LGPL-3
 require(DT)                 ## GPL-3
 require(DBI)                ## LGPL-2.1 | LGPL-3

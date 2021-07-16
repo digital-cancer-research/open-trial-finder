@@ -20,7 +20,8 @@ params:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE)
-require(rjson)
+# require(rjson)
+require(jsonlite)
 require(formattable)
 require(kableExtra)
 
@@ -40,6 +41,9 @@ today <- format(Sys.Date(), format = "%d %B %Y")
 
 ## get table from parameters and convert to data frame
 paramTable <- as.data.frame(fromJSON(params$table))
+
+paramTable <- as.data.frame(jsonlite::fromJSON(params$table))
+
 
 #formattable(paramTable)
 
