@@ -354,8 +354,9 @@ country,
 "')
   AND s.study_type LIKE ('Interventional')
   AND s.overall_status IN ('Recruiting')
-  AND f.status IN ('Recruiting', 'Not yet recruiting')")
+  AND f.status IN ('Recruiting')")
 
+## OPTIONAL, could include sites with status of 'Not yet recruiting' and add a checkbox for users to choose whether to show/hide these sites
 
 ## get data from clinicaltrials.gov
 openStudies <- dbGetQuery(conn2,openStudiesQ)
