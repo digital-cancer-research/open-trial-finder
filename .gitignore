@@ -43,3 +43,5 @@ trialMatchData.sqlite
 *.sqlite
 trialMatchData.sqlite
 .Rhistory
+trialMatchData.sqlite
+.Rhistory
