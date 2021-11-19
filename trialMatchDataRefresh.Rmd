@@ -552,6 +552,10 @@ NCIthesaurus <- unique(NCIthesaurus)
 
 toc()
 
+## create as a table in database
+dbWriteTable(conn = con,name = "NCIt", value = NCIthesaurus, overwrite=TRUE)
+
+
 ```
   
 ##### **Get targets from KEGG**  

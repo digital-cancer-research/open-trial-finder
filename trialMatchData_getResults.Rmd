@@ -1,0 +1,381 @@
+---
+title: "Get results to show in trial finder"
+author: "digital ECMT"
+date: "19/11/2021"
+output: html_document
+---
+
+
+```{r copyright notice}
+ # 
+ # This file is part of the cancer-trial-match distribution (https://github.com/digital-ECMT/cancer-trial-match).
+ # Copyright (C) 2021 digital ECMT
+ # 
+ # This program is free software: you can redistribute it and/or modify  
+ # it under the terms of the GNU General Public License as published by  
+ # the Free Software Foundation, version 3 or later.
+ #
+ # This program is distributed in the hope that it will be useful, but 
+ # WITHOUT ANY WARRANTY; without even the implied warranty of 
+ # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU 
+ # General Public License for more details.
+ #
+ # You should have received a copy of the GNU General Public License 
+ # along with this program. If not, see <http://www.gnu.org/licenses/>.
+ #
+
+
+```
+
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+##NOTE: the following packages are required to run this script, but should be installed (e.g. using code snippets below) before runnning the script, NOT as part of the script itself
+# options(repos = "http://cran.us.r-project.org")
+# install.packages("BiocManager")
+# BiocManager::install("AnnotationDbi")
+# BiocManager::install("org.Hs.eg.db")
+# BiocManager::install("KEGGREST")
+# BiocManager::install("KEGGlincs")
+# BiocManager::install("hgu133a.db")
+require(KEGGlincs)        ## GPL-3
+require(KEGGgraph)        ## GPL >= 2
+require(org.Hs.eg.db)     ## Artistic-2.0
+require(KEGGREST)         ## Artistic 2.0
+require(DBI)              ## LGPL-2.1 | LGPL-3 
+require(RODBC)            ## GPL-2 | GPL-3
+require(RPostgres)        ## GPL-3
+require(RSQLite)          ## LGPL-2.1 | LGPL-3
+require(jsonlite)         ## MIT
+require(dplyr)            ## MIT
+require(tidyr)            ## MIT
+require(formattable)      ## MIT
+require(kableExtra)       ## MIT
+require(stringr)          ## MIT
+require(splitstackshape)  ## GPL-3
+require(reshape2)         ## MIT
+require(tictoc)           ## Apache License (== 2.0
+require(leaflet)          ## GPL-3
+require(PostcodesioR)     ## GPL-3
+require(igraph)           ## GPL-2 | GPL-3
+require(tidygeocoder)     ## MIT
+
+## clean up first
+rm(list=ls())
+
+##get today's date
+today <- format(Sys.Date(), format = "%d %B %Y")
+```
+
+
+**Date of data refresh: `r today`**  
+  
+  
+```{r connect to SQLite DB} 
+# Create an RSQLite database
+con <- dbConnect(RSQLite::SQLite(), "trialMatchData.sqlite")
+
+dbListTables(con)
+
+```
+  
+#### **Get controlled terms and synonyms for cancer types**  
+  
+      
+```{r read cancer type synonyms into memory}
+
+conditionSynonyms <- dbGetQuery(con, "SELECT * FROM cancers")
+
+
+```
+
+#### **Get human gene names and synonyms**  
+  
+```{r read human genes table into memory}
+
+humanGenes <- dbGetQuery(con, "SELECT * FROM genes")
+
+
+```
+
+  
+#### **Get NCI thesaurus**  
+  
+```{r read human genes table into memory}
+
+NCIthesaurus <- dbGetQuery(con, "SELECT * FROM NCIt")
+
+
+```
+
+  
+#### **Connect to clinicaltrials.gov**  
+  
+  
+```{r connect to clinicaltrialsgov}  
+## specify user name and password for AACT account
+## see https://aact.ctti-clinicaltrials.org/ for how to create an account
+
+## load configuration data from JSON file
+## configuration <- rjson::fromJSON(file = "trialMatchConfiguration.json")
+
+## jsonlite is MIT
+configuration <- jsonlite::fromJSON(txt = "trialMatchConfiguration.json")
+aact.username <- configuration$aact.username
+aact.password <- configuration$aact.password
+
+
+## connect via RPostgres (GPL-3 licence)
+drv = RPostgres::Postgres()
+conn2 <- dbConnect(drv, dbname="aact",host="aact-db.ctti-clinicaltrials.org", port=5432, user=aact.username, password=aact.password )
+```
+ 
+  
+#### **Get cancer studies with results**  
+  
+ 
+```{r get study data}
+
+## get data for all cancer studies that have reported results
+cancerStudiesResults_query <- "SELECT s.nct_id, s.brief_title, c.name AS condition, i.name AS interventions 
+FROM studies s
+INNER JOIN conditions c ON c.nct_id = s.nct_id
+INNER JOIN interventions i ON i.nct_id = s.nct_id
+inner join calculated_values cv on cv.nct_id = s.nct_id
+WHERE s.study_type LIKE ('Interventional')
+and (c.downcase_name like '%cancer%'
+or c.downcase_name like '%neoplasm%'
+or c.downcase_name like '%carcinoma%'
+or c.downcase_name like '%tumo%')"
+
+
+
+## get data from clinicaltrials.gov
+cancerStudiesResults <- dbGetQuery(conn2,cancerStudiesResults_query)
+
+## add a column to indicate refresh date
+cancerStudiesResults$Refresh.date <- today
+
+```
+ 
+#### **Map verbatim condition names to controlled set of cancer types**  
+  
+  
+```{r tokenise and join to condition synonyms}
+## we can't just join to condition synonyms as condition may include extra words
+## such as "Stage IV Lung Cancer AJCC v8" and "Metastatic Lung Non-Small Cell Carcinoma"
+
+## we will provide condition synonyms as custom tokens, then tokenise, unnest and perform the join
+custom_tokens <- unique(conditionSynonyms$condition.synonyms)
+
+cancerStudiesResults$word <- as.list(corpus::text_tokens(x=cancerStudiesResults$condition,                                                filter= corpus::text_filter(combine = custom_tokens, map_case=TRUE, connector="_", drop_punct=TRUE )))
+
+
+## unnest
+cancerStudiesResults <- as.data.frame(unnest(data = cancerStudiesResults, word)) 
+## this function does insist on replacing whitespace with a character (here, underscore), so need to swap that back to whitespace
+cancerStudiesResults$word <- gsub(pattern = "_", replacement = " ", x=cancerStudiesResults$word)
+
+
+## join on cancerStudiesResults$word = conditionSynonyms$condition.synonyms
+cancerStudiesResults <- unique(merge(x=cancerStudiesResults, by.x = "word", y=conditionSynonyms, by.y="condition.synonyms"))
+
+## drop the word column
+cancerStudiesResults <- unique(dplyr::select(cancerStudiesResults, -c(word)))
+
+
+```
+  
+  
+#### **Map interventions to molecular targets**  
+  
+
+```{r get molecular targets for cancerStudies interventions}
+## first, get all interventions (note that there will be some redundancy due to case)
+drugs.targets <- unique(dplyr::select(cancerStudiesResults,interventions))
+
+## keep interventions column as verbatim so can join later
+## make a duplicate column
+drugs.targets$interventions.processed <- drugs.targets$interventions
+
+
+## split and unnest on " + "
+drugs.targets$interventions.processed <- strsplit(drugs.targets$interventions.processed, split = " \\+ ")
+drugs.targets <- unnest(data = drugs.targets, interventions.processed)
+
+# also split and unneston the word " plus "
+drugs.targets$interventions.processed <- strsplit(drugs.targets$interventions.processed, split = " plus ")
+drugs.targets <- unnest(data = drugs.targets, interventions.processed)
+
+# also split and unneston the word " and "
+drugs.targets$interventions.processed <- strsplit(drugs.targets$interventions.processed, split = " and ")
+drugs.targets <- unnest(data = drugs.targets, interventions.processed)
+
+# also split and unnest on  " & "
+drugs.targets$interventions.processed <- strsplit(drugs.targets$interventions.processed, split = " \\& ")
+drugs.targets <- unnest(data = drugs.targets, interventions.processed)
+
+# also split and unnest on  " or "
+drugs.targets$interventions.processed <- strsplit(drugs.targets$interventions.processed, split = " or ")
+drugs.targets <- unnest(data = drugs.targets, interventions.processed)
+
+# also split and unnest on  " (+) "
+drugs.targets$interventions.processed <- strsplit(drugs.targets$interventions.processed, split = " \\(\\+\\) ")
+drugs.targets <- unnest(data = drugs.targets, interventions.processed)
+
+# also split and unnest on  " with "
+drugs.targets$interventions.processed <- strsplit(drugs.targets$interventions.processed, split = " with ")
+drugs.targets <- unnest(data = drugs.targets, interventions.processed)
+
+## also split on brackets
+drugs.targets$interventions.processed <- strsplit(drugs.targets$interventions.processed, split = " \\(")
+drugs.targets <- unnest(data = drugs.targets, interventions.processed)
+# remove closing bracket
+drugs.targets$interventions.processed <- gsub(pattern = "\\)", replacement = "", x=drugs.targets$interventions.processed)
+
+
+## trim off anything related to dose
+# pattern is (a number, with or without a decimal point) with/without a space, followed by "mg", anything after "mg is removed
+drugs.targets$interventions.processed <- gsub(pattern = " \\d+\\.?\\d+ ?mg.*", replacement = "", x=drugs.targets$interventions.processed, ignore.case = T)
+
+## convert to lowercase
+drugs.targets$interventions.processed <- tolower(drugs.targets$interventions.processed)
+
+drugs.targets <- as.data.frame(drugs.targets)
+
+
+
+## join to NCIthesaurus so that any intervention not represented in the thesaurus is dropped
+drugs.targets <- merge(x=drugs.targets, 
+      by.x = "interventions.processed", 
+      y= unique(dplyr::select(NCIthesaurus, SynonymsLower, PreferredTerm, ParentTerm)), 
+      by.y = "SynonymsLower")
+
+
+
+## drop any rows that don't have a preferred term
+# convert empty cells to NA
+drugs.targets$PreferredTerm[drugs.targets$PreferredTerm==""] <- NA
+
+drugs.targets <- unique(drugs.targets[!is.na(drugs.targets$PreferredTerm), ])
+
+
+## map preferred terms to drug IDs in KEGG
+drugs.targets.preferred <- unique(dplyr::select(drugs.targets, PreferredTerm))
+
+## try to map each preferred term to a Drug IDs from KEGG
+## add an empty column to hold drug ID
+drugs.targets.preferred$drugID <- NA
+
+
+tic("get IDs for drugs")
+for(i in 1:nrow(drugs.targets.preferred)) {
+  # print(i)
+  drugid <- NA
+  drugSynonym <- as.character(drugs.targets.preferred$PreferredTerm[i])
+  # print(drugSynonym)
+  ## get (onlY) first drug ID
+  tryCatch({drugid <- names(keggFind(database = "drug", query = drugSynonym))[1]},
+             error=function(cond) {return(NA)})
+  if(length(drugid)>0 ) {
+    # print(drugid)
+    drugs.targets.preferred$drugID[i] <- drugid}
+}
+toc()
+
+# ## separate off drug IDs
+# targets <- as.data.frame(unique(dplyr::select(drugs.targets, drugID)))
+# ## add a column to hold drug target ID
+# targets$drugTargetID <- NA
+# ## add a column to hold Entrez symbol for drug target
+# targets$drugTargetSymbol <- NA
+# ## drop rows without a drugID
+# targets <- targets[!is.na(targets$drugID),]
+# 
+# ## use drug IDs to get gene IDs for target genes
+# for(i in 1:nrow(targets)) {
+#   drugid <- targets$drugID[i]
+#   geneid <- NA
+#   tryCatch({geneid <- keggGet(drugid)[[1]]$TARGET$TARGET},
+#              error=function(cond) {return(NA)})
+#   #print(geneid)
+#   if(length(geneid)>0) targets$drugTargetID[i] <- geneid
+# }
+# 
+# ## parse the drugTargetID values - trim off extra characters and unnest where multiple targets per drug
+# ## drop any columns that don't contain "HSA:"
+# 
+# #trim everything up to "HSA:"
+# targets$drugTargetID <- gsub(pattern = ".*\\HSA:", replacement = "", x=targets$drugTargetID)
+# # trim everything after square bracket
+# targets$drugTargetID  <- gsub(pattern = "\\].*", replacement = "", x=targets$drugTargetID )
+# # split on space into individual ids, where applicable
+# targets$drugTargetID <- strsplit(targets$drugTargetID, split = " ")
+# targets <- unnest(data = targets, drugTargetID)
+# targets <- as.data.frame(targets)
+# ## drop rows where drugTargetID is NA
+# targets <- targets[!is.na(targets$drugTargetID), ]
+# 
+# # paste on a "hsa:"
+# targets$drugTargetID <- paste0("hsa:",targets$drugTargetID)
+# 
+# ## use drugTargetId to get names (Entrez Symbols) for target genes
+# for(i in 1:nrow(targets)) {
+#   targetId <- targets$drugTargetID[i]
+#   #print(paste0("i= ", i, "; ID = ", targetId))
+#   name <- NA
+#   tryCatch({
+#     # name <- keggGet(targetId)[[1]]$NAME[1]
+#     # API has changed, NAME returns name instead of symbol... 
+#     name <- keggGet(targetId)[[1]]$SYMBOL[1]
+#     ## name is not normalised, multiple symbols separated by comma, we want the first one...
+#     name <- strsplit(name, split = ", ")[[1]][1]
+#     
+#     
+#     
+#     },error=function(cond) {return(NA)})
+#   if(length(targetId)>0) {
+#     #name <- keggGet(targetId)[[1]]$NAME[1]
+#     #print(name)
+#     targets$drugTargetSymbol[i] <- name
+#   }
+# }
+# 
+# ## drugTargetSymbol may hold several comma separated values
+# ## first value appears to be Entrez symbol
+# ## trim off everything after first comma
+# targets$drugTargetSymbol <- gsub(pattern = ",.*", replacement = "", x=targets$drugTargetSymbol )
+# 
+# ## join drugTargetSymbol values to drugs.targets table
+# drugs.targets <- merge(x=drugs.targets, by.x="drugID", all.x=TRUE,
+#                        y=unique(dplyr::select(targets, drugID, drugTargetSymbol)), by.y = "drugID")
+# 
+# ## reorder columns
+# drugs.targets <- unique(dplyr::select(drugs.targets,"interventions.verbatim"= "interventions", interventions.processed, Description, ParentTerm, drugTargetSymbol))
+```
+  
+
+
+
+
+
+
+
+
+```{r disconnect from  database}
+
+# disconnect from clincialtrials.gov
+dbDisconnect(conn2)
+
+# Disconnect from SQLite database
+dbDisconnect(con)
+
+
+```
+  
+`r knitr::knit_exit()`    
+  
+   
+   
