@@ -349,76 +349,36 @@ getDrugTargetID <- function(drugID){
 
 
 ```{r map each drug ID to a target gene ID}
-drugs.targets$target_id <- NA
+# drugs.targets$target_id <- NA
 
 # drugs.targets$PreferredTerm[drugs.targets$drugID=="dr:D10231"]
 
-for(i in 1:length(unique(drugs.targets$drugID))) {
+temp_table <- data.frame(drugID= unique(na.omit(drugs.targets$drugID)), 
+                         target_id = NA)
+
+
+for(i in 1:nrow(temp_table)) {
   print(i)
-  drugid <- unique(drugs.targets$drugID)[i]
+  drugid <- as.character(temp_table$drugID[i])
   print(drugid)
   target_id <- getDrugTargetID(drugid)
-  (print(target_id))
-  drugs.targets$target_id[drugs.targets$drugID==drugid] <- target_id
+  print(target_id)
+  temp_table$target_id[i] <- list(target_id)
 }
 
-
-```
-
-
-
-
-
-```{r get target IDs from KEGG via API}
-# ## try to map each preferred term to a Drug IDs from KEGG
-# ## add an empty column to hold drug ID
-# drugs.targets.preferred$drugID <- NA
-# 
-# 
-# tic("get IDs for drugs")
-# for(i in 1:nrow(drugs.targets.preferred)) {
-#   # print(i)
-#   drugid <- NA
-#   drugSynonym <- as.character(drugs.targets.preferred$PreferredTerm[i])
-#   # print(drugSynonym)
-#   ## get (onlY) first drug ID
-#   tryCatch({drugid <- names(keggFind(database = "drug", query = drugSynonym))[1]},
-#              error=function(cond) {return(NA)})
-#   if(length(drugid)>0 ) {
-#     # print(drugid)
-#     drugs.targets.preferred$drugID[i] <- drugid}
-# }
-# toc()
-
-```
-
-
-
-```{r get drug target IDs from KEGG via API}
-
-
-
-drugs.targets.preferred$target_id <- NA
-
-tic("get drug target IDs")
-for(i in 1:nrow(drugs.targets.preferred)) {
-  print(i)
-  drugID <- drugs.targets.preferred$drugID[i]
-  print(drugID)
-  drugs.targets.preferred$target_id[i] <- list(getDrugTargetID(drugID))
-  print(drugs.targets.preferred$target_id[i])
-}
-toc()
 
 ## unnest
-drugs.targets.preferred <- as.data.frame(unnest(data = drugs.targets.preferred, target_id, keep_empty = TRUE))
+temp_table <- as.data.frame(unnest(data = temp_table, target_id, keep_empty = FALSE))
+temp_table$target_id <- as.character(temp_table$target_id)
+## drop any null rows
+temp_table <- temp_table[temp_table$target_id != "NULL", ]
 ```
 
 
-```{r get drug target symbols from KEGG via API}}
 
 
 
+```{r define function to get drug target symbols from KEGG via API}}
 # keggGet("hsa:3620")[[1]]$SYMBOL[1]
 
 
@@ -435,62 +395,28 @@ getDrugTargetSymbol <- function(targetID){
   
   return(geneSymbol)
 }
+```
 
-drugs.targets.preferred$target_symbol <- NA
+
+
+```{r get drug symbols using function}
+temp_table$target_symbol <- NA
 
 tic("get drug target symbols")
-for(i in 1:nrow(drugs.targets.preferred)) {
+for(i in 1:nrow(temp_table)) {
   print(i)
-  targetID <- drugs.targets.preferred$target_id[i]
+  targetID <- temp_table$target_id[i]
   print(targetID)
-  drugs.targets.preferred$target_symbol[i] <- getDrugTargetSymbol(targetID)
-  print(drugs.targets.preferred$target_symbol[i])
+  temp_table$target_symbol[i] <- getDrugTargetSymbol(targetID)
+  print(temp_table$target_symbol[i])
 }
 toc()
 
 
+# temp_table[temp_table$target_symbol != "NA", ]
+temp_table <- temp_table[complete.cases(temp_table), ]
 
 
-
-
-
-
-
-
-
-# 
-
-# 
-# ## use drugTargetId to get names (Entrez Symbols) for target genes
-# for(i in 1:nrow(targets)) {
-#   targetId <- targets$drugTargetID[i]
-#   #print(paste0("i= ", i, "; ID = ", targetId))
-#   name <- NA
-#   tryCatch({
-#     # name <- keggGet(targetId)[[1]]$NAME[1]
-#     # API has changed, NAME returns name instead of symbol... 
-#     name <- keggGet(targetId)[[1]]$SYMBOL[1]
-#     ## name is not normalised, multiple symbols separated by comma, we want the first one...
-#     name <- strsplit(name, split = ", ")[[1]][1]
-#     
-#     
-#     
-#     },error=function(cond) {return(NA)})
-#   if(length(targetId)>0) {
-#     #name <- keggGet(targetId)[[1]]$NAME[1]
-#     #print(name)
-#     targets$drugTargetSymbol[i] <- name
-#   }
-# }
-# 
-# ## drugTargetSymbol may hold several comma separated values
-# ## first value appears to be Entrez symbol
-# ## trim off everything after first comma
-# targets$drugTargetSymbol <- gsub(pattern = ",.*", replacement = "", x=targets$drugTargetSymbol )
-# 
-# ## join drugTargetSymbol values to drugs.targets table
-# drugs.targets <- merge(x=drugs.targets, by.x="drugID", all.x=TRUE,
-#                        y=unique(dplyr::select(targets, drugID, drugTargetSymbol)), by.y = "drugID")
 # 
 # ## reorder columns
 # drugs.targets <- unique(dplyr::select(drugs.targets,"interventions.verbatim"= "interventions", interventions.processed, Description, ParentTerm, drugTargetSymbol))
@@ -498,6 +424,12 @@ toc()
   
 
 
+```{r join target name to interventions}
+drugs.targets <- unique(merge(x=drugs.targets, by.x="drugID", all.x=TRUE, y=temp_table, by.y = "drugID"))
+
+
+
+```
 
 
 
