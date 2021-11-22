@@ -103,7 +103,7 @@ humanGenes <- dbGetQuery(con, "SELECT * FROM genes")
   
 #### **Get NCI thesaurus**  
   
-```{r read human genes table into memory}
+```{r read NCIt into memory}
 
 NCIthesaurus <- dbGetQuery(con, "SELECT * FROM NCIt")
 
@@ -194,7 +194,7 @@ cancerStudiesResults <- unique(dplyr::select(cancerStudiesResults, -c(word)))
 
 ```{r get molecular targets for cancerStudies interventions}
 ## first, get all interventions (note that there will be some redundancy due to case)
-drugs.targets <- unique(dplyr::select(cancerStudiesResults,interventions))
+drugs.targets <- unique(dplyr::select(cancerStudiesResults,nct_id,interventions))
 
 ## keep interventions column as verbatim so can join later
 ## make a duplicate column
@@ -247,79 +247,219 @@ drugs.targets <- as.data.frame(drugs.targets)
 
 
 
-## join to NCIthesaurus so that any intervention not represented in the thesaurus is dropped
+## join to NCIthesaurus 
+## drop rows without a match 
 drugs.targets <- merge(x=drugs.targets, 
       by.x = "interventions.processed", 
-      y= unique(dplyr::select(NCIthesaurus, SynonymsLower, PreferredTerm, ParentTerm)), 
+      all.x = FALSE,
+      y= unique(dplyr::select(NCIthesaurus, "NCI_ID"="ID", SynonymsLower, PreferredTerm, ParentTerm)), 
       by.y = "SynonymsLower")
 
 
 
-## drop any rows that don't have a preferred term
 # convert empty cells to NA
 drugs.targets$PreferredTerm[drugs.targets$PreferredTerm==""] <- NA
 
-drugs.targets <- unique(drugs.targets[!is.na(drugs.targets$PreferredTerm), ])
+## drop the interventions processed column
+drugs.targets <- unique(dplyr::select(drugs.targets, -c(interventions.processed)))
 
+## drop any rows that don't have a preferred term
+#drugs.targets <- unique(drugs.targets[!is.na(drugs.targets$PreferredTerm), ])
+
+
+## reduce number of rows
+drugs.targets <-unique(dplyr::select(drugs.targets, interventions, PreferredTerm,NCI_ID))
 
 ## map preferred terms to drug IDs in KEGG
-drugs.targets.preferred <- unique(dplyr::select(drugs.targets, PreferredTerm))
-
-## try to map each preferred term to a Drug IDs from KEGG
-## add an empty column to hold drug ID
-drugs.targets.preferred$drugID <- NA
+# drugs.targets.preferred <- unique(dplyr::select(drugs.targets, PreferredTerm))
+```
 
 
-tic("get IDs for drugs")
-for(i in 1:nrow(drugs.targets.preferred)) {
-  # print(i)
-  drugid <- NA
-  drugSynonym <- as.character(drugs.targets.preferred$PreferredTerm[i])
-  # print(drugSynonym)
-  ## get (onlY) first drug ID
-  tryCatch({drugid <- names(keggFind(database = "drug", query = drugSynonym))[1]},
+```{r define function to map drug names to KEGG drug IDs}
+
+# test using "1-methyl-D-tryptophan", aka "Indoximod"
+
+getDrugID <- function(drugName){
+  if(is.na(drugName)) return(NA)
+  ## get drug ID
+  drugid <- tryCatch({names(keggFind(database = "drug", query = drugName))},
              error=function(cond) {return(NA)})
-  if(length(drugid)>0 ) {
-    # print(drugid)
-    drugs.targets.preferred$drugID[i] <- drugid}
+  if(is.null(drugid)) return(NA)
+  if(is.na(drugid)) return(NA)
+  drugid <- as.list(drugid)
+  return(drugid)
+}
+
+```
+
+
+```{r get drug ids based on intervention name}
+## add an empty column to hold drug ID
+drugs.targets$drugID <- NA
+
+tic("get drug IDs based on intervention name")
+for(i in 1:nrow(drugs.targets)) {
+  print(i)
+  drugName <- drugs.targets$interventions[i]
+  preferred <- drugs.targets$PreferredTerm[i]
+  print(drugName)
+  drugID <- getDrugID(drugName)
+  if(is.na(drugID)) {
+    drugID <- getDrugID(preferred)
+  }
+  
+  drugs.targets$drugID[i] <- drugID
+  print(drugs.targets$drugID[i])
+}  
+toc()
+
+## unnest
+drugs.targets <- as.data.frame(unnest(data = drugs.targets, drugID, keep_empty = TRUE))
+
+
+```
+
+```{r define function to get drug target IDs from KEGG}
+
+getDrugTargetID <- function(drugID){
+  if(is.na(drugID)) return(NA)
+  geneid <- tryCatch({keggGet(drugID)[[1]]$TARGET$TARGET},
+             error=function(cond) {return(NA)})
+  if(is.null(geneid)) return(NA)
+  if(is.na(geneid)) return(NA)
+  ## parse the drugTargetID values - trim off extra characters and unnest where multiple targets per drug
+  #trim everything up to "HSA:"
+  geneid <- gsub(pattern = ".*\\HSA:", replacement = "", x=geneid) 
+  # trim everything after square bracket
+  geneid <- gsub(pattern = "\\].*", replacement = "", x=geneid) 
+  # split on space into individual ids, where applicable
+  geneid <- strsplit(geneid, split = " ")
+  # unlist
+  geneid <- unlist(geneid)
+  # paste on a "hsa:"
+  geneid <- paste0("hsa:",geneid)
+  geneid <- as.list(geneid)
+  return(geneid)
+}
+
+
+
+```
+
+
+
+```{r map each drug ID to a target gene ID}
+drugs.targets$target_id <- NA
+
+# drugs.targets$PreferredTerm[drugs.targets$drugID=="dr:D10231"]
+
+for(i in 1:length(unique(drugs.targets$drugID))) {
+  print(i)
+  drugid <- unique(drugs.targets$drugID)[i]
+  print(drugid)
+  target_id <- getDrugTargetID(drugid)
+  (print(target_id))
+  drugs.targets$target_id[drugs.targets$drugID==drugid] <- target_id
+}
+
+
+```
+
+
+
+
+
+```{r get target IDs from KEGG via API}
+# ## try to map each preferred term to a Drug IDs from KEGG
+# ## add an empty column to hold drug ID
+# drugs.targets.preferred$drugID <- NA
+# 
+# 
+# tic("get IDs for drugs")
+# for(i in 1:nrow(drugs.targets.preferred)) {
+#   # print(i)
+#   drugid <- NA
+#   drugSynonym <- as.character(drugs.targets.preferred$PreferredTerm[i])
+#   # print(drugSynonym)
+#   ## get (onlY) first drug ID
+#   tryCatch({drugid <- names(keggFind(database = "drug", query = drugSynonym))[1]},
+#              error=function(cond) {return(NA)})
+#   if(length(drugid)>0 ) {
+#     # print(drugid)
+#     drugs.targets.preferred$drugID[i] <- drugid}
+# }
+# toc()
+
+```
+
+
+
+```{r get drug target IDs from KEGG via API}
+
+
+
+drugs.targets.preferred$target_id <- NA
+
+tic("get drug target IDs")
+for(i in 1:nrow(drugs.targets.preferred)) {
+  print(i)
+  drugID <- drugs.targets.preferred$drugID[i]
+  print(drugID)
+  drugs.targets.preferred$target_id[i] <- list(getDrugTargetID(drugID))
+  print(drugs.targets.preferred$target_id[i])
 }
 toc()
 
-# ## separate off drug IDs
-# targets <- as.data.frame(unique(dplyr::select(drugs.targets, drugID)))
-# ## add a column to hold drug target ID
-# targets$drugTargetID <- NA
-# ## add a column to hold Entrez symbol for drug target
-# targets$drugTargetSymbol <- NA
-# ## drop rows without a drugID
-# targets <- targets[!is.na(targets$drugID),]
+## unnest
+drugs.targets.preferred <- as.data.frame(unnest(data = drugs.targets.preferred, target_id, keep_empty = TRUE))
+```
+
+
+```{r get drug target symbols from KEGG via API}}
+
+
+
+# keggGet("hsa:3620")[[1]]$SYMBOL[1]
+
+
+getDrugTargetSymbol <- function(targetID){
+  if(is.na(targetID)) return(NA)
+  geneSymbol <- tryCatch({
+    keggGet(targetID)[[1]]$SYMBOL[1]
+    }, error=function(cond) {return(NA)})
+  if(is.null(geneSymbol)) return(NA)
+  if(is.na(geneSymbol)) return(NA)
+  ## parse value
+  ## multiple symbols separated by comma, we want the first one...
+  geneSymbol <- gsub(pattern = ",.*", replacement = "", x=geneSymbol)
+  
+  return(geneSymbol)
+}
+
+drugs.targets.preferred$target_symbol <- NA
+
+tic("get drug target symbols")
+for(i in 1:nrow(drugs.targets.preferred)) {
+  print(i)
+  targetID <- drugs.targets.preferred$target_id[i]
+  print(targetID)
+  drugs.targets.preferred$target_symbol[i] <- getDrugTargetSymbol(targetID)
+  print(drugs.targets.preferred$target_symbol[i])
+}
+toc()
+
+
+
+
+
+
+
+
+
+
+
 # 
-# ## use drug IDs to get gene IDs for target genes
-# for(i in 1:nrow(targets)) {
-#   drugid <- targets$drugID[i]
-#   geneid <- NA
-#   tryCatch({geneid <- keggGet(drugid)[[1]]$TARGET$TARGET},
-#              error=function(cond) {return(NA)})
-#   #print(geneid)
-#   if(length(geneid)>0) targets$drugTargetID[i] <- geneid
-# }
-# 
-# ## parse the drugTargetID values - trim off extra characters and unnest where multiple targets per drug
-# ## drop any columns that don't contain "HSA:"
-# 
-# #trim everything up to "HSA:"
-# targets$drugTargetID <- gsub(pattern = ".*\\HSA:", replacement = "", x=targets$drugTargetID)
-# # trim everything after square bracket
-# targets$drugTargetID  <- gsub(pattern = "\\].*", replacement = "", x=targets$drugTargetID )
-# # split on space into individual ids, where applicable
-# targets$drugTargetID <- strsplit(targets$drugTargetID, split = " ")
-# targets <- unnest(data = targets, drugTargetID)
-# targets <- as.data.frame(targets)
-# ## drop rows where drugTargetID is NA
-# targets <- targets[!is.na(targets$drugTargetID), ]
-# 
-# # paste on a "hsa:"
-# targets$drugTargetID <- paste0("hsa:",targets$drugTargetID)
+
 # 
 # ## use drugTargetId to get names (Entrez Symbols) for target genes
 # for(i in 1:nrow(targets)) {
