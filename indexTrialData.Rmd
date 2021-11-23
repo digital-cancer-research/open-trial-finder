@@ -1,5 +1,5 @@
 ---
-title: "Get results to show in trial finder"
+title: "Index clinicaltrials.gov data"
 author: "digital ECMT"
 date: "19/11/2021"
 output: html_document
@@ -75,12 +75,244 @@ today <- format(Sys.Date(), format = "%d %B %Y")
   
 ```{r connect to SQLite DB} 
 # Create an RSQLite database
-con <- dbConnect(RSQLite::SQLite(), "trialMatchData.sqlite")
+con <- dbConnect(RSQLite::SQLite(), "indexedTrialData.sqlite")
 
 dbListTables(con)
 
 ```
   
+#### **Download and save a table of human genes and synonyms**  
+  
+  
+```{r download and process a list of all human genes and their synonyms}
+
+## start timer
+tic("download a list of all human genes and their synonyms")
+
+
+humanGenes <- read.table(file = "humanGenes.tsv", header = TRUE, quote = "", sep = "\t", fill = TRUE, stringsAsFactors = FALSE)
+
+humanGenes <- dplyr::select(humanGenes, Symbol, Aliases)## drop everything except Symbol and Aliases columns
+
+
+humanGenes$Aliases <- strsplit(x=humanGenes$Aliases, split = ",")## split the aliases on comma 
+humanGenes <- unnest(data = humanGenes, cols = Aliases, keep_empty = TRUE) ## unnest to multiply rows, keep any rows with no aliases
+humanGenes <- as.data.frame(humanGenes) ## convert to data frame
+
+humanGenes$Aliases <- str_squish(string = humanGenes$Aliases) ## trim excess whitespace from Aliases values
+
+## Symbol values are not represented among Aliases
+# create a data frame with unique Symbol values
+symbols <- data.frame("Symbol"=unique(humanGenes$Symbol), "Aliases"=unique(humanGenes$Symbol))
+# bind this onto bottom of humanGenes data frame
+humanGenes <- rbind(humanGenes,symbols)
+# remove duplicated values, if any
+humanGenes <- unique(humanGenes)
+# sort on Symbol values
+humanGenes <- humanGenes[order(humanGenes$Symbol), ] 
+
+# drop any rows where Aliases is NA
+humanGenes <- humanGenes[!is.na(humanGenes$Aliases), ]
+
+## drop any rows where Aliases value is only a single character
+
+## NOW humanGenes TABLE CONTAINS ALL HUMAN GENES AND THEIR SYNONYMS
+## (61,593 unique symbols, 130,989 rows)
+
+## stop timer
+toc()
+```
+  
+```{r create table of human genes}
+## preview
+# formattable(head(humanGenes))
+
+## create as a table in database
+dbWriteTable(conn = con,name = "humanGenes", value = humanGenes, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+
+```
+    
+#### **Download and save NCI thesaurus**  
+  
+
+```{r download and create NCIthesaurus table}
+
+## specify URL for NCI thesaurus - this should always be the most recent? 
+NCItURL <- "https://evs.nci.nih.gov/ftp1/NCI_Thesaurus/Thesaurus.FLAT.zip"
+
+destFlatFilename <- "NCIt_FLAT.zip"
+download.file(url=NCItURL,destfile = destFlatFilename)
+unzip(zipfile = paste0(getwd(),"/",destFlatFilename))
+
+NCIt <- read.table("Thesaurus.txt",header = FALSE, sep = "\t", comment.char = "", fill = TRUE, stringsAsFactors = FALSE, quote = "")
+names(NCIt) <- c("ID","URL","ParentID","Synonyms","Description","PreferredTerm","Type","Class")
+
+## an entity may have more than one class, so need to multiply rows
+## split and unnest the Class column of NCIt
+NCIt$Class <- strsplit(NCIt$Class, split = "\\|")
+NCIt <- unnest(data = NCIt, Class)
+
+## do the same for Parent column
+## split ParentID column on pipe symbol
+NCIt$ParentID <- strsplit(NCIt$ParentID, split = "\\|")
+## unnest the ID column to multiply rows
+NCIt <- unnest(data=NCIt,ParentID)
+
+## drop unnecessary rows
+NCIt <- unique(dplyr::select(NCIt, ID, ParentID, Synonyms, PreferredTerm, Class))
+
+## join parent column back
+## first, get the synonyms and IDs for parents
+NCItParents <- NCIt[which(NCIt$ID %in% NCIt$ParentID), ]
+
+## each parent term may have more than one synonym
+## for simplicity, we will retain only the first synonym for each parent term
+NCItParents$Synonyms <- gsub("\\|.*","",NCItParents$Synonyms)
+
+NCItParents <- unique(dplyr::select(NCItParents, "ParentID"="ID", "Parent_synonym"="Synonyms"))
+
+## merge parents on entity ID = parent ID
+NCIt <- merge(x=NCIt,y=NCItParents,by.x="ParentID",by.y="ParentID",all.x=TRUE)
+
+## split and unnest the Synonyms column
+NCIt$Synonyms <- strsplit(NCIt$Synonyms, split = "\\|")
+NCIt <- unnest(data = NCIt, Synonyms)
+
+NCIt <- as.data.frame(NCIt)
+
+## add a column to indicate date downloaded
+NCIt$downloaded <- Sys.Date()
+
+## drop redundant rows, if any
+NCIt <- unique(NCIt)
+
+## create as a table in database
+dbWriteTable(conn = con,name = "NCIt", value = NCIt, overwrite=TRUE)
+
+```
+  
+#### **Map NCIt drugs to targets via KEGG**  
+
+    
+```{r subset NCIt for Pharmacologic Substance}
+
+
+NCIt_Pharmacologics <- unique(dplyr::filter(NCIt, Class=="Pharmacologic Substance"))
+
+
+```
+
+
+```{r define function to map drug names to KEGG drug IDs}
+
+# test using "1-methyl-D-tryptophan", aka "Indoximod"
+
+getDrugID <- function(drugName){
+  if(is.na(drugName)) return(NA)
+  ## get drug ID
+  drugid <- tryCatch({names(keggFind(database = "drug", query = drugName))},
+             error=function(cond) {return(NA)})
+  if(is.null(drugid)) return(NA)
+  if(is.na(drugid)) return(NA)
+  drugid <- as.list(drugid)
+  return(drugid)
+}
+
+```
+
+
+```{r map NCIt drug names to KEGG drug IDs}
+NCIt_Pharmacologics$kegg_drug_id <- NA
+
+tic("index NCIt pharmacologics with kegg drug id")
+for(i in 1:length(unique(NCIt_Pharmacologics$ID))) {
+  print(paste0("i:", i))
+  id <- unique(NCIt_Pharmacologics$ID)[i]
+  print(paste0("ID:", id))
+  synonyms <- unique(NCIt_Pharmacologics$Synonyms[NCIt_Pharmacologics$ID == id])
+  print(paste(synonyms, collapse = ", "))
+  kegg_drugid <- NA
+  ## loop through synonyms and call KEGG API
+  for(j in 1:length(synonyms)) {
+    kegg_drugid <- getDrugID(synonyms[j])
+    if(!is.na(kegg_drugid)) break
+  }
+  print(paste0("kegg drug id:", kegg_drugid))
+  NCIt_Pharmacologics$kegg_drug_id[NCIt_Pharmacologics$ID == id] <- kegg_drugid
+}
+toc()
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#### **Download and save lat, long values of cities**  
+  
+
+```{r get lat long values from city name using tidygeocoder}
+
+# # remove any commas and anything after a comma
+# cancerStudies$locations <- gsub(pattern = ",.*", replacement = "", x=cancerStudies$locations)
+# 
+# ## use tidygeocoder (MIT licence)
+# ## need append country from config file after city name...
+# cities <- as.data.frame(tidygeocoder::geo(address = unique(paste0(cancerStudies$locations, ", ", configuration$country)), method = 'osm'))
+#   
+# ## trim off the suffix
+# cities$address <- gsub(pattern=paste0(", ", configuration$country), replacement = "", x=cities$address)
+# 
+# ## join back on study location == address
+# cancerStudies <- merge(x=cancerStudies, by.x="locations", all.x=TRUE, y=dplyr::select(cities, address, lat, long), by.y="address")
+
+
+
+
+```
+
+  
+
+
+
+
+
+
+
+
+
+`r knitr::knit_exit()`    
+
+
+
+
+
+
+
+
+
+
+
+
 #### **Get controlled terms and synonyms for cancer types**  
   
       
@@ -275,24 +507,6 @@ drugs.targets <-unique(dplyr::select(drugs.targets, interventions, PreferredTerm
 ```
 
 
-```{r define function to map drug names to KEGG drug IDs}
-
-# test using "1-methyl-D-tryptophan", aka "Indoximod"
-
-getDrugID <- function(drugName){
-  if(is.na(drugName)) return(NA)
-  ## get drug ID
-  drugid <- tryCatch({names(keggFind(database = "drug", query = drugName))},
-             error=function(cond) {return(NA)})
-  if(is.null(drugid)) return(NA)
-  if(is.na(drugid)) return(NA)
-  drugid <- as.list(drugid)
-  return(drugid)
-}
-
-```
-
-
 ```{r get drug ids based on intervention name}
 ## add an empty column to hold drug ID
 drugs.targets$drugID <- NA
@@ -478,7 +692,7 @@ dbDisconnect(con)
 
 ```
   
-`r knitr::knit_exit()`    
+
   
    
    
