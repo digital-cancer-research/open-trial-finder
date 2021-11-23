@@ -431,7 +431,19 @@ drugs.targets <- unique(merge(x=drugs.targets, by.x="drugID", all.x=TRUE, y=temp
 
 ```
 
+```{r join mechanisms from NCIt}
+drugs.targets <- unique(merge(x=drugs.targets, by.x="NCI_ID", all.x=TRUE, y=unique(dplyr::select(NCIthesaurus, ID, Class, ParentTerm)), by.y = "ID"))
 
+```
+
+```{r join drugs targets back to nct_id}
+
+cancerStudiesResults_interventions <- unique(merge(x=unique(dplyr::select(cancerStudiesResults, nct_id, interventions)), by.x = "interventions", y=drugs.targets, by.y="interventions"))
+
+
+
+cancerStudiesResults
+```
 
 
 
