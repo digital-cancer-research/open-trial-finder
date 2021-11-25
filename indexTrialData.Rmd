@@ -120,9 +120,13 @@ humanGenes <- humanGenes[!is.na(humanGenes$Aliases), ]
 
 ## stop timer
 toc()
+
+## delete symbols object to save memory
+rm(symbols)
 ```
+
   
-```{r create table of human genes}
+```{r save table of human genes to DB}
 ## preview
 # formattable(head(humanGenes))
 
@@ -186,7 +190,10 @@ NCIt$downloaded <- Sys.Date()
 
 ## drop redundant rows, if any
 NCIt <- unique(NCIt)
+```
 
+
+```{r write NCIt to database}
 ## create as a table in database
 dbWriteTable(conn = con,name = "NCIt", value = NCIt, overwrite=TRUE)
 
@@ -253,6 +260,9 @@ dbWriteTable(conn = con,name = "NCIt", value = NCIt, overwrite=TRUE)
 
 NCIt_Pharmacologics <- unique(dplyr::filter(NCIt, Class=="Pharmacologic Substance"))
 
+## delete NCIt and NCItParents objects to save memory
+rm(NCIt)
+rm(NCItParents)
 
 ```
 
@@ -378,7 +388,7 @@ conn2 <- dbConnect(drv, dbname="aact",host="aact-db.ctti-clinicaltrials.org", po
 ```{r get study data}
 
 ## get data for all cancer studies that have reported results
-cancerStudiesQ <- "SELECT s.nct_id, s.brief_title, s.overall_status, s.last_update_posted_date, c.name AS condition
+cancerStudiesQ <- "SELECT s.nct_id, s.brief_title, s.phase, s.acronym, s.number_of_arms, s.number_of_groups,  s.overall_status, s.last_update_posted_date, c.name AS condition
 FROM studies s
 INNER JOIN conditions c ON c.nct_id = s.nct_id
 inner join calculated_values cv on cv.nct_id = s.nct_id
@@ -421,12 +431,299 @@ cancerStudies$word <- gsub(pattern = "_", replacement = " ", x=cancerStudies$wor
 ## join on word = conditionSynonyms$condition.synonyms
 cancerStudies <- unique(merge(x=cancerStudies, by.x = "word", y=conditionSynonyms, by.y="condition.synonyms"))
 
+## NOTE: ANY STUDY-CONDITION COMBINATIONS NOT REPRESENTED IN THE CONTROLLED TERMS WILL BE LOST AT THIS STAGE
+
 ## drop the word column
 cancerStudies <- unique(dplyr::select(cancerStudies, -c(word)))
 
 
 ```
   
+#### **write indexed cancer studies to database**  
+  
+```{r write cancerStudies to database}
+## create as a table in database
+dbWriteTable(conn = con,name = "cancerStudies", value = cancerStudies, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+
+
+```
+
+#### **Get study interventions**  
+  
+```{r get study interventions}
+## format study IDs for SQL query
+studyIDsForSQL <- paste0("\'",paste(unique(cancerStudies$nct_id), collapse = "\',\'"), "\'")
+
+getInterventionsQ <- paste0("select i.nct_id, i.id AS intervention_id, i.name AS intervention_name 
+from interventions i
+where i.nct_id in (",
+"", studyIDsForSQL,
+")")
+
+## get criteria from clinicaltrials.gov
+interventions <- dbGetQuery(conn2,getInterventionsQ)
+
+```
+
+```{r process intervention names}
+## duplicate intervention name
+interventions$intervention_name_processed <- interventions$intervention_name
+## convert to lowercase 
+interventions$intervention_name_processed <- tolower(interventions$intervention_name_processed)
+
+## split on words related to combinations of therapy
+combinations_pattern = "\\bwith\\b|\\band\\b|\\/|\\+|\\bplus\\b|\\,"
+interventions$intervention_name_processed <- strsplit(interventions$intervention_name_processed, split = combinations_pattern)
+interventions <- as.data.frame(unnest(data = interventions, intervention_name_processed))
+
+## split on brackets (e.g. values like "roniciclib (bay1000394)" and "e39 peptide (100mcg)")
+brackets_pattern <- "\\(|\\)"
+interventions$intervention_name_processed <- strsplit(interventions$intervention_name_processed, split = brackets_pattern)
+interventions <- as.data.frame(unnest(data = interventions, intervention_name_processed))
+
+## split on any substrings related to dose
+## matches any digit, optionally followed by space, followed by "mg"
+dose_pattern <- "[0-9]+ ?mg"
+interventions$intervention_name_processed <- strsplit(interventions$intervention_name_processed, split = dose_pattern)
+interventions <- as.data.frame(unnest(data = interventions, intervention_name_processed))
+
+## trim excess whitespace
+interventions$intervention_name_processed <- str_squish(interventions$intervention_name_processed)
+
+```
+  
+#### **Join study interventions to NCIt pharmacologics**  
+  
+```{r join interventions to NCIt pharmacologics}
+## create a temporary copy of NCIt pharmacologics
+NCIt_Pharmacologics_temp <- unique(dplyr::select(NCIt_Pharmacologics, "NCIt_ID"="ID", Synonyms, PreferredTerm, "Mechanism"="Parent_synonym"))
+## convert synonyms to lower case for joining
+NCIt_Pharmacologics_temp$Synonyms <- tolower(NCIt_Pharmacologics_temp$Synonyms)
+
+NCIt_Pharmacologics_temp <- unique(dplyr::select(NCIt_Pharmacologics, "NCIt_ID"="ID", Synonyms, PreferredTerm, "Mechanism"="Parent_synonym"))
+
+interventions <- merge(x=interventions, by.x = "intervention_name_processed", all.x=FALSE, 
+                       y=NCIt_Pharmacologics_temp, by.y = "Synonyms")
+
+## delete temporary copy
+rm(NCIt_Pharmacologics_temp)
+
+## select and reorder columns
+## remove duplicates
+interventions <- unique(dplyr::select(interventions, nct_id, intervention_id, intervention_name, NCIt_ID, PreferredTerm, Mechanism))
+
+
+```
+
+#### **Write indexed interventions to database**  
+  
+```{r write interventions to database}
+## create as a table in database
+dbWriteTable(conn = con,name = "interventions", value = interventions, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+
+```
+
+#### **Map UK cancer study sites to postcodes**  
+  
+```{r download facilities}
+
+UKfacilitiesQ <- paste0("select f.nct_id, f.status, f.name AS facility_name, f.city, f.zip 
+from facilities f
+where f.nct_id in (",
+"", studyIDsForSQL,
+") AND lower(f.country) = 'united kingdom'")
+
+## get criteria from clinicaltrials.gov
+uk_facilities <- dbGetQuery(conn2,UKfacilitiesQ)
+
+
+
+```
+
+```{r map postcodes to lat and long}
+## convert postcodes to lowercase for join
+uk_postcodes$postcode_lower <- tolower(uk_postcodes$postcode)
+uk_facilities$zip_lower <- tolower(uk_facilities$zip)
+
+## merge
+uk_facilities <- merge(x=uk_facilities, by.x = "zip_lower", all.x = TRUE, y=uk_postcodes, by.y="postcode_lower")
+
+## select and reorder columns
+uk_facilities <- unique(dplyr::select(uk_facilities, nct_id, facility_name, status, city, latitude, longitude))
+
+## delete uk_postcodes object from memory
+rm(uk_postcodes)
+```
+
+```{r map cities to lat and long}
+
+## get a list of cities that are still missing lat, long values 
+missing_cities <- data.frame(verbatim = as.character(unique(uk_facilities$city[is.na(uk_facilities$latitude)])))
+
+## need to process 
+missing_cities$processed <- as.character(missing_cities$verbatim)
+missing_cities$processed <- strsplit(x=missing_cities$processed, split = ",")
+missing_cities <- as.data.frame(unnest(data = missing_cities, processed))
+missing_cities$processed <- str_squish(missing_cities$processed)
+missing_cities$processed <- paste0(missing_cities$processed, ", ", configuration$country)
+
+
+## use tidygeocoder (MIT licence)
+## need append country from config file after city name...
+geocoder_addresses <- as.data.frame(tidygeocoder::geo(address = unique(missing_cities$processed), method = 'osm'))
+
+## join to missing cities
+missing_cities <- merge(x=missing_cities, by.x="processed", y=geocoder_addresses, by.y="address")
+
+## join to uk_facilities
+uk_facilities <- merge(x=uk_facilities, by.x="city", all.x=TRUE, y=dplyr::select(missing_cities, verbatim, "geo_lat"="lat", "geo_long"="long"), by.y = "verbatim")
+
+
+## replace the missing latitude and longitude values with the geocoder values
+uk_facilities$latitude[is.na(uk_facilities$latitude)] <- uk_facilities$geo_lat[is.na(uk_facilities$latitude)]
+
+uk_facilities$longitude[is.na(uk_facilities$longitude)] <- uk_facilities$geo_long[is.na(uk_facilities$longitude)]
+
+## select and reorder columns
+uk_facilities <- unique(dplyr::select(uk_facilities, nct_id, facility_name, status, city, latitude, longitude))
+```
+
+```{r write uk facilities to database}
+## create as a table in database
+dbWriteTable(conn = con,name = "uk_facilities", value = uk_facilities, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+
+```
+
+#### **Get eligibility criteria**  
+  
+```{r get eligibility criteria from ct}
+getEligibilities <- paste0("select * 
+from eligibilities 
+where nct_id in (",
+"", studyIDsForSQL,
+")")
+
+## get criteria from clinicaltrials.gov
+eligibilities <- dbGetQuery(conn2,getEligibilities)
+
+```
+
+```{r split into individual eligibility criteria}
+
+## split into individual criteria on single line breaks
+eligibilities$criteria <- strsplit(eligibilities$criteria, split = "\n")
+## unnest so each criterion gets its own row
+eligibilities <- as.data.frame(unnest(data = eligibilities, cols = criteria))
+## drop any empty elements
+eligibilities <- eligibilities[eligibilities$criteria != "", ] ## drop empty elements
+
+```
+
+```{r classify as inclusion exclusion criteria}
+
+## add a column to indicate criterion type
+eligibilities$criterion.type <- NA
+
+## set first value as "INCLUSION"
+eligibilities$criterion.type[1] <- "INCLUSION"
+
+## tag first criterion that equals "exclusion criteria:" (case-insensitive, with or without colon)
+eligibilities$criterion.type[grep(pattern = "exclusion criteria:?$", x=eligibilities$criteria, ignore.case = TRUE)] <- "EXCLUSION"
+
+## fill "down" using the tdiyr::fill() function
+eligibilities <- tidyr::fill(data=eligibilities, criterion.type, .direction="down")
+
+```
+
+```{r impute missing values for gender}
+## for gender, replace "All" with "Male|Female"
+eligibilities$gender[eligibilities$gender=="All"] <- "Male|Female"
+## do the same for missing values
+eligibilities$gender[is.na(eligibilities$gender)] <- "Male|Female"
+
+```
+
+```{r impute missing values for minimum age}
+
+## for minimum ages are all either "xxx months", "1 year", "xxx years" or "N/A"
+## convert all values to years...
+min_age_month_indices <- grep(pattern = "month", x=eligibilities$minimum_age, ignore.case = TRUE)
+## trim off first space and everything after
+eligibilities$minimum_age[min_age_month_indices] <- gsub(pattern = " .*", replacement = "", x=eligibilities$minimum_age[min_age_month_indices])
+## convert to numeric
+# eligibilities$minimum_age[min_age_month_indices] <- as.numeric(eligibilities$minimum_age[min_age_month_indices])
+## divide by 12 to get min age in years
+eligibilities$minimum_age[min_age_month_indices] <- round(as.numeric(eligibilities$minimum_age[min_age_month_indices])/12, digits = 1)
+
+## just trim off " years" from min ages in years
+min_age_year_indices <- grep(pattern = "year", x=eligibilities$minimum_age, ignore.case = TRUE)
+eligibilities$minimum_age[min_age_year_indices] <- gsub(pattern = " .*", replacement = "", x=eligibilities$minimum_age[min_age_year_indices])
+
+## impute missing values with zero
+eligibilities$minimum_age[is.na(eligibilities$minimum_age)] <- 0
+eligibilities$minimum_age[eligibilities$minimum_age == "N/A"] <- 0
+
+## convert to numeric
+eligibilities$minimum_age <- as.numeric(eligibilities$minimum_age)
+
+```
+
+```{r impute missing values for maximum age}
+
+
+## for maximum age, all values are in years, or NA or "N/A"
+# to test... 
+## unique(grep(pattern = "year", x=eligibilities$maximum_age, ignore.case = TRUE, value = TRUE, invert = TRUE))
+
+## trim off first space and everything after
+eligibilities$maximum_age <- gsub(pattern = " .*", replacement = "", x=eligibilities$maximum_age)
+
+## impute missing values with 120
+eligibilities$maximum_age[is.na(eligibilities$maximum_age)] <- 120
+eligibilities$maximum_age[eligibilities$maximum_age == "N/A"] <- 120
+
+## convert to numeric
+eligibilities$maximum_age <- as.numeric(eligibilities$maximum_age)
+
+```
+
+```{r write eligibilities to database}
+## create as a table in database
+dbWriteTable(conn = con,name = "eligibilities", value = eligibilities, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+
+```
+
+#### **Get design groups (study arms)**  
+  
+  
+```{r get design groups from ct}
+getDesignGroupsQ <- paste0("select dg.nct_id, dg.id as dg_id, dg.title as dg_title, dg.description as dg_description, dg.group_type as dg_group_type, dgi.intervention_id
+from design_groups dg
+left join design_group_interventions dgi on dg.id = dgi.design_group_id 
+where dg.nct_id in (",
+"", studyIDsForSQL,
+")")
+
+## get criteria from clinicaltrials.gov
+design_groups <- dbGetQuery(conn2,getDesignGroupsQ)
+
+## NOTE, SOME STUDIES HAVE NO DESIGN GROUPS SPECIFIED, BUT MAY HAVE RESULT GROUPS SPECIFIED
+
+```
+  
+#### **Get result groups**  
   
 
 
@@ -442,6 +739,20 @@ cancerStudies <- unique(dplyr::select(cancerStudies, -c(word)))
 
 
 
+
+```{r disconnect from  database}
+
+# disconnect from clincialtrials.gov
+dbDisconnect(conn2)
+
+# Disconnect from SQLite database
+dbDisconnect(con)
+
+
+```
+  
+
+    
 
 `r knitr::knit_exit()`    
 
@@ -713,18 +1024,5 @@ dbListTables(con)
 ```
 
 
-```{r disconnect from  database}
-
-# disconnect from clincialtrials.gov
-dbDisconnect(conn2)
-
-# Disconnect from SQLite database
-dbDisconnect(con)
-
-
-```
-  
-
-  
    
    
