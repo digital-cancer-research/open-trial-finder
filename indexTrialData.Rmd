@@ -83,7 +83,6 @@ dbListTables(con)
   
 #### **Download and save a table of human genes and synonyms**  
   
-  
 ```{r download and process a list of all human genes and their synonyms}
 
 ## start timer
@@ -137,7 +136,6 @@ dbListTables(con)
     
 #### **Download and save NCI thesaurus**  
   
-
 ```{r download and create NCIthesaurus table}
 
 ## specify URL for NCI thesaurus - this should always be the most recent? 
@@ -195,8 +193,61 @@ dbWriteTable(conn = con,name = "NCIt", value = NCIt, overwrite=TRUE)
 ```
   
 #### **Map NCIt drugs to targets via KEGG**  
+  
+```{r use KEGG BRITE}
+## download Target-based Classification of Drugs (JSON format) from: https://www.genome.jp/kegg-bin/download_htext?htext=br08310&format=json&filedir=
+## save as "kegg_brite.json"
+# kegg_brite <- fromJSON("kegg_brite.json")
 
-    
+## CAN'T USE THIS, AS SOME OF THE TARGETS LISTED REFER TO GROUPS OF PROTEINS, NOT INDIVIDUAL PROTEINS.. 
+
+
+
+```
+  
+#### **Map NCIt drugs to targets via NCIt relationships**   
+
+```{r download NCIt in OWL format}
+## we will download the inferred version of the thesaurus, described at https://evs.nci.nih.gov/evs-download/thesaurus-downloads 
+
+# NCIt_url_OWL <- "https://evs.nci.nih.gov/ftp1/NCI_Thesaurus/ThesaurusInf_21.10d.OWL.zip"
+# destOWLfilename <- "NCIt_OWL.zip"
+# download.file(url=NCIt_url_OWL,destfile = destOWLfilename)
+# unzip(zipfile = paste0(getwd(),"/",destOWLfilename))
+
+## the unzipped file is called "ThesaurusInferred.owl"
+```
+
+```{r use R ontocat to navigate ontology}
+
+## install.packages("BiocManager")
+## BiocManager::install("ontoCAT")
+## "not available for R 3.6.2" (deprecated and no longer supported?)
+
+```
+  
+```{r load using OntologyX}
+## download NCIt in OBO format from EMBL?
+## see https://www.ebi.ac.uk/ols/ontologies/ncit
+## download manually 
+# require(ontologyIndex)
+# ontology <- get_ontology("ncit_obo.owl")
+
+
+```
+
+```{r read NCIt in OWL format}
+## issues creating miniconda environment due to apostrophe in name of Users folder
+## Error 127 occurred creating conda environment C:/Users/O’ReganPaul/AppData/Local/r-miniconda/envs/r-reticulate
+
+## import owlready2
+
+
+
+
+
+```
+
 ```{r subset NCIt for Pharmacologic Substance}
 
 
@@ -204,7 +255,6 @@ NCIt_Pharmacologics <- unique(dplyr::filter(NCIt, Class=="Pharmacologic Substanc
 
 
 ```
-
 
 ```{r define function to map drug names to KEGG drug IDs}
 
@@ -223,128 +273,87 @@ getDrugID <- function(drugName){
 
 ```
 
-
 ```{r map NCIt drug names to KEGG drug IDs}
-NCIt_Pharmacologics$kegg_drug_id <- NA
-
-tic("index NCIt pharmacologics with kegg drug id")
-for(i in 1:length(unique(NCIt_Pharmacologics$ID))) {
-  print(paste0("i:", i))
-  id <- unique(NCIt_Pharmacologics$ID)[i]
-  print(paste0("ID:", id))
-  synonyms <- unique(NCIt_Pharmacologics$Synonyms[NCIt_Pharmacologics$ID == id])
-  print(paste(synonyms, collapse = ", "))
-  kegg_drugid <- NA
-  ## loop through synonyms and call KEGG API
-  for(j in 1:length(synonyms)) {
-    kegg_drugid <- getDrugID(synonyms[j])
-    if(!is.na(kegg_drugid)) break
-  }
-  print(paste0("kegg drug id:", kegg_drugid))
-  NCIt_Pharmacologics$kegg_drug_id[NCIt_Pharmacologics$ID == id] <- kegg_drugid
-}
-toc()
+## NOT RUN, AS TAKES >20 HOURS TO COMPLETE
+## ONCE COMPLETE, NEED TO ALSO MAP FROM DRUG ID TO TARGET GENE ID, AND THEN FROM TARGET GENE ID TO TARGET GENE SYMBOL... 
 
 
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#### **Download and save lat, long values of cities**  
-  
-
-```{r get lat long values from city name using tidygeocoder}
-
-# # remove any commas and anything after a comma
-# cancerStudies$locations <- gsub(pattern = ",.*", replacement = "", x=cancerStudies$locations)
+# NCIt_Pharmacologics$kegg_drug_id <- NA
 # 
-# ## use tidygeocoder (MIT licence)
-# ## need append country from config file after city name...
-# cities <- as.data.frame(tidygeocoder::geo(address = unique(paste0(cancerStudies$locations, ", ", configuration$country)), method = 'osm'))
-#   
-# ## trim off the suffix
-# cities$address <- gsub(pattern=paste0(", ", configuration$country), replacement = "", x=cities$address)
-# 
-# ## join back on study location == address
-# cancerStudies <- merge(x=cancerStudies, by.x="locations", all.x=TRUE, y=dplyr::select(cities, address, lat, long), by.y="address")
-
-
-
-
-```
-
-  
-
-
-
-
-
-
-
-
-
-`r knitr::knit_exit()`    
-
-
-
-
-
-
-
-
-
-
-
-
-#### **Get controlled terms and synonyms for cancer types**  
-  
-      
-```{r read cancer type synonyms into memory}
-
-conditionSynonyms <- dbGetQuery(con, "SELECT * FROM cancers")
+# tic("index NCIt pharmacologics with kegg drug id")
+# for(i in 1:length(unique(NCIt_Pharmacologics$ID))) {
+#   print(paste0("i:", i))
+#   id <- unique(NCIt_Pharmacologics$ID)[i]
+#   print(paste0("ID:", id))
+#   synonyms <- unique(NCIt_Pharmacologics$Synonyms[NCIt_Pharmacologics$ID == id])
+#   print(paste(synonyms, collapse = ", "))
+#   kegg_drugid <- NA
+#   ## loop through synonyms and call KEGG API
+#   for(j in 1:length(synonyms)) {
+#     kegg_drugid <- getDrugID(synonyms[j])
+#     if(!is.na(kegg_drugid)) break
+#   }
+#   print(paste0("kegg drug id:", kegg_drugid))
+#   NCIt_Pharmacologics$kegg_drug_id[NCIt_Pharmacologics$ID == id] <- kegg_drugid
+# }
+# toc()
 
 
 ```
-
-#### **Get human gene names and synonyms**  
   
-```{r read human genes table into memory}
+#### **Download lat, long values for UK postcodes**  
+  
+```{r download OS data}
+## download from https://www.freemaptools.com/download/full-uk-postcodes/ukpostcodes.zip
+## Copyright and Reproduction
+## As per : https://www.ons.gov.uk/methodology/geography/licences
 
-humanGenes <- dbGetQuery(con, "SELECT * FROM genes")
+##You may re-use this information (not including logos or Northern Ireland data) free of charge in any format or medium, under the terms of the relevant data owners' licence. In addition, the following attribution statements must be acknowledged or displayed whenever the owners data is used:
 
+## Contains Ordnance Survey data © Crown copyright and database right 2021
+
+## Contains Royal Mail data © Royal Mail copyright and database right 2021
+
+## Source: Office for National Statistics licensed under the Open Government Licence v.3.0
+
+## specify URL for download 
+postcodesURL <- "https://www.freemaptools.com/download/full-uk-postcodes/ukpostcodes.zip"
+
+destPostcodesFilename <- "uk_postcodes.zip"
+download.file(url=postcodesURL, destfile = destPostcodesFilename)
+unzip(zipfile = paste0(getwd(),"/",destPostcodesFilename))
+
+uk_postcodes <- read.csv("ukpostcodes.csv", header = TRUE, stringsAsFactors = FALSE)
+
+
+## create as a table in database
+dbWriteTable(conn = con,name = "uk_postcodes", value = uk_postcodes, overwrite=TRUE)
 
 ```
 
+#### **Define controlled terms and synonyms for cancer types**  
   
-#### **Get NCI thesaurus**  
-  
-```{r read NCIt into memory}
+```{r create table of cancer types}
+## conditionSynonyms specifies which cancer types are of interest, and which condition names (as used by clinicaltrials.gov) will be considered as matches for each
 
-NCIthesaurus <- dbGetQuery(con, "SELECT * FROM NCIt")
+## synonyms define on basis of those in clinicaltrials.gov
+conditionSynonyms <- read.csv(file = "conditionSynonyms5.csv", stringsAsFactors = FALSE)
 
+## trim leading/trailing whitespace, if any
+conditionSynonyms$condition.synonyms <- str_squish(string = conditionSynonyms$condition.synonyms)
+
+## remove redundancy, if any
+conditionSynonyms <- unique(conditionSynonyms)
+
+## create as a table in database
+dbWriteTable(conn = con,name = "conditionSynonyms", value = conditionSynonyms, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
 
 ```
-
   
 #### **Connect to clinicaltrials.gov**  
-  
   
 ```{r connect to clinicaltrialsgov}  
 ## specify user name and password for AACT account
@@ -364,17 +373,14 @@ drv = RPostgres::Postgres()
 conn2 <- dbConnect(drv, dbname="aact",host="aact-db.ctti-clinicaltrials.org", port=5432, user=aact.username, password=aact.password )
 ```
  
+#### **Get study info for all interventional cancer studies (globally, ever)**  
   
-#### **Get cancer studies with results**  
-  
- 
 ```{r get study data}
 
 ## get data for all cancer studies that have reported results
-cancerStudiesResults_query <- "SELECT s.nct_id, s.brief_title, c.name AS condition, i.name AS interventions 
+cancerStudiesQ <- "SELECT s.nct_id, s.brief_title, s.overall_status, s.last_update_posted_date, c.name AS condition
 FROM studies s
 INNER JOIN conditions c ON c.nct_id = s.nct_id
-INNER JOIN interventions i ON i.nct_id = s.nct_id
 inner join calculated_values cv on cv.nct_id = s.nct_id
 WHERE s.study_type LIKE ('Interventional')
 and (c.downcase_name like '%cancer%'
@@ -385,15 +391,15 @@ or c.downcase_name like '%tumo%')"
 
 
 ## get data from clinicaltrials.gov
-cancerStudiesResults <- dbGetQuery(conn2,cancerStudiesResults_query)
+cancerStudies <- dbGetQuery(conn2,cancerStudiesQ)
 
 ## add a column to indicate refresh date
-cancerStudiesResults$Refresh.date <- today
+cancerStudies$Refresh.date <- today
 
 ```
- 
+   
+
 #### **Map verbatim condition names to controlled set of cancer types**  
-  
   
 ```{r tokenise and join to condition synonyms}
 ## we can't just join to condition synonyms as condition may include extra words
@@ -402,25 +408,51 @@ cancerStudiesResults$Refresh.date <- today
 ## we will provide condition synonyms as custom tokens, then tokenise, unnest and perform the join
 custom_tokens <- unique(conditionSynonyms$condition.synonyms)
 
-cancerStudiesResults$word <- as.list(corpus::text_tokens(x=cancerStudiesResults$condition,                                                filter= corpus::text_filter(combine = custom_tokens, map_case=TRUE, connector="_", drop_punct=TRUE )))
+## tokenise the condition names
+cancerStudies$word <- as.list(corpus::text_tokens(x=cancerStudies$condition,                                                filter= corpus::text_filter(combine = custom_tokens, map_case=TRUE, connector="_", drop_punct=TRUE )))
 
 
 ## unnest
-cancerStudiesResults <- as.data.frame(unnest(data = cancerStudiesResults, word)) 
+cancerStudies <- as.data.frame(unnest(data = cancerStudies, word)) 
 ## this function does insist on replacing whitespace with a character (here, underscore), so need to swap that back to whitespace
-cancerStudiesResults$word <- gsub(pattern = "_", replacement = " ", x=cancerStudiesResults$word)
+cancerStudies$word <- gsub(pattern = "_", replacement = " ", x=cancerStudies$word)
 
 
-## join on cancerStudiesResults$word = conditionSynonyms$condition.synonyms
-cancerStudiesResults <- unique(merge(x=cancerStudiesResults, by.x = "word", y=conditionSynonyms, by.y="condition.synonyms"))
+## join on word = conditionSynonyms$condition.synonyms
+cancerStudies <- unique(merge(x=cancerStudies, by.x = "word", y=conditionSynonyms, by.y="condition.synonyms"))
 
 ## drop the word column
-cancerStudiesResults <- unique(dplyr::select(cancerStudiesResults, -c(word)))
+cancerStudies <- unique(dplyr::select(cancerStudies, -c(word)))
 
 
 ```
   
   
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+`r knitr::knit_exit()`    
+
+
+
+
+
+  
+#### **Get cancer studies with results**  
+  
+
 #### **Map interventions to molecular targets**  
   
 
