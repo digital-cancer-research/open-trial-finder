@@ -313,7 +313,7 @@ getDrugID <- function(drugName){
   
 #### **Download lat, long values for UK postcodes**  
   
-```{r download OS data}
+```{r download ordnance survey data}
 ## download from https://www.freemaptools.com/download/full-uk-postcodes/ukpostcodes.zip
 ## Copyright and Reproduction
 ## As per : https://www.ons.gov.uk/methodology/geography/licences
@@ -439,17 +439,6 @@ cancerStudies <- unique(dplyr::select(cancerStudies, -c(word)))
 
 ```
   
-#### **write indexed cancer studies to database**  
-  
-```{r write cancerStudies to database}
-## create as a table in database
-dbWriteTable(conn = con,name = "cancerStudies", value = cancerStudies, overwrite=TRUE)
-
-## check it has saved
-dbListTables(con)
-
-
-```
 
 #### **Get study interventions**  
   
@@ -463,7 +452,7 @@ where i.nct_id in (",
 "", studyIDsForSQL,
 ")")
 
-## get criteria from clinicaltrials.gov
+## get interventions from clinicaltrials.gov
 interventions <- dbGetQuery(conn2,getInterventionsQ)
 
 ```
@@ -505,7 +494,7 @@ NCIt_Pharmacologics_temp$Synonyms <- tolower(NCIt_Pharmacologics_temp$Synonyms)
 
 NCIt_Pharmacologics_temp <- unique(dplyr::select(NCIt_Pharmacologics, "NCIt_ID"="ID", Synonyms, PreferredTerm, "Mechanism"="Parent_synonym"))
 
-interventions <- merge(x=interventions, by.x = "intervention_name_processed", all.x=FALSE, 
+interventions <- merge(x=interventions, by.x = "intervention_name_processed", all.x=TRUE, 
                        y=NCIt_Pharmacologics_temp, by.y = "Synonyms")
 
 ## delete temporary copy
@@ -517,6 +506,30 @@ interventions <- unique(dplyr::select(interventions, nct_id, intervention_id, in
 
 
 ```
+
+
+#### **Drop studies with unmapped interventions from cancerStudies table**  
+  
+```{r omit cancerstudies with unmapped interventions}
+cancerStudies <- unique(dplyr::filter(cancerStudies, nct_id %in% interventions$nct_id))
+
+
+
+```
+
+  
+#### **write indexed cancer studies to database**  
+  
+```{r write cancerStudies to database}
+## create as a table in database
+dbWriteTable(conn = con,name = "cancerStudies", value = cancerStudies, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+
+
+```
+
 
 #### **Write indexed interventions to database**  
   
@@ -725,8 +738,99 @@ design_groups <- dbGetQuery(conn2,getDesignGroupsQ)
   
 #### **Get result groups**  
   
+```{r get result groups}
+getResultGroupsQ <- paste0("select rg.nct_id, rg.id as rg_id, ctgov_group_code, result_type, rg.title as rg_title, rg.description as rg_description
+from result_groups rg 
+where rg.nct_id in (",
+"", studyIDsForSQL,
+")")
+
+## get criteria from clinicaltrials.gov
+result_groups <- dbGetQuery(conn2,getResultGroupsQ)
+
+```
+
+#### **Join interventions to result groups**  
+  
+  
+
+  
+  
+```{r define result groups to be mapped}
+## we want to predict which interventions were given for each result group
+## if a study has only a single arm, we will assume all study interventions were administered for all result groups
+
+number_arms <- unique(dplyr::select(cancerStudies, nct_id, number_of_arms))
+rgs <- unique(dplyr::select(result_groups, nct_id, rg_id, rg_title, rg_description))
+rgs$rg_title_description <- paste(rgs$rg_title, rgs$rg_description, sep = ": ")
+rgs <- unique(dplyr::select(rgs, nct_id, rg_id,rg_title, rg_title_description))
+rgs <- merge(x=number_arms, by.x="nct_id", y=rgs, by.y = "nct_id")
+
+rgs$rg_interventions <- NA 
+rgs$rg_intervention_ids <- NA
+
+for(i in 1:length(unique(rgs$nct_id))) {
+  nct_id <- unique(rgs$nct_id)[i]
+  print(nct_id)
+  number_arms <- unique(rgs$number_of_arms[rgs$nct_id==nct_id])
+  print(number_arms)
+  study_interventions <- unique(interventions$intervention_name[interventions$nct_id == nct_id])
+  print(study_interventions)
+  study_intervention_ids <- unique(interventions$intervention_id[interventions$nct_id == nct_id])
+  print(study_intervention_ids)
+  if(!is.na(number_arms) & number_arms==1) {
+    rgs$rg_interventions[rgs$nct_id==nct_id] <- list(study_interventions)
+    rgs$rg_intervention_ids[rgs$nct_id==nct_id] <- list(study_intervention_ids)
+  }
+}
+
+## if result group titles match design group titles, match on that basis
+  
+  
+  
+  ## finally, if still no match, predict match based on document term matrices of titles and descriptions
 
 
+```
+
+
+
+
+
+
+
+```{r define function to replace drug synonyms with preferred terms}
+## define a function that will be called if str_replace_all() finds a match between a string (lowercase description) and a pattern (lowercase synonyms)...
+synonym2preferred <- function(synonym) {
+  synonym <- tolower(synonym)
+  preferred <- NCIt_drugs_preferred$PreferredTerm[NCIt_drugs_preferred$Synonyms_lower==synonym] ## get the preferred term for that synonym
+  preferred <- paste(unique(preferred), collapse = ", ") ## in case more than one match
+  preferred <- tolower(preferred)
+  return(preferred) ## return the preferred term
+}
+```
+  
+  
+```{r define the pattern used to identify valid synonyms}
+
+## define a pattern that CONTAINS ONLY SYNONYMS FOR THE INTERVENTIONS USED IN THESE STUDIES
+## (OTHERWISE R WILL ABORT...)
+## omit rows that aren't listed as an intervention in a design group
+# NCIt_drugs_preferred <- dplyr::filter(NCIt_drugs_preferred, Synonyms %in% design_group_interventions$intervention_name)
+# 
+# 
+# ## we will use a pattern that is all the relevant synonyms, collapsed into a single string separated by pipe symbols...
+# synonyms_lower_collapsed <- str_c("\\b", unique(NCIt_drugs_preferred$Synonyms_lower), "\\b", collapse="|")
+
+```
+
+ 
+
+
+#### **Define function to predict mapping from result group to design group**  
+  
+  
+  
 
 
 
@@ -758,6 +862,30 @@ dbDisconnect(con)
 
 
 
+```{r get design group interventions from clinicaltrials.gov}
+
+getDesignGroupInterventions <- paste0("select dg.nct_id, dg.id as dg_id, dg.group_type, dg.title as dg_title, dg.description as dg_description, i.name as intervention_name 
+from design_groups dg
+inner join design_group_interventions dgi on dgi.design_group_id = dg.id
+inner join interventions i on i.id = dgi.intervention_id
+where dg.nct_id in (",
+"", studyIDsForSQL,
+")")
+# 
+## get criteria from clinicaltrials.gov
+design_group_interventions <- dbGetQuery(conn2, getDesignGroupInterventions)
+
+design_group_interventions_aggregated <- design_group_interventions %>%
+    group_by(nct_id, dg_id) %>%
+    summarise_all(function(x) {paste(unique(x), collapse = "; ")}) %>%
+    as.data.frame()
+
+
+kbl(design_group_interventions_aggregated, format = "html",escape = FALSE) %>%
+  kable_styling(fixed_thead = T, bootstrap_options = c("striped", "hover", "condensed")) %>%
+  scroll_box(width = "100%", height = "200px")
+```  
+   
 
 
   
