@@ -752,23 +752,82 @@ result_groups <- dbGetQuery(conn2,getResultGroupsQ)
 
 #### **Join interventions to result groups**  
   
+Interventions are explicitly associated with design groups in the ct.gov schema, but not with result groups. Therefore, we will associate interventions with result groups as follows:  
+  
+* Where a study has only a single arm (*studies$number_of_arms*), we will assume all study interventions were administered in all result groups.  
+* If a result group title exactly matches a design group title, we will associate interventions based on the design group interventions.  
+* For remaining studies, we will predict which design group each result group belongs to based on comparison of the titles and descriptions for design and result groups.  
+  
+Before creating any predictive model, we will first need to ensure that preferred terms for interventions are used in descriptions for both design groups and result groups.  
+For example, study NCT00721409 uses only **"PD 0332991"** as intervention name in design groups, and only either "Arm A" or "Arm B" for design groups titles, but uses e.g. "**Palbociclib** + Letrozole" as result group titles. 
+  
+We will get the preferred names (where available) for drugs from the NCI Thesaurus.    
+
+```{r create empty table that will hold predicted mappings}
+
+result_group_interventions <- data.frame(nct_id = character(0), 
+                                         rg_id = character(0), 
+                                         intervention_id = character(0))
+
+## create a vector that will hold list of unmapped result groups
+## The elements of setdiff(x,y) are those elements in x but not in y
+unmapped_result_group_ids <- setdiff(x=result_groups$rg_id, y=result_group_interventions$rg_id)
+length(unmapped_result_group_ids)
+unmapped_result_groups <- unique(dplyr::filter(result_groups, rg_id %in% unmapped_result_group_ids))
+```
+
+#### **Assign interventions for single arm studies**  
+  
+```{r get single arm studies}
+single_arm_study_IDs <- unique(cancerStudies$nct_id[cancerStudies$number_of_arms==1])
+
+single_arm_result_groups <- unique(dplyr::filter(result_groups, nct_id %in% single_arm_study_IDs))
+single_arm_result_groups <- unique(dplyr::select(single_arm_result_groups, nct_id, rg_id))
+## join to interventions on nct_id alone, means all interventions will be mapped to all result groups for those studies
+single_arm_result_groups <- unique(merge(x = single_arm_result_groups, by.x = "nct_id", y=dplyr::select(interventions, nct_id, intervention_id), by.y = "nct_id"))
   
 
+## row bind onto empty result group interventions table
+result_group_interventions <- rbind(result_group_interventions, single_arm_result_groups)
+
+
+## update vector of unmapped result groups
+## The elements of setdiff(x,y) are those elements in x but not in y
+unmapped_result_group_ids <- setdiff(x=result_groups$rg_id, y=result_group_interventions$rg_id)
+length(unmapped_result_group_ids)
+unmapped_result_groups <- unique(dplyr::filter(result_groups, rg_id %in% unmapped_result_group_ids))
+
+
+```
+
+  
+#### **Assign interventions based on match between group titles**  
+  
+```{r match design and result group titles}
+
+mapped_result_groups <- merge(x=unique(dplyr::select(unmapped_result_groups, nct_id, rg_id, rg_title)), by.x = c("nct_id", "rg_title"), all.x = FALSE, y= unique(dplyr::select(design_groups, nct_id, dg_title, intervention_id)), by.y = c("nct_id", "dg_title"), all.y = FALSE)
+
+## drop the title
+mapped_result_groups <- unique(dplyr::select(mapped_result_groups, nct_id, rg_id, intervention_id))
+
+
+## row bind onto result group interventions table
+result_group_interventions <- unique(rbind(result_group_interventions, mapped_result_groups))
+
+
+## update vector of unmapped result groups
+## The elements of setdiff(x,y) are those elements in x but not in y
+unmapped_result_group_ids <- setdiff(x=result_groups$rg_id, y=result_group_interventions$rg_id)
+length(unmapped_result_group_ids)
+```
+
+
+
   
   
-```{r define result groups to be mapped}
-## we want to predict which interventions were given for each result group
-## if a study has only a single arm, we will assume all study interventions were administered for all result groups
 
-number_arms <- unique(dplyr::select(cancerStudies, nct_id, number_of_arms))
-rgs <- unique(dplyr::select(result_groups, nct_id, rg_id, rg_title, rg_description))
-rgs$rg_title_description <- paste(rgs$rg_title, rgs$rg_description, sep = ": ")
-rgs <- unique(dplyr::select(rgs, nct_id, rg_id,rg_title, rg_title_description))
-rgs <- merge(x=number_arms, by.x="nct_id", y=rgs, by.y = "nct_id")
 
-rgs$rg_interventions <- NA 
-rgs$rg_intervention_ids <- NA
-
+```{r assign interventions for single arm studies}
 for(i in 1:length(unique(rgs$nct_id))) {
   nct_id <- unique(rgs$nct_id)[i]
   print(nct_id)
@@ -785,10 +844,18 @@ for(i in 1:length(unique(rgs$nct_id))) {
 }
 
 ## if result group titles match design group titles, match on that basis
-  
-  
-  
+
   ## finally, if still no match, predict match based on document term matrices of titles and descriptions
+```
+
+#### **Assign interventions based on match between group titles**  
+  
+```{r get interventions for each design group}
+design_group_interventions <- unique(dplyr::select(design_groups, nct_id, dg_id, dg_title, dg_description, "dg_intervention_id"="intervention_id"))
+
+design_group_interventions$dg_title_description <- paste(design_group_interventions$dg_title, design_group_interventions$dg_description, sep = ": ")
+
+testrun <- merge(x=design_group_interventions, by.x=c("nct_id", "dg_title"), all.x=FALSE,y=rgs, by.y = c("nct_id", "rg_title"), all.y=TRUE)
 
 
 ```
@@ -796,19 +863,59 @@ for(i in 1:length(unique(rgs$nct_id))) {
 
 
 
+
+
+
+
+
+  
+
+
+#### **Define function to replace drug names with preferred terms (where available)**  
+  
+The function will accept a synonym, then:  
+* convert it to lower case  
+* get the preferred term(s) from NCIt_drugs_preferred table  
+* convert preferred term to lower case  
+* return the preferred term  
 
 
 
 ```{r define function to replace drug synonyms with preferred terms}
+
 ## define a function that will be called if str_replace_all() finds a match between a string (lowercase description) and a pattern (lowercase synonyms)...
 synonym2preferred <- function(synonym) {
   synonym <- tolower(synonym)
-  preferred <- NCIt_drugs_preferred$PreferredTerm[NCIt_drugs_preferred$Synonyms_lower==synonym] ## get the preferred term for that synonym
+  preferred <- NCIt_Pharmacologics$PreferredTerm[NCIt_Pharmacologics$Synonyms_lower==synonym] ## get the preferred term for that synonym
   preferred <- paste(unique(preferred), collapse = ", ") ## in case more than one match
   preferred <- tolower(preferred)
   return(preferred) ## return the preferred term
 }
+
 ```
+  
+We will use the stringr::str_replace_all() function to:  
+* look for a synonym that appears in NCI thesaurus (based on a pattern of all synonyms collapsed, pipe-separated)  
+* when found, call the function defined above to replace it with the preferred term  
+  
+```{r replace synonyms in result group title descriptions}
+# for(i in 1:length(unique(rgs$nct_id))) {
+#   nct_id <- unique(rgs$nct_id)[i]
+#   study_intervention_NCIt_IDs <- c(unique(interventions$NCIt_ID[interventions$nct_id == nct_id]))
+#   print(study_intervention_ids)
+#   study_intervention_synonyms <- unique(NCIt_Pharmacologics$Synonyms[NCIt_Pharmacologics$ID %in% study_intervention_NCIt_IDs])
+#   if(length(study_intervention_synonyms)==0) next
+#   study_intervention_synonyms <- str_c("\\b", study_intervention_synonyms, "\\b", collapse="|")
+#   ## collapse the synonyms to create a pattern used to identify
+#   
+#   print(study_intervention_synonyms)
+# }
+
+
+
+```
+
+  
   
   
 ```{r define the pattern used to identify valid synonyms}
@@ -817,14 +924,31 @@ synonym2preferred <- function(synonym) {
 ## (OTHERWISE R WILL ABORT...)
 ## omit rows that aren't listed as an intervention in a design group
 # NCIt_drugs_preferred <- dplyr::filter(NCIt_drugs_preferred, Synonyms %in% design_group_interventions$intervention_name)
-# 
-# 
-# ## we will use a pattern that is all the relevant synonyms, collapsed into a single string separated by pipe symbols...
+
+
+## we will use a pattern that is all the relevant synonyms, collapsed into a single string separated by pipe symbols...
 # synonyms_lower_collapsed <- str_c("\\b", unique(NCIt_drugs_preferred$Synonyms_lower), "\\b", collapse="|")
 
 ```
 
- 
+  
+
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+
+
 
 
 #### **Define function to predict mapping from result group to design group**  
