@@ -822,26 +822,35 @@ length(unmapped_result_group_ids)
 ```
 
 
+#### **Assign interventions based on similarity between design, result group descriptions**   
+```{r get design groups for unmapped result groups}
+unmapped_design_groups <- unique(dplyr::filter(design_groups, nct_id %in% unmapped_result_groups$nct_id))
+
+unmapped_design_groups$dg_title_description <- paste(unmapped_design_groups$dg_title, unmapped_design_groups$dg_description, sep = ": ")
+
+
+
+```
 
   
   
 
 
 ```{r assign interventions for single arm studies}
-for(i in 1:length(unique(rgs$nct_id))) {
-  nct_id <- unique(rgs$nct_id)[i]
-  print(nct_id)
-  number_arms <- unique(rgs$number_of_arms[rgs$nct_id==nct_id])
-  print(number_arms)
-  study_interventions <- unique(interventions$intervention_name[interventions$nct_id == nct_id])
-  print(study_interventions)
-  study_intervention_ids <- unique(interventions$intervention_id[interventions$nct_id == nct_id])
-  print(study_intervention_ids)
-  if(!is.na(number_arms) & number_arms==1) {
-    rgs$rg_interventions[rgs$nct_id==nct_id] <- list(study_interventions)
-    rgs$rg_intervention_ids[rgs$nct_id==nct_id] <- list(study_intervention_ids)
-  }
-}
+# for(i in 1:length(unique(rgs$nct_id))) {
+#   nct_id <- unique(rgs$nct_id)[i]
+#   print(nct_id)
+#   number_arms <- unique(rgs$number_of_arms[rgs$nct_id==nct_id])
+#   print(number_arms)
+#   study_interventions <- unique(interventions$intervention_name[interventions$nct_id == nct_id])
+#   print(study_interventions)
+#   study_intervention_ids <- unique(interventions$intervention_id[interventions$nct_id == nct_id])
+#   print(study_intervention_ids)
+#   if(!is.na(number_arms) & number_arms==1) {
+#     rgs$rg_interventions[rgs$nct_id==nct_id] <- list(study_interventions)
+#     rgs$rg_intervention_ids[rgs$nct_id==nct_id] <- list(study_intervention_ids)
+#   }
+# }
 
 ## if result group titles match design group titles, match on that basis
 
@@ -851,11 +860,11 @@ for(i in 1:length(unique(rgs$nct_id))) {
 #### **Assign interventions based on match between group titles**  
   
 ```{r get interventions for each design group}
-design_group_interventions <- unique(dplyr::select(design_groups, nct_id, dg_id, dg_title, dg_description, "dg_intervention_id"="intervention_id"))
-
-design_group_interventions$dg_title_description <- paste(design_group_interventions$dg_title, design_group_interventions$dg_description, sep = ": ")
-
-testrun <- merge(x=design_group_interventions, by.x=c("nct_id", "dg_title"), all.x=FALSE,y=rgs, by.y = c("nct_id", "rg_title"), all.y=TRUE)
+# design_group_interventions <- unique(dplyr::select(design_groups, nct_id, dg_id, dg_title, dg_description, "dg_intervention_id"="intervention_id"))
+# 
+# design_group_interventions$dg_title_description <- paste(design_group_interventions$dg_title, design_group_interventions$dg_description, sep = ": ")
+# 
+# testrun <- merge(x=design_group_interventions, by.x=c("nct_id", "dg_title"), all.x=FALSE,y=rgs, by.y = c("nct_id", "rg_title"), all.y=TRUE)
 
 
 ```
