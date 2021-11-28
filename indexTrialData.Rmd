@@ -947,10 +947,10 @@ for(i in 1: length(unique(unmapped_result_groups$nct_id))) {
             ## create decision tree model
             modFit <- rpart::rpart(formula = dg_id ~., method = "class", data = unmapped_dgs_dtm, control =rpart.control(minsplit = 1,minbucket=1, cp=0))
             ## (optional) print tree
-            #rpart.plot(modFit)
+            rpart.plot(modFit)
             ## predict design group for each result group
-            study_predictions <- data.frame(nct_id = study_id,
-                          result_group_id = unmapped_rgs_dtm$rg_id, 
+            study_predictions <- data.frame(nct_id = as.character(study_id),
+                          rg_id = as.character(unmapped_rgs_dtm$rg_id), 
                           predicted_design_group = as.character(predict(object = modFit, unmapped_rgs_dtm, type = "class"))
                           )
             
@@ -960,14 +960,37 @@ for(i in 1: length(unique(unmapped_result_groups$nct_id))) {
                                                      predicted_design_group = NA
                           ))})
   ## now we have predicted design group for each unmapped result group for this study
+  ## what we want is study id, rg_id, predicted intervention id
+  ## so we need to get intervention ids for each predicted design group
+  study_predictions$predicted_design_group <- as.character(study_predictions$predicted_design_group)
+  study_predictions <- merge(x=study_predictions, by.x=c("nct_id", "predicted_design_group"), all.x=TRUE, y=unique(dplyr::select(design_groups, nct_id, dg_id, intervention_id)), by.y=c("nct_id", "dg_id"))
   
-  
-  
+  ## make names match those for result_group_interventions
+  study_predictions <- unique(dplyr::select(study_predictions, names(result_group_interventions)))
+  ## rowbind onto result_group_interventions
+  result_group_interventions <- unique(rbind(result_group_interventions, study_predictions))
   
 }
 
 
+## update vector of unmapped result groups
+## The elements of setdiff(x,y) are those elements in x but not in y
+unmapped_result_group_ids <- setdiff(x=result_groups$rg_id, y=result_group_interventions$rg_id)
+length(unmapped_result_group_ids)
 
+
+
+
+### NEED TO MAKE THIS WORK WITH STUDY NCT00014222
+## BARFS WIT ERROR: 
+# Error: Obsolete data mask.
+# x Too late to resolve `5µg` after the end of `dplyr::mutate()`.
+# i Did you save an object that uses `5µg` lazily in a column in the `dplyr::mutate()` expression ?
+
+## BARFS AT CREATION OF DESIGN GROUP DTM (due presence of microgram symbol?)
+## try replacing mu symbols with u?
+## use gsub e.g. 
+# gsub(pattern = "\U00B5", replacement = "u", x=" Filgrastim 5µg/kg/d ")
 ```
 
 
