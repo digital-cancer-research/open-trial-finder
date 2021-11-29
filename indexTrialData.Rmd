@@ -467,7 +467,7 @@ interventions$intervention_name_processed <- interventions$intervention_name
 interventions$intervention_name_processed <- tolower(interventions$intervention_name_processed)
 
 ## split on words related to combinations of therapy
-combinations_pattern = "\\bwith\\b|\\band\\b|\\/|\\+|\\bplus\\b|\\,"
+combinations_pattern = "\\bwith\\b|\\band\\b|\\/|\\+|\\bplus\\b|\\,|\\bcombination\\b"
 interventions$intervention_name_processed <- strsplit(interventions$intervention_name_processed, split = combinations_pattern)
 interventions <- as.data.frame(unnest(data = interventions, intervention_name_processed))
 
@@ -755,6 +755,19 @@ result_groups <- dbGetQuery(conn2,getResultGroupsQ)
 
 #### **Join interventions to result groups**  
   
+```{r filter and retain only result groups for outcomes and events}
+## NOTE SOME RESULT GROUPS ARE "TOTAL" i.e. total values for all groups
+## these will not be specified as design groups
+## if we try to map these onto a design group, the mapping is likely to barf
+## WE WILL EXCLUDE THESE GROUPS AT THIS POINT by filtering result groups and retaining only those where result_type = "Outcome" or "Reported Event"... 
+
+result_groups <- unique(dplyr::filter(result_groups, result_type %in% c("Outcome", "Reported Event")))
+
+```
+
+  
+  
+  
 Interventions are explicitly associated with design groups in the ct.gov schema, but not with result groups. Therefore, we will associate interventions with result groups as follows:  
   
 * Where a study has only a single arm (*studies$number_of_arms*), we will assume all study interventions were administered in all result groups.  
@@ -775,16 +788,11 @@ result_group_interventions <- data.frame(nct_id = character(0),
 ## create a vector that will hold list of unmapped result groups
 ## The elements of setdiff(x,y) are those elements in x but not in y
 unmapped_result_group_ids <- setdiff(x=result_groups$rg_id, y=result_group_interventions$rg_id)
-length(unmapped_result_group_ids)
+number_unmapped_rgs <- length(unique(unmapped_result_group_ids))
+proportion_rgs_unmapped <- number_unmapped_rgs/length(unique(result_groups$rg_id))
 unmapped_result_groups <- unique(dplyr::filter(result_groups, rg_id %in% unmapped_result_group_ids))
 
-
-## NOTE SOME RESULT GROUPS ARE "TOTAL" i.e. total values for all groups
-## these will not be specified as design groups
-## if we try to map these onto a design group, the mapping is likely to barf
-## MAY BE BEST TO EXCLUDE THESE GROUPS AT THIS POINT - e.g. by filtering result groups and retaining only those where result_type = "Outcome" or "Reported Event"... 
 ```
-
 
 
 ```{r concatenate titles and descriptions for unmapped result groups}
@@ -793,9 +801,11 @@ unmapped_result_groups <- unique(dplyr::filter(result_groups, rg_id %in% unmappe
 unmapped_result_groups$rg_title_description <- paste(unmapped_result_groups$rg_title, unmapped_result_groups$rg_description, sep = ": ")
 
 ## replace mu (micro) symbols with u as this causes mapping function to barf
-unmapped_result_groups$rg_title_description <- gsub(pattern = "\U00B5|\U03BC", replacement = "u", x=unmapped_result_groups$rg_title_description)
+# unmapped_result_groups$rg_title_description <- gsub(pattern = "\U00B5|\U03BC", replacement = "u", x=unmapped_result_groups$rg_title_description)
 
 ```
+
+
 
 
 
@@ -818,10 +828,10 @@ result_group_interventions <- rbind(result_group_interventions, single_arm_resul
 
 
 ## update vector of unmapped result groups
-## The elements of setdiff(x,y) are those elements in x but not in y
 unmapped_result_group_ids <- setdiff(x=result_groups$rg_id, y=result_group_interventions$rg_id)
-length(unmapped_result_group_ids)
-unmapped_result_groups <- unique(dplyr::filter(result_groups, rg_id %in% unmapped_result_group_ids))
+number_unmapped_rgs <- length(unique(unmapped_result_group_ids))
+proportion_rgs_unmapped <- number_unmapped_rgs/length(unique(result_groups$rg_id))
+unmapped_result_groups <- unique(dplyr::filter(unmapped_result_groups, rg_id %in% unmapped_result_group_ids))
 
 
 ```
@@ -831,7 +841,11 @@ unmapped_result_groups <- unique(dplyr::filter(result_groups, rg_id %in% unmappe
   
 ```{r match design and result group titles}
 
-mapped_result_groups <- merge(x=unique(dplyr::select(unmapped_result_groups, nct_id, rg_id, rg_title)), by.x = c("nct_id", "rg_title"), all.x = FALSE, y= unique(dplyr::select(design_groups, nct_id, dg_title, intervention_id)), by.y = c("nct_id", "dg_title"), all.y = FALSE)
+## convert titles to lower
+unmapped_result_groups$rg_title_lower <- tolower(unmapped_result_groups$rg_title)
+design_groups$dg_title_lower <- tolower(design_groups$dg_title)
+
+mapped_result_groups <- merge(x=unique(dplyr::select(unmapped_result_groups, nct_id, rg_id, rg_title_lower)), by.x = c("nct_id", "rg_title_lower"), all.x = FALSE, y= unique(dplyr::select(design_groups, nct_id, dg_title_lower, intervention_id)), by.y = c("nct_id", "dg_title_lower"), all.y = FALSE)
 
 ## drop the title
 mapped_result_groups <- unique(dplyr::select(mapped_result_groups, nct_id, rg_id, intervention_id))
@@ -842,11 +856,89 @@ result_group_interventions <- unique(rbind(result_group_interventions, mapped_re
 
 
 ## update vector of unmapped result groups
-## The elements of setdiff(x,y) are those elements in x but not in y
 unmapped_result_group_ids <- setdiff(x=result_groups$rg_id, y=result_group_interventions$rg_id)
-length(unmapped_result_group_ids)
-unmapped_result_groups <- unique(dplyr::filter(result_groups, rg_id %in% unmapped_result_group_ids))
+number_unmapped_rgs <- length(unique(unmapped_result_group_ids))
+proportion_rgs_unmapped <- number_unmapped_rgs/length(unique(result_groups$rg_id))
+unmapped_result_groups <- unique(dplyr::filter(unmapped_result_groups, rg_id %in% unmapped_result_group_ids))
+
+
 ```
+
+
+#### **Assign interventions based on similarity between design, result group descriptions**   
+
+  
+```{r exclude studies that are not in unmapped design groups}
+## some studies (e.g. NCT00058539) do not specify number of arms, nor do they have any design groups to map to (likely single-arm studies)
+
+## at least one of these (NCT00065182) has more than one group, and treatments differ between groups
+
+## for now, we will exclude these from unmapped_result_groups
+unmapped_result_groups <- unique(dplyr::filter(unmapped_result_groups, nct_id %in% unmapped_design_groups$nct_id))
+
+```
+
+
+  
+```{r define stopwords}
+stopwords <- as.data.frame(tidytext::get_stopwords())
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+#### **Assign interventions based on mentions of study interventions**  
+  
+  
+  
+  
+`r knitr::knit_exit()`    
+  
+  
+  
+  
+  
+  
+```{r assign interventions based on mentions}
+for(i in 1: length(unique(unmapped_result_groups$nct_id))) {
+  study_id <- unique(unmapped_result_groups$nct_id)[i]
+  print(study_id)
+  study_interventions <- unique(interventions$intervention_name[interventions$nct_id==study_id])
+  print(study_interventions)
+  temp_unmapped_rgs <- unique(dplyr::filter(unmapped_result_groups, nct_id == study_id))
+  
+}
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 #### **Assign interventions based on similarity between design, result group descriptions**   
@@ -860,21 +952,6 @@ unmapped_design_groups$dg_title_description <- gsub(pattern = "\U00B5|\U03BC", r
 ```
 
 
-
-  
-```{r exclude studies that are not in unmapped design groups}
-## some studies (e.g. NCT00058539) do not specify number of arms, nor do they have any design groups to map to (likely single-arm studies)
-
-## for now, we will exclude these from unmapped_result_groups
-unmapped_result_groups <- unique(dplyr::filter(unmapped_result_groups, nct_id %in% unmapped_design_groups$nct_id))
-
-```
-  
-```{r define stopwords}
-stopwords <- as.data.frame(tidytext::get_stopwords())
-
-
-```
 
 
 ```{r issues with creating DTMs}
@@ -906,21 +983,6 @@ stopwords <- as.data.frame(tidytext::get_stopwords())
 ```
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     
 
 ```{r define function to create document term matrix}
@@ -932,7 +994,10 @@ stopwords <- as.data.frame(tidytext::get_stopwords())
 
 create_dtm <- function(dataframe, text_column, id_column, custom_tokens) {
   ## remove punctuation... (e.g. &, =) from the text column
-  dataframe[ , which(names(dataframe)==text_column)] <- str_squish(str_replace_all(string = dataframe[ , which(names(dataframe)==text_column)], "[^[:alnum:]]", replacement = " "))
+  # dataframe[ , which(names(dataframe)==text_column)] <- str_squish(str_replace_all(string = dataframe[ , which(names(dataframe)==text_column)], "[^[:alnum:]]", replacement = " "))
+  ## remove anything that is not a number or letter...
+  dataframe[ , which(names(dataframe)==text_column)] <- str_squish(str_replace_all(string = dataframe[ , which(names(dataframe)==text_column)], "[^a-zA-Z0-9]", replacement = " "))
+
   
   ## 1. TOKENISE THE TEXT COLUMN
   ## need to tokenise using corpus function, as this allows drug synonyms, inc multi word synonyms, to be specified upfront as tokens so they don't get split
@@ -967,7 +1032,97 @@ create_dtm <- function(dataframe, text_column, id_column, custom_tokens) {
 
 ```
     
-  
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r predict mapping based on group titles and descriptions}
+
+# 
+# study_id <- "NCT00063570"
+# study_id <- "NCT00002540"
+# study_id <- "NCT00002597"
+# study_id <- "NCT00503984"
+# temp_unmapped_dgs <- unique(dplyr::filter(unmapped_design_groups, nct_id == study_id))
+# temp_unmapped_rgs <- unique(dplyr::filter(unmapped_result_groups, nct_id == study_id))
+# study_interventions <- unique(interventions$intervention_name[interventions$nct_id==study_id])
+# 
+# ## create document-term matrix for design group descriptions
+# unmapped_dgs_dtm <- create_dtm(dataframe = temp_unmapped_dgs, text_column = "dg_title_description", id_column = "dg_id", custom_tokens = study_interventions)
+# 
+#   ## create DTM for result group descriptions
+# unmapped_rgs_dtm <- create_dtm(dataframe = temp_unmapped_rgs, text_column = "rg_title_description", id_column = "rg_id", custom_tokens = study_interventions)
+# 
+# ## make names valid, otherwise rpart will barf...
+# names(unmapped_dgs_dtm) <- gsub(" ", "_", names(unmapped_dgs_dtm))
+# names(unmapped_rgs_dtm) <- gsub(" ", "_", names(unmapped_rgs_dtm))
+# 
+# names(unmapped_dgs_dtm) <- make.names(names(unmapped_dgs_dtm))
+# names(unmapped_rgs_dtm) <- make.names(names(unmapped_rgs_dtm))
+# 
+# common_terms <- intersect(names(unmapped_dgs_dtm), names(unmapped_rgs_dtm))
+# 
+# if(length(common_terms)==0) next
+# ## drop non-overlapping columns from DGs_dtm
+# unmapped_dgs_dtm <- dplyr::select(unmapped_dgs_dtm, dg_id, all_of(common_terms))
+# 
+# tryCatch({
+#             ## create decision tree model
+#             modFit <- rpart::rpart(formula = dg_id ~., method = "class", data = unmapped_dgs_dtm, control =rpart.control(minsplit = 1,minbucket=1, cp=0))
+# 
+# 
+#             ## (optional) print tree
+#             rpart.plot(modFit)
+#             ## predict design group for each result group
+#             study_predictions <- data.frame(nct_id = as.character(study_id),
+#                           rg_id = as.character(unmapped_rgs_dtm$rg_id),
+#                           predicted_design_group = as.character(predict(object = modFit, unmapped_rgs_dtm, type = "class"))
+#                           )
+# 
+#             }, error=function(cond) {
+#               return(study_predictions <- data.frame(nct_id = study_id,
+#                                                      result_group_id = unmapped_rgs_dtm$rg_id,
+#                                                      predicted_design_group = NA
+#                           ))})
+# 
+# 
+# 
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
   
   
 ```{r loop through unmapped result groups and predict design group}
@@ -977,6 +1132,9 @@ for(i in 1: length(unique(unmapped_result_groups$nct_id))) {
   print(study_id)
   temp_unmapped_dgs <- unique(dplyr::filter(unmapped_design_groups, nct_id == study_id))
   print(nrow(temp_unmapped_dgs))
+  ## drop unnecessary columns, as multiple interventions give multiple rows which throws document term matrix out
+  temp_unmapped_dgs <- unique(dplyr::select(temp_unmapped_dgs, -intervention_id)) 
+  
   temp_unmapped_rgs <- unique(dplyr::filter(unmapped_result_groups, nct_id == study_id))
   print(nrow(temp_unmapped_rgs))
   study_interventions <- unique(interventions$intervention_name[interventions$nct_id==study_id])
@@ -994,8 +1152,8 @@ for(i in 1: length(unique(unmapped_result_groups$nct_id))) {
   names(unmapped_dgs_dtm) <- gsub(" ", "_", names(unmapped_dgs_dtm))
   names(unmapped_rgs_dtm) <- gsub(" ", "_", names(unmapped_rgs_dtm))
   
-  names(unmapped_dgs_dtm) <- make.names(names(unmapped_dgs_dtm))
-  names(unmapped_rgs_dtm) <- make.names(names(unmapped_rgs_dtm))
+  #names(unmapped_dgs_dtm) <- make.names(names(unmapped_dgs_dtm))
+  #names(unmapped_rgs_dtm) <- make.names(names(unmapped_rgs_dtm))
 
   ## try make.names
   ## or something like str_squish(str_replace_all(string = "fish = not + this ^ Fire % hi &", "[^[:alnum:]]", replacement = " "))
@@ -1003,12 +1161,12 @@ for(i in 1: length(unique(unmapped_result_groups$nct_id))) {
   ## need to create model using terms that are common to both DTMs, otherwise can end up trying to predict on variables we don't have... 
   common_terms <- intersect(names(unmapped_dgs_dtm), names(unmapped_rgs_dtm))
   
-  if(length(common_terms)==0) {study_predictions <- data.frame(nct_id = study_id,
-                                                     result_group_id = unmapped_rgs_dtm$rg_id,
-                                                     predicted_design_group = NA
-                          )}
+  ## drop any common_terms that are numbers
+  common_terms <- common_terms[is.na(as.numeric(common_terms))]
   
-  else {
+  if(length(common_terms)==0) next
+  
+  # else {
   ## drop non-overlapping columns from DGs_dtm
   unmapped_dgs_dtm <- dplyr::select(unmapped_dgs_dtm, dg_id, all_of(common_terms))
   print(common_terms)
@@ -1037,7 +1195,7 @@ for(i in 1: length(unique(unmapped_result_groups$nct_id))) {
   
   ## make names match those for result_group_interventions
   study_predictions <- unique(dplyr::select(study_predictions, names(result_group_interventions)))
-  }
+  # }
   ## rowbind onto result_group_interventions
   result_group_interventions <- unique(rbind(result_group_interventions, study_predictions))
   
@@ -1063,6 +1221,34 @@ length(unmapped_result_group_ids)
 ## use gsub e.g. 
 # gsub(pattern = "\U00B5", replacement = "u", x=" Filgrastim 5µg/kg/d ")
 ```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ```{r assign interventions for single arm studies}
