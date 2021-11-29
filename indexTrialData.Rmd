@@ -791,6 +791,9 @@ unmapped_result_groups <- unique(dplyr::filter(result_groups, rg_id %in% unmappe
 
 unmapped_result_groups$rg_title_description <- paste(unmapped_result_groups$rg_title, unmapped_result_groups$rg_description, sep = ": ")
 
+## replace mu (micro) symbols with u as this causes mapping function to barf
+unmapped_result_groups$rg_title_description <- gsub(pattern = "\U00B5", replacement = "u", x=unmapped_result_groups$rg_title_description)
+
 ```
 
 
@@ -849,6 +852,8 @@ length(unmapped_result_group_ids)
 unmapped_design_groups <- unique(dplyr::filter(design_groups, nct_id %in% unmapped_result_groups$nct_id))
 
 unmapped_design_groups$dg_title_description <- paste(unmapped_design_groups$dg_title, unmapped_design_groups$dg_description, sep = ": ")
+## replace mu (micro) symbols with u as this causes mapping function to barf
+unmapped_design_groups$dg_title_description <- gsub(pattern = "\U00B5", replacement = "u", x=unmapped_design_groups$dg_title_description)
 
 
 
