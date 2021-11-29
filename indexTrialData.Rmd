@@ -63,6 +63,7 @@ require(igraph)           ## GPL-2 | GPL-3
 require(tidygeocoder)     ## MIT
 require(caret)
 require(rpart)
+require(rpart.plot)
 
 ## clean up first
 rm(list=ls())
@@ -792,7 +793,7 @@ unmapped_result_groups <- unique(dplyr::filter(result_groups, rg_id %in% unmappe
 unmapped_result_groups$rg_title_description <- paste(unmapped_result_groups$rg_title, unmapped_result_groups$rg_description, sep = ": ")
 
 ## replace mu (micro) symbols with u as this causes mapping function to barf
-unmapped_result_groups$rg_title_description <- gsub(pattern = "\U00B5", replacement = "u", x=unmapped_result_groups$rg_title_description)
+unmapped_result_groups$rg_title_description <- gsub(pattern = "\U00B5|\U03BC", replacement = "u", x=unmapped_result_groups$rg_title_description)
 
 ```
 
@@ -844,6 +845,7 @@ result_group_interventions <- unique(rbind(result_group_interventions, mapped_re
 ## The elements of setdiff(x,y) are those elements in x but not in y
 unmapped_result_group_ids <- setdiff(x=result_groups$rg_id, y=result_group_interventions$rg_id)
 length(unmapped_result_group_ids)
+unmapped_result_groups <- unique(dplyr::filter(result_groups, rg_id %in% unmapped_result_group_ids))
 ```
 
 
@@ -853,9 +855,7 @@ unmapped_design_groups <- unique(dplyr::filter(design_groups, nct_id %in% unmapp
 
 unmapped_design_groups$dg_title_description <- paste(unmapped_design_groups$dg_title, unmapped_design_groups$dg_description, sep = ": ")
 ## replace mu (micro) symbols with u as this causes mapping function to barf
-unmapped_design_groups$dg_title_description <- gsub(pattern = "\U00B5", replacement = "u", x=unmapped_design_groups$dg_title_description)
-
-
+unmapped_design_groups$dg_title_description <- gsub(pattern = "\U00B5|\U03BC", replacement = "u", x=unmapped_design_groups$dg_title_description)
 
 ```
 
@@ -876,6 +876,51 @@ stopwords <- as.data.frame(tidytext::get_stopwords())
 
 ```
 
+
+```{r issues with creating DTMs}
+## e.g. study NCT00063570 has: 
+# design group titles = "A" and "B"
+# design group descriptions = NA and NA
+# design group interventions = same for both groups
+# descign group intervention descriptions = different between groups
+# e.g. "500 mg/m2, intravenous (IV), every 14 days, until disease progression" for group A, and 
+# "500 mg/m2, intravenous (IV), every 21 days, until disease progression" for group B
+
+## result group titles are e.g. 
+# "Bi-Weekly Schedule" and "21-Day Schedule"
+# result group descriptions e.g. 
+# "Pemetrexed: 500 mg/m2, intravenous (IV), every 14 days, until disease progression. Gemcitabine: 1500 mg/m2, intravenous (IV), every 14 days, until disease progression." and 
+# "Pemetrexed: 500 mg/m2, intravenous (IV), every 21 days, until disease progression. Gemcitabine: 1000 mg/m2, intravenous (IV) on Days 1 and 8 of a 21-day cycle, until disease progression."
+
+
+
+
+## need to code some resilience in: 
+# if purity of categories is <100%, return NA
+# if no common terms between design and result group descriptions, return NA
+
+
+## for groups still unmapped, may need to retrieve and use intervention descriptions... 
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     
 
 ```{r define function to create document term matrix}
@@ -886,15 +931,21 @@ stopwords <- as.data.frame(tidytext::get_stopwords())
 # create document-term matrix
 
 create_dtm <- function(dataframe, text_column, id_column, custom_tokens) {
+  ## remove punctuation... (e.g. &, =) from the text column
+  dataframe[ , which(names(dataframe)==text_column)] <- str_squish(str_replace_all(string = dataframe[ , which(names(dataframe)==text_column)], "[^[:alnum:]]", replacement = " "))
+  
   ## 1. TOKENISE THE TEXT COLUMN
   ## need to tokenise using corpus function, as this allows drug synonyms, inc multi word synonyms, to be specified upfront as tokens so they don't get split
-  dataframe$word <- as.list(corpus::text_tokens(x=dataframe[ , which(names(dataframe)==text_column)],                                                filter= corpus::text_filter(combine = custom_tokens, map_case=FALSE, connector="_", drop_punct=TRUE )))
+  dataframe$word <- as.list(corpus::text_tokens(x=dataframe[ , which(names(dataframe)==text_column)],                                                filter= corpus::text_filter(combine = custom_tokens, map_case=TRUE, connector="_", drop_punct=TRUE )))
   ## unnest
   dataframe <- as.data.frame(unnest(data = dataframe, word)) 
   ## this function does insist on replacing whitespace with a character (here, underscore), so need to swap that back to whitespace
   dataframe$word <- gsub(pattern = "_", replacement = " ", x=dataframe$word)
   ## remove stopwords
   dataframe <- anti_join(x=dataframe, y=stopwords)
+  
+  
+  
   
   ## 2. CREATE DOCUMENT-TERM MATRIX
   ## count each word in each description
@@ -942,8 +993,22 @@ for(i in 1: length(unique(unmapped_result_groups$nct_id))) {
   ## make names valid, otherwise rpart will barf...
   names(unmapped_dgs_dtm) <- gsub(" ", "_", names(unmapped_dgs_dtm))
   names(unmapped_rgs_dtm) <- gsub(" ", "_", names(unmapped_rgs_dtm))
+  
+  names(unmapped_dgs_dtm) <- make.names(names(unmapped_dgs_dtm))
+  names(unmapped_rgs_dtm) <- make.names(names(unmapped_rgs_dtm))
+
+  ## try make.names
+  ## or something like str_squish(str_replace_all(string = "fish = not + this ^ Fire % hi &", "[^[:alnum:]]", replacement = " "))
+  
   ## need to create model using terms that are common to both DTMs, otherwise can end up trying to predict on variables we don't have... 
   common_terms <- intersect(names(unmapped_dgs_dtm), names(unmapped_rgs_dtm))
+  
+  if(length(common_terms)==0) {study_predictions <- data.frame(nct_id = study_id,
+                                                     result_group_id = unmapped_rgs_dtm$rg_id,
+                                                     predicted_design_group = NA
+                          )}
+  
+  else {
   ## drop non-overlapping columns from DGs_dtm
   unmapped_dgs_dtm <- dplyr::select(unmapped_dgs_dtm, dg_id, all_of(common_terms))
   print(common_terms)
@@ -972,6 +1037,7 @@ for(i in 1: length(unique(unmapped_result_groups$nct_id))) {
   
   ## make names match those for result_group_interventions
   study_predictions <- unique(dplyr::select(study_predictions, names(result_group_interventions)))
+  }
   ## rowbind onto result_group_interventions
   result_group_interventions <- unique(rbind(result_group_interventions, study_predictions))
   
