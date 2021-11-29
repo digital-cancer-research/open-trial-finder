@@ -797,7 +797,6 @@ unmapped_result_groups <- unique(dplyr::filter(result_groups, rg_id %in% unmappe
 
 ```{r concatenate titles and descriptions for unmapped result groups}
 
-
 unmapped_result_groups$rg_title_description <- paste(unmapped_result_groups$rg_title, unmapped_result_groups$rg_description, sep = ": ")
 
 ## replace mu (micro) symbols with u as this causes mapping function to barf
@@ -866,7 +865,6 @@ unmapped_result_groups <- unique(dplyr::filter(unmapped_result_groups, rg_id %in
 
 
 #### **Assign interventions based on similarity between design, result group descriptions**   
-
   
 ```{r exclude studies that are not in unmapped design groups}
 ## some studies (e.g. NCT00058539) do not specify number of arms, nor do they have any design groups to map to (likely single-arm studies)
@@ -874,16 +872,30 @@ unmapped_result_groups <- unique(dplyr::filter(unmapped_result_groups, rg_id %in
 ## at least one of these (NCT00065182) has more than one group, and treatments differ between groups
 
 ## for now, we will exclude these from unmapped_result_groups
-unmapped_result_groups <- unique(dplyr::filter(unmapped_result_groups, nct_id %in% unmapped_design_groups$nct_id))
+unmapped_result_groups <- unique(dplyr::filter(unmapped_result_groups, nct_id %in% design_groups$nct_id))
 
 ```
 
-
-  
 ```{r define stopwords}
 stopwords <- as.data.frame(tidytext::get_stopwords())
 ```
 
+
+```{r get design groups for unmapped result groups}
+
+unmapped_design_groups <- unique(dplyr::filter(design_groups, nct_id %in% unmapped_result_groups$nct_id))
+
+## concatenate title and description
+unmapped_design_groups$dg_title_description <- paste(unmapped_design_groups$dg_title, unmapped_design_groups$dg_description, sep = ": ")
+
+
+## drop interventions column, as this leads to unnecessary duplication of rows for groups with >1 intervention
+unmapped_design_groups <- unique(dplyr::select(unmapped_design_groups, nct_id, dg_id, dg_title_description))
+
+## replace greek symbols with letters as this causes mapping function to barf
+unmapped_design_groups$dg_title_description <- gsub(pattern = "\U00B5|\U03BC", replacement = "u", x=unmapped_design_groups$dg_title_description)
+
+```
 
 
 
@@ -942,15 +954,6 @@ for(i in 1: length(unique(unmapped_result_groups$nct_id))) {
 
 
 #### **Assign interventions based on similarity between design, result group descriptions**   
-```{r get design groups for unmapped result groups}
-unmapped_design_groups <- unique(dplyr::filter(design_groups, nct_id %in% unmapped_result_groups$nct_id))
-
-unmapped_design_groups$dg_title_description <- paste(unmapped_design_groups$dg_title, unmapped_design_groups$dg_description, sep = ": ")
-## replace mu (micro) symbols with u as this causes mapping function to barf
-unmapped_design_groups$dg_title_description <- gsub(pattern = "\U00B5|\U03BC", replacement = "u", x=unmapped_design_groups$dg_title_description)
-
-```
-
 
 
 
