@@ -1056,9 +1056,10 @@ Data regarding biological pathways are sourced from KEGG (https://www.kegg.jp/ke
 **Please note that it is not a comprehensive source of information about clinical trials, and its utility not been validated for use in clinical decision making.**  
 
 Trials that are not included in clinicaltrials.gov will not be included in the search.  
+  
+  
 Only studies with at least one UK site are included. If you are interested in hosting a site for other countries, please contact paul.oregan@digitalecmt.org .  
-
-Only sites that are listed as “Recruiting” are included in the search.  
+ 
 
 Data are refreshed daily, but clinicians are advised to contact the relevant investigators to confirm recruitment status.  
 
