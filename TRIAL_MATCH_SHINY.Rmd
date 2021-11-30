@@ -337,18 +337,34 @@ urlAlterations <- reactive({
 ## having reactive list of alterations means only those with matching studies are shown, but if toggle solid tumour on/off, the UI reacts and selected values are reset to the url arguments...
 
 ## define how filter values will be populated
+# output$reactiveGeneFilter <- renderUI({
+#    ## uncomment to enable reactive gene filter
+#    # cancer.types <- selectedCancerTypes()
+#    # table <- dplyr::filter(cancerStudies, TARGET.condition %in% cancer.types) 
+#    # table <- merge(x=table, by.x="nct_id", y=scoredMatches, by.y = "nct_id")
+#    # gene_variant_type.list <- sort(unique(table$gene_variant_type))
+#    
+#    gene_variant_type.list <- sort(unique(scoredMatches$gene_variant_type))
+#    
+#    selectInput(inputId = "geneFilter", label=NULL, choices = gene_variant_type.list, selected = intersect(urlAlterations(),gene_variant_type.list), multiple = TRUE,  selectize = TRUE, width = NULL, size = NULL)
+#    
+# })
+```
+
+
+
+```{r display reactive gene filter inc all urlAlterations}
+
+## display all URL alterations, even if no match
+## define how filter values will be populated
 output$reactiveGeneFilter <- renderUI({
-   ## uncomment to enable reactive gene filter
-   # cancer.types <- selectedCancerTypes()
-   # table <- dplyr::filter(cancerStudies, TARGET.condition %in% cancer.types) 
-   # table <- merge(x=table, by.x="nct_id", y=scoredMatches, by.y = "nct_id")
-   # gene_variant_type.list <- sort(unique(table$gene_variant_type))
-   
    gene_variant_type.list <- sort(unique(scoredMatches$gene_variant_type))
-   
-   selectInput(inputId = "geneFilter", label=NULL, choices = gene_variant_type.list, selected = intersect(urlAlterations(),gene_variant_type.list), multiple = TRUE,  selectize = TRUE, width = NULL, size = NULL)
+   selectInput(inputId = "geneFilter", label=NULL, choices = unique(c(gene_variant_type.list,urlAlterations())), selected = urlAlterations(), multiple = TRUE,  selectize = TRUE, width = NULL, size = NULL)
    
 })
+
+
+## test e.g. with http://127.0.0.1:5793/TRIAL_MATCH_SHINY.Rmd?cancerType=Breast&alterations=ERBB2%20amplification,KRAS%20mutation,NONSENSE%20mutation
 
 # display filter
 shiny::renderUI({
@@ -1056,10 +1072,10 @@ Data regarding biological pathways are sourced from KEGG (https://www.kegg.jp/ke
 **Please note that it is not a comprehensive source of information about clinical trials, and its utility not been validated for use in clinical decision making.**  
 
 Trials that are not included in clinicaltrials.gov will not be included in the search.  
-Only studies with at least one UK site are included. If you are interested in hosting a site for other countries, please contact paul.oregan@digitalecmt.org .  
-
-Only sites that are listed as “Recruiting” are included in the search.  
-
+  
+  
+Only studies with at least one site in `r configuration$country` are included. If you are interested in hosting a site for other countries, please contact `r configuration$contact.email`.  
+  
 Data are refreshed daily, but clinicians are advised to contact the relevant investigators to confirm recruitment status.  
 
 Study eligibility criteria are tagged with the relevant genetic alterations based on natural language processing – some criteria may be incorrectly tagged, and some relevant criteria may be missed.  
