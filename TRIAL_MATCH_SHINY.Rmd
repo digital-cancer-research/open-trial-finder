@@ -104,17 +104,28 @@ cancer.study.locations <- unique(dplyr::select(cancerStudies, nct_id, lat, long)
 cancer.study.locations <- cancer.study.locations[complete.cases(cancer.study.locations), ]
 ```
 
+
+```{r add flag for sites not yet recruiting}
+cancerStudies$locations[cancerStudies$site_status=="Not yet recruiting"] <- paste0(cancerStudies$locations[cancerStudies$site_status=="Not yet recruiting"], " (in setup)")
+
+
+
+```
+
+
+
+
 ```{r aggregate cancerStudies into compact form}
 ## aggregating interventions was causing some study:intervention combinations to be missed out
-cancerStudies <- cancerStudies %>%
-       group_by_at(vars(-c( locations, postcode, condition, site_name, site_status, investigators, contacts,central_contacts, lat, long, Refresh.date))) %>%
-       summarize(locations = toString(sort(unique(na.omit(locations)))),
-                 sites = toString(sort(unique(na.omit(site_name)))),
-                 conditions = toString(sort(unique(na.omit(condition)))),
-                 investigators = toString(sort(unique(na.omit(investigators)))),
-                 central_contacts = toString(sort(unique(na.omit(central_contacts)))),
-                 contacts = toString(sort(unique(na.omit(contacts))))) %>%
-       as.data.frame()
+# cancerStudies <- cancerStudies %>%
+#        group_by_at(vars(-c( locations, postcode, condition, site_name, site_status, investigators, contacts,central_contacts, lat, long, Refresh.date))) %>%
+#        summarize(locations = toString(sort(unique(na.omit(locations)))),
+#                  sites = toString(sort(unique(na.omit(site_name)))),
+#                  conditions = toString(sort(unique(na.omit(condition)))),
+#                  investigators = toString(sort(unique(na.omit(investigators)))),
+#                  central_contacts = toString(sort(unique(na.omit(central_contacts)))),
+#                  contacts = toString(sort(unique(na.omit(contacts))))) %>%
+#        as.data.frame()
 ```
 
 ```{r get prior tx exclusions}
@@ -200,6 +211,8 @@ checkboxInput(inputId="solidTumourFilter", label="Include matches on solid tumou
 
 ```
 
+
+
 ```{r define a reactive value that will hold selected cancer type}
 
 ## if solid tumours selected, solid is added as an additional cancer type
@@ -221,6 +234,31 @@ reactiveCancerStudies <- reactive({
    cancer.types <- selectedCancerTypes()
 
    table <- dplyr::filter(cancerStudies, TARGET.condition %in% cancer.types)
+   
+   ## if hiding studies in setup, filter table
+   if(input$inSetupFilter==FALSE) {table <- filter(table, site_status == "Recruiting")}
+   
+   ## aggregate into compact form
+   table <- table %>%
+       group_by_at(vars(-c( locations, postcode, condition, site_name, site_status, investigators, contacts,central_contacts, lat, long, Refresh.date))) %>%
+       summarize(locations = toString(sort(unique(na.omit(locations)))),
+                 sites = toString(sort(unique(na.omit(site_name)))),
+                 conditions = toString(sort(unique(na.omit(condition)))),
+                 investigators = toString(sort(unique(na.omit(investigators)))),
+                 central_contacts = toString(sort(unique(na.omit(central_contacts)))),
+                 contacts = toString(sort(unique(na.omit(contacts))))) %>%
+       as.data.frame()
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
    ## print to console to aid development... 
    #print(paste0("head of reactiveCancerStudies1: ", head(table)))
    
@@ -364,6 +402,19 @@ shiny::renderUI({
 checkboxInput(inputId="confidenceFilter", label="Hide matches on cancer type alone?", value = FALSE, width = NULL)
 ```
 
+
+
+
+```{r hide matches to sites in setup}
+
+checkboxInput(inputId="inSetupFilter", label="Show sites still in setup?", value = TRUE, width = NULL)
+
+
+```
+
+
+
+
 ```{r filter scoredMatches table}
 reactiveScoredMatches <- reactive({
    table <- scoredMatches
@@ -414,6 +465,10 @@ mergedStudyTable <-  reactive({
    }
    ## if excluding matches on cancer type alone, filter table
    if(input$confidenceFilter==TRUE) {table <- filter(table, combined_score >0)}
+   
+   
+   
+   
    
   ## display error message if table is empty 
   shiny::validate(
