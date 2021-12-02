@@ -16,6 +16,10 @@ params:
   mechanism_filter: "mechanism(s)"
   hide_cancer_only: "T/F"
   table: "json format"
+  privacy_statement: ""
+  contact_email: ""
+  country: ""
+  about_us: ""
 ---
 
 
@@ -53,7 +57,7 @@ require(kableExtra)     ## MIT
 today <- format(Sys.Date(), format = "%d %B %Y")
 
 ## load configuration data from JSON file
-configuration <- jsonlite::fromJSON(txt = "trialMatchConfiguration.json")
+# configuration <- jsonlite::fromJSON(txt = "trialMatchConfiguration.json")
 
 ```
   
@@ -196,10 +200,10 @@ Hide matches on cancer type alone: **`r params$hide_cancer_only`**
   
 #### About us  
 
-`r configuration$about.us`.    
+`r params$about_us`.    
 
 
-We would be grateful for feedback as to utility of this tool – if you have any feedback, or you would like to know more detail about this tool, please contact `r configuration$contact.email`.  
+We would be grateful for feedback as to utility of this tool – if you have any feedback, or you would like to know more detail about this tool, please contact `r params$contact_email`.  
 
 #### What does this tool do?  
   
@@ -237,7 +241,7 @@ Data regarding biological pathways are sourced from KEGG (https://www.kegg.jp/ke
 Trials that are not included in clinicaltrials.gov will not be included in the search.  
   
   
-Only studies with at least one site in `r configuration$country` are included. If you are interested in hosting a site for other countries, please contact `r configuration$contact.email`.  
+Only studies with at least one site in `r params$country` are included. If you are interested in hosting a site for other countries, please contact `r params$contact_email`.  
   
 Data are refreshed daily, but clinicians are advised to contact the relevant investigators to confirm recruitment status.  
 
@@ -257,7 +261,7 @@ Study eligibility criteria are tagged with the relevant genetic alterations base
   
 #### Privacy  
   
-`r configuration$privacy.statement`.  
+`r params$privacy_statement`.  
  
   
 

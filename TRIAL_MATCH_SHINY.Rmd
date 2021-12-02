@@ -772,7 +772,12 @@ output$report <- downloadHandler(
                        mechanism_filter=input$mechanismFilter, 
                        hide_cancer_only=input$confidenceFilter, 
                        #table=toJSON(read.csv("exampleTable.csv"))
-                       table=table
+                       table=table,
+                       ## pass configuration items
+                       privacy_statement = configuration$privacy.statement,
+                       contact_email = configuration$contact.email,
+                       country = configuration$country,
+                       about_us = configuration$about.us
                        )
 
         # Knit the document, passing in the `params` list, and eval it in a
@@ -1002,7 +1007,12 @@ output$downloadShortlist <- downloadHandler(
                        mechanism_filter=input$mechanismFilter, 
                        hide_cancer_only=input$confidenceFilter, 
                        #table=toJSON(read.csv("exampleTable.csv"))
-                       table=table
+                       table=table,
+                       ## pass configuration items
+                       privacy_statement = configuration$privacy.statement,
+                       contact_email = configuration$contact.email,
+                       country = configuration$country,
+                       about_us = configuration$about.us
                        )
 
         # Knit the document, passing in the `params` list, and eval it in a
