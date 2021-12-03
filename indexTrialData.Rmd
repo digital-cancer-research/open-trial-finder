@@ -867,8 +867,7 @@ unmapped_result_groups <- unique(dplyr::filter(unmapped_result_groups, rg_id %in
 #### **Assign interventions based on similarity between design, result group descriptions**   
   
 ```{r exclude studies that are not in unmapped design groups}
-## some studies (e.g. NCT00058539) do not specify number of arms, nor do they have any design groups to map to (likely single-arm studies)
-
+## some studies (e.g. NCT00058539) do not specify number of arms, nor do they have any design groups to map to 
 ## at least one of these (NCT00065182) has more than one group, and treatments differ between groups
 
 ## for now, we will exclude these from unmapped_result_groups
@@ -880,14 +879,12 @@ unmapped_result_groups <- unique(dplyr::filter(unmapped_result_groups, nct_id %i
 stopwords <- as.data.frame(tidytext::get_stopwords())
 ```
 
-
 ```{r get design groups for unmapped result groups}
 
 unmapped_design_groups <- unique(dplyr::filter(design_groups, nct_id %in% unmapped_result_groups$nct_id))
 
 ## concatenate title and description
 unmapped_design_groups$dg_title_description <- paste(unmapped_design_groups$dg_title, unmapped_design_groups$dg_description, sep = ": ")
-
 
 ## drop interventions column, as this leads to unnecessary duplication of rows for groups with >1 intervention
 unmapped_design_groups <- unique(dplyr::select(unmapped_design_groups, nct_id, dg_id, dg_title_description))
@@ -897,7 +894,184 @@ unmapped_design_groups$dg_title_description <- gsub(pattern = "\U00B5|\U03BC", r
 
 ```
 
+For each unmapped design group, we will create a document-term matrix from design group title and description, then use this to generate a model to predict design group ids for document-term matrices based on result group titles and descriptions.  
+  
+We will specify design group titles and interventions as custom tokens when tokenising.  
+  
 
+```{r define function to create document term matrix}
+
+## define a function that will... 
+# accept custom tokens to be included in tokenisation
+# create document-term matrix
+
+create_dtm <- function(dataframe, text_column, id_column, custom_tokens) {
+  ## get the text column to be used
+  text_column_num <- which(names(dataframe)==text_column)
+  text <- dataframe[ , text_column_num]
+  ## remove anything that is not a number or letter...
+  text <- str_squish(str_replace_all(string = text, "[^a-zA-Z0-9]", replacement = " "))
+  ## overwrite the text column  
+  dataframe[ , text_column_num] <- text
+
+  
+  ## 1. TOKENISE THE TEXT COLUMN
+  ## need to tokenise using corpus function, as this allows drug synonyms, inc multi word synonyms, to be specified upfront as tokens so they don't get split
+  dataframe$word <- as.list(corpus::text_tokens(x=dataframe[ , text_column_num], filter= corpus::text_filter(combine = custom_tokens, map_case=TRUE, connector="_", drop_punct=TRUE )))
+  ## unnest
+  dataframe <- as.data.frame(unnest(data = dataframe, word)) 
+  ## this function does insist on replacing whitespace with a character (here, underscore), so need to swap that back to whitespace
+  # dataframe$word <- gsub(pattern = "_", replacement = " ", x=dataframe$word)
+  ## remove stopwords
+  # dataframe <- anti_join(x=dataframe, y=stopwords)
+  
+  ## 2. CREATE DOCUMENT-TERM MATRIX
+  ## count each word in each description
+  dataframe <- dataframe %>% 
+    group_by_at(id_column) %>%
+    count(word, sort=FALSE) %>%
+    ungroup() %>%
+    as.data.frame()
+  ## use reshape2::dcast so get a dataframe as a result
+  dataframe <- reshape2::dcast(data=dataframe, formula = as.formula(paste(id_column, "~ word")), value.var = "n")
+  ## convert NA to zero
+  dataframe <- dataframe %>% mutate_all(~replace(., is.na(.), 0))
+  ## convert id to factor
+  dataframe[ , which(names(dataframe)==id_column)] <- as.factor(dataframe[ , which(names(dataframe)==id_column)])
+  
+  ## 3. RETURN DOCUMENT-TERM MATRIX
+  return(dataframe)
+}
+
+```
+
+
+```{r create an empty dataframe that will hold predicted mappings dg to rg}
+
+predictions <- data.frame(nct_id = character(0),
+                          rg_id = character(0), 
+                          predicted_design_group = character(0)
+                          )
+
+
+```
+
+
+    
+```{r loop through unmapped result groups}
+for(i in 1:length(unique(unmapped_design_groups$nct_id))) {
+  #print(paste0(i, "/", length(unique(unmapped_result_groups$rg_id))))
+  
+  study_id <- unique(unmapped_design_groups$nct_id)[i]
+  #print(study_id)
+  
+  temp_unmapped_dgs <- unique(dplyr::filter(unmapped_design_groups, nct_id == study_id))
+  ## get study interventions (verbatim) to use as custom tokens
+  study_interventions_verbatim <- unique(interventions$intervention_name[interventions$nct_id==study_id])
+  
+  ## get synonyms for study interventions to use as custom tokens
+  study_interventions_NCItID <- unique(interventions$NCIt_ID[interventions$nct_id==study_id])
+  study_interventions_synonyms <- unique( NCIt_Pharmacologics$Synonyms[NCIt_Pharmacologics$ID %in% study_interventions_NCItID])
+  #print(study_interventions_synonyms)
+  
+  ## get design group titles to use as custom tokens
+  design_group_titles <- unique(design_groups$dg_title[design_groups$nct_id==study_id])
+  #print(design_group_titles)
+  
+  tokens <- unique(c(study_interventions_synonyms, design_group_titles,study_interventions_verbatim))
+  
+  ## create document term matrix
+  unmapped_dgs_dtm <- create_dtm(dataframe = temp_unmapped_dgs, text_column = "dg_title_description", id_column = "dg_id", custom_tokens = tokens)
+  #print(unmapped_dgs_dtm)
+  
+  
+  
+  
+  
+  
+  temp_unmapped_rgs <- unique(dplyr::filter(unmapped_result_groups, nct_id == study_id))
+  
+  
+  ## create DTM for result group descriptions
+  unmapped_rgs_dtm <- create_dtm(dataframe = temp_unmapped_rgs, text_column = "rg_title_description", id_column = "rg_id", custom_tokens = tokens)
+  #print(unmapped_rgs_dtm)
+  ## make names valid, otherwise rpart will barf...
+  names(unmapped_dgs_dtm) <- gsub(" ", "_", names(unmapped_dgs_dtm))
+  names(unmapped_rgs_dtm) <- gsub(" ", "_", names(unmapped_rgs_dtm))
+  
+  ## get those column names that are common to both dtms
+  common_terms <- intersect(names(unmapped_dgs_dtm), names(unmapped_rgs_dtm))
+  
+  ## drop any common_terms that are numbers
+  common_terms <- common_terms[is.na(as.numeric(common_terms))]
+  
+  ## drop any common terms that are stopwords
+  common_terms <- common_terms[!(common_terms %in% stopwords$word)]
+  ## if no common terms, skip to next study
+  if(length(common_terms)==0) next
+  
+  ## drop non-overlapping columns from DGs_dtm
+  unmapped_dgs_dtm <- dplyr::select(unmapped_dgs_dtm, dg_id, all_of(common_terms))
+  #print(unmapped_dgs_dtm)
+  
+  tryCatch({
+            ## create decision tree model
+            modFit <- rpart::rpart(formula = dg_id ~., method = "class", data = unmapped_dgs_dtm, control =rpart.control(minsplit = 1,minbucket=1, cp=0))
+            ## (optional) print tree
+            #rpart.plot(modFit)
+            ## predict design group for each result group
+            study_predictions <- data.frame(nct_id = as.character(study_id),
+                          rg_id = as.character(unmapped_rgs_dtm$rg_id), 
+                          predicted_design_group = as.character(predict(object = modFit, unmapped_rgs_dtm, type = "class"))
+                          )
+            #print(study_predictions)
+            
+            }, error=function(cond) {
+              return(study_predictions <- data.frame(nct_id = study_id,
+                                                     result_group_id = unmapped_rgs_dtm$rg_id,
+                                                     predicted_design_group = NA
+                          ))})
+  
+  ## row bind study predictions onto predictions table
+  predictions <- unique(rbind(predictions, study_predictions))
+  
+  
+}
+
+
+
+
+```
+
+
+
+```{r join descriptions to sanity check}
+predictions$nct_id <- as.character(predictions$nct_id)
+predictions$rg_id <- as.character(predictions$rg_id)
+predictions$predicted_design_group <- as.character(predictions$predicted_design_group)
+
+## join result group titles and descriptons
+predictions <- merge(x=predictions, by.x=c("nct_id", "rg_id"), y=dplyr::select(unmapped_result_groups, nct_id, rg_id, rg_title_description), by.y=c("nct_id", "rg_id"))
+
+## join design group titles and descriptions
+predictions <- merge(x=predictions, by.x=c("nct_id", "predicted_design_group"), y=dplyr::select(unmapped_design_groups, nct_id, dg_id, dg_title_description), by.y=c("nct_id", "dg_id"))
+
+
+## save predictions as a table in database
+
+
+```
+
+
+
+```{r write predictions to database}
+## create as a table in database
+dbWriteTable(conn = con,name = "predictions", value = predictions, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+
+```
 
 
 
@@ -962,7 +1136,7 @@ for(i in 1: length(unique(unmapped_result_groups$nct_id))) {
 # design group titles = "A" and "B"
 # design group descriptions = NA and NA
 # design group interventions = same for both groups
-# descign group intervention descriptions = different between groups
+# design group intervention descriptions = different between groups
 # e.g. "500 mg/m2, intravenous (IV), every 14 days, until disease progression" for group A, and 
 # "500 mg/m2, intravenous (IV), every 21 days, until disease progression" for group B
 
@@ -988,54 +1162,6 @@ for(i in 1: length(unique(unmapped_result_groups$nct_id))) {
 
     
 
-```{r define function to create document term matrix}
-
-## define a function that will... 
-# accept custom tokens to be included in tokenisation
-# tokenise each (may include drug names as custom tokens)
-# create document-term matrix
-
-create_dtm <- function(dataframe, text_column, id_column, custom_tokens) {
-  ## remove punctuation... (e.g. &, =) from the text column
-  # dataframe[ , which(names(dataframe)==text_column)] <- str_squish(str_replace_all(string = dataframe[ , which(names(dataframe)==text_column)], "[^[:alnum:]]", replacement = " "))
-  ## remove anything that is not a number or letter...
-  dataframe[ , which(names(dataframe)==text_column)] <- str_squish(str_replace_all(string = dataframe[ , which(names(dataframe)==text_column)], "[^a-zA-Z0-9]", replacement = " "))
-
-  
-  ## 1. TOKENISE THE TEXT COLUMN
-  ## need to tokenise using corpus function, as this allows drug synonyms, inc multi word synonyms, to be specified upfront as tokens so they don't get split
-  dataframe$word <- as.list(corpus::text_tokens(x=dataframe[ , which(names(dataframe)==text_column)],                                                filter= corpus::text_filter(combine = custom_tokens, map_case=TRUE, connector="_", drop_punct=TRUE )))
-  ## unnest
-  dataframe <- as.data.frame(unnest(data = dataframe, word)) 
-  ## this function does insist on replacing whitespace with a character (here, underscore), so need to swap that back to whitespace
-  dataframe$word <- gsub(pattern = "_", replacement = " ", x=dataframe$word)
-  ## remove stopwords
-  dataframe <- anti_join(x=dataframe, y=stopwords)
-  
-  
-  
-  
-  ## 2. CREATE DOCUMENT-TERM MATRIX
-  ## count each word in each description
-  dataframe <- dataframe %>% 
-    group_by_at(id_column) %>%
-    count(word, sort=FALSE) %>%
-    ungroup() %>%
-    as.data.frame()
-  ## use reshape2::dcast so get a dataframe as a result
-  dataframe <- reshape2::dcast(data=dataframe, formula = as.formula(paste(id_column, "~ word")), value.var = "n")
-  ## convert NA to zero
-  dataframe <- dataframe %>% mutate_all(~replace(., is.na(.), 0))
-  ## convert id to factor
-  dataframe[ , which(names(dataframe)==id_column)] <- as.factor(dataframe[ , which(names(dataframe)==id_column)])
-  
-  ## 3. RETURN DOCUMENT-TERM MATRIX
-  return(dataframe)
-}
-
-```
-    
- 
 
 
 
