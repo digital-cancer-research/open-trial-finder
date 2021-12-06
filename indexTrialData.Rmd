@@ -485,6 +485,10 @@ interventions <- as.data.frame(unnest(data = interventions, intervention_name_pr
 ## trim excess whitespace
 interventions$intervention_name_processed <- str_squish(interventions$intervention_name_processed)
 
+## replace terms related to placebo with "placebo"
+interventions$intervention_name_processed[grep(pattern = "placebo|dummy", x=interventions$intervention_name_processed, ignore.case = TRUE)] <- "placebo"
+
+# design_group_interventions$intervention_name[grep(pattern = "placebo|dummy", x=design_group_interventions$intervention_name, ignore.case = TRUE)] <- "Placebo"
 ```
   
 #### **Join study interventions to NCIt pharmacologics**  
@@ -711,13 +715,39 @@ eligibilities$maximum_age[eligibilities$maximum_age == "N/A"] <- 120
 eligibilities$maximum_age <- as.numeric(eligibilities$maximum_age)
 
 ```
+  
+##### **Index eligibility criteria**  
+  
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  
 ```{r write eligibilities to database}
 ## create as a table in database
 dbWriteTable(conn = con,name = "eligibilities", value = eligibilities, overwrite=TRUE)
 
 ## check it has saved
 dbListTables(con)
+
+
+## delete indices
+rm(min_age_year_indices)
+rm(min_age_month_indices)
 
 ```
   
@@ -736,7 +766,6 @@ This is not always obvious...
   
   
 #### **Get design groups (study arms)**  
-  
   
 ```{r get design groups from ct}
 getDesignGroupsQ <- paste0("select dg.nct_id, dg.id as dg_id, dg.title as dg_title, dg.description as dg_description, dg.group_type as dg_group_type, dgi.intervention_id
@@ -767,8 +796,6 @@ result_groups <- dbGetQuery(conn2,getResultGroupsQ)
 
 ```
   
-
-
 ```{r create empty dataframe that will hold predicted mappings}
 
 predictions <- data.frame(nct_id = character(0),
@@ -779,7 +806,6 @@ predictions <- data.frame(nct_id = character(0),
 
 ```
 
-
 ```{r create a variable that will hold unmapped result groups}
 
 unmapped_result_group_ids <- setdiff(x=result_groups$rg_id, y=predictions$rg_id)
@@ -789,7 +815,6 @@ unmapped_result_group_ids <- setdiff(x=result_groups$rg_id, y=predictions$rg_id)
 
 #### **Map result groups for single arm studies**  
 
-  
 ```{r studies with 1 design group}
 
 single_dg_studies <- design_groups %>%
@@ -843,7 +868,6 @@ unmapped_result_group_ids <- setdiff(x=result_groups$rg_id, y=predictions$rg_id)
 ```
   
 #### **Assign interventions based on similarity between design, result group descriptions**   
-  
   
 ```{r filter result groups and retain only outcomes and events}
 ## NOTE SOME RESULT GROUPS ARE "TOTAL" i.e. total values for all groups
@@ -1056,11 +1080,31 @@ dbWriteTable(conn = con,name = "predictions", value = predictions, overwrite=TRU
 ## check it has saved
 dbListTables(con)
 
+## delete unmapped study ids
+rm(unmapped_study_ids)
+
 ```
 
 ### **Get outcome data**  
   
+  
+```{r get outcome measurements table}
 
+getOutcome_measurements <- paste0("select *
+from outcome_measurements 
+where nct_id in (",
+"", studyIDsForSQL,
+")")
+# 
+## get data from clinicaltrials.gov
+outcome_measurements <- dbGetQuery(conn2, getOutcome_measurements)
+
+
+
+```
+  
+  
+  
 
 
 
@@ -1078,7 +1122,7 @@ dbListTables(con)
 
 ```{r disconnect from  database}
 
-# disconnect from clincialtrials.gov
+# disconnect from clinicaltrials.gov
 dbDisconnect(conn2)
 
 # Disconnect from SQLite database
