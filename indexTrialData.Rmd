@@ -155,6 +155,10 @@ unzip(zipfile = paste0(getwd(),"/",destFlatFilename))
 NCIt <- read.table("Thesaurus.txt",header = FALSE, sep = "\t", comment.char = "", fill = TRUE, stringsAsFactors = FALSE, quote = "")
 names(NCIt) <- c("ID","URL","ParentID","Synonyms","Description","PreferredTerm","Type","Class")
 
+
+## save a copy for use later if needed
+NCIt_raw <- NCIt
+
 ## an entity may have more than one class, so need to multiply rows
 ## split and unnest the Class column of NCIt
 NCIt$Class <- strsplit(NCIt$Class, split = "\\|")
@@ -264,7 +268,7 @@ dbWriteTable(conn = con,name = "NCIt", value = NCIt, overwrite=TRUE)
 NCIt_Pharmacologics <- unique(dplyr::filter(NCIt, Class=="Pharmacologic Substance"))
 
 ## delete NCIt and NCItParents objects to save memory
-rm(NCIt)
+# rm(NCIt)
 rm(NCItParents)
 
 ```
