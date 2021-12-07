@@ -102,17 +102,83 @@ exampleCriteria <- data.frame(criteria = c(criterion1, criterion2, criterion3))
 
 ```{r preprocess the example criteria}
 ## convert to stems
-corpus::text_tokens(exampleCriteria$criteria, stemmer = "en")
+# corpus::text_tokens(exampleCriteria$criteria, stemmer = "en")
 
 # corpus::text_tokens(exampleCriteria$criteria, filter=corpus::text_filter(stemmer = "english", drop_number = TRUE, drop_punct = TRUE, combine = "KRAS mutation"))
+
+## lemmatize instead of stemming... 
+# textstem::lemmatize_strings(criterion1)
+
+exampleCriteria$criteria_lemma <- textstem::lemmatize_strings(exampleCriteria$criteria)
+
+## note however, that this does not work
+textstem::lemmatize_strings("HER2 Overexpression")
+
+## but this does
+textstem::stem_strings("HER2 Overexpression")
+
+exampleCriteria$criteria_stems <- textstem::stem_strings(exampleCriteria$criteria)
+
+# lemma_dictionary2 <- textstem::make_lemma_dictionary(x=criterion1, engine = 'hunspell')
 
 ```
 
 
 
+```{r preprocess NCIt}
+## we will use NCIt$Class values as "topics", and NCIt$Synonyms values as "detail"
+## in order to index on biomarkers, we will use the following Classes: 
+# "Laboratory or Test Result", "Cell or Molecular Dysfunction", "Gene or Genome"
+# we will omit "Gene or Genome" as this massively increases the number of terms
+# we will get gene synonyms from humanGenes table
+
+NCIt_biomarkers <- unique(dplyr::filter(NCIt, Class %in% c("Laboratory or Test Result", "Cell or Molecular Dysfunction")))
+
+## drop unnecessary colmns
+NCIt_biomarkers <- unique(dplyr::select(NCIt_biomarkers, ID, Synonyms, PreferredTerm, Class))
+
+## stem the synonyms in same way as eligibility criteria
+NCIt_biomarkers$Synonyms_stem <- textstem::stem_strings(NCIt_biomarkers$Synonyms)
+
+## convert to lowercase
+NCIt_biomarkers$Synonyms_stem <- tolower(NCIt_biomarkers$Synonyms_stem)
+
+```
+
+
+```{r preprocess eligibility criteria}
+
+
+## stem the criteria in same way as NCIt synonyms
+eligibilities$criteria_stem <- textstem::stem_strings(eligibilities$criteria)
+
+## drop unnecessary columns
+eligibilities <- unique(dplyr::select(eligibilities, nct_id, id, criterion_type, criteria, criteria_stem))
+
+## tokenise, passing NCIt synonym stems as custom tokens
+## we will provide condition synonyms as custom tokens, then tokenise, unnest and perform the join
+custom_tokens <- unique(NCIt_biomarkers$Synonyms_stem)
+
+## tokenise the condition names
+eligibilities$tokens <- as.list(corpus::text_tokens(x=eligibilities$criteria_stem,                                                filter= corpus::text_filter(combine = custom_tokens, map_case=FALSE, connector="_", drop_punct=TRUE )))
+
+## unnest
+eligibilities <- as.data.frame(unnest(data = eligibilities, tokens)) 
+
+## replace underscores with spaces
+eligibilities$tokens <- gsub(pattern = "_", replacement = " ", x=eligibilities$tokens)
+
+```
 
 
 
+```{r merge eligibility criteria with NCIt biomarkers}
+eligibilities <- merge(x=eligibilities, by.x = "tokens", all.x=TRUE, y=NCIt_biomarkers, by.y="Synonyms_stem")
+
+
+
+
+```
 
 
 
