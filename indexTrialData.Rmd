@@ -117,6 +117,11 @@ humanGenes <- humanGenes[order(humanGenes$Symbol), ]
 humanGenes <- humanGenes[!is.na(humanGenes$Aliases), ]
 
 ## drop any rows where Aliases value is only a single character
+humanGenes <- dplyr::filter(humanGenes, nchar(Aliases)>1)
+
+## drop any rows where Aliases is a number
+humanGenes <- humanGenes[is.na(as.numeric(humanGenes$Aliases)), ]
+
 
 ## NOW humanGenes TABLE CONTAINS ALL HUMAN GENES AND THEIR SYNONYMS
 ## (61,593 unique symbols, 130,989 rows)
@@ -655,16 +660,16 @@ eligibilities <- eligibilities[eligibilities$criteria != "", ] ## drop empty ele
 ```{r classify as inclusion exclusion criteria}
 
 ## add a column to indicate criterion type
-eligibilities$criterion.type <- NA
+eligibilities$criterion_type <- NA
 
 ## set first value as "INCLUSION"
-eligibilities$criterion.type[1] <- "INCLUSION"
+eligibilities$criterion_type[1] <- "INCLUSION"
 
 ## tag first criterion that equals "exclusion criteria:" (case-insensitive, with or without colon)
-eligibilities$criterion.type[grep(pattern = "exclusion criteria:?$", x=eligibilities$criteria, ignore.case = TRUE)] <- "EXCLUSION"
+eligibilities$criterion_type[grep(pattern = "exclusion criteria:?$", x=eligibilities$criteria, ignore.case = TRUE)] <- "EXCLUSION"
 
 ## fill "down" using the tdiyr::fill() function
-eligibilities <- tidyr::fill(data=eligibilities, criterion.type, .direction="down")
+eligibilities <- tidyr::fill(data=eligibilities, criterion_type, .direction="down")
 
 ```
 
@@ -722,24 +727,28 @@ eligibilities$maximum_age <- as.numeric(eligibilities$maximum_age)
   
 ##### **Index eligibility criteria**  
   
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+NOT USED - PERFORM THIS SEPARATELY, AS TOO MEMORY-INTENSIVE....  
   
+  
+```{r index on occurrence gene name}
+# ## create a copy
+# genetic_eligibilities <- unique(dplyr::select(eligibilities, nct_id, criteria, criterion_type))
+# 
+# ## split into tokens
+# # genetic_eligibilities$tokens <- as.list(corpus::text_tokens(x=genetic_eligibilities$criteria, map_case=FALSE))
+# genetic_eligibilities$tokens <- as.list(corpus::text_tokens(x=genetic_eligibilities$criteria, map_case=FALSE, filter= corpus::text_filter(combine = unique(grep(pattern = "-", x=humanGenes$Aliases, value = TRUE)))))
+# 
+# 
+# 
+# 
+# ## unnest
+# genetic_eligibilities <- as.data.frame(unnest(data = genetic_eligibilities, tokens))
+# 
+# ## join to humanGenes in Aliases so we only retain criteria that mention a human gene synonym
+# genetic_eligibilities <- unique(merge(x=genetic_eligibilities, by.x="tokens", y=humanGenes, by.y="Aliases"))
+
+```
+
   
 ```{r write eligibilities to database}
 ## create as a table in database

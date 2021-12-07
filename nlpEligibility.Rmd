@@ -1,0 +1,141 @@
+---
+title: "NLP eligibility criteria"
+author: "digital ECMT"
+date: "07/12/2021"
+output: html_document
+---
+
+```{r copyright notice}
+ # 
+ # This file is part of the cancer-trial-match distribution (https://github.com/digital-ECMT/cancer-trial-match).
+ # Copyright (C) 2021 digital ECMT
+ # 
+ # This program is free software: you can redistribute it and/or modify  
+ # it under the terms of the GNU General Public License as published by  
+ # the Free Software Foundation, version 3 or later.
+ #
+ # This program is distributed in the hope that it will be useful, but 
+ # WITHOUT ANY WARRANTY; without even the implied warranty of 
+ # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU 
+ # General Public License for more details.
+ #
+ # You should have received a copy of the GNU General Public License 
+ # along with this program. If not, see <http://www.gnu.org/licenses/>.
+ #
+
+
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+##NOTE: the following packages are required to run this script, but should be installed (e.g. using code snippets below) before runnning the script, NOT as part of the script itself
+# options(repos = "http://cran.us.r-project.org")
+# install.packages("BiocManager")
+# BiocManager::install("AnnotationDbi")
+# BiocManager::install("org.Hs.eg.db")
+# BiocManager::install("KEGGREST")
+# BiocManager::install("KEGGlincs")
+# BiocManager::install("hgu133a.db")
+require(KEGGlincs)        ## GPL-3
+require(KEGGgraph)        ## GPL >= 2
+require(org.Hs.eg.db)     ## Artistic-2.0
+require(KEGGREST)         ## Artistic 2.0
+require(DBI)              ## LGPL-2.1 | LGPL-3 
+require(RODBC)            ## GPL-2 | GPL-3
+require(RPostgres)        ## GPL-3
+require(RSQLite)          ## LGPL-2.1 | LGPL-3
+require(jsonlite)         ## MIT
+require(dplyr)            ## MIT
+require(tidyr)            ## MIT
+require(formattable)      ## MIT
+require(kableExtra)       ## MIT
+require(stringr)          ## MIT
+require(splitstackshape)  ## GPL-3
+require(reshape2)         ## MIT
+require(tictoc)           ## Apache License (== 2.0
+require(leaflet)          ## GPL-3
+require(PostcodesioR)     ## GPL-3
+require(igraph)           ## GPL-2 | GPL-3
+require(tidygeocoder)     ## MIT
+require(caret)
+require(rpart)
+require(rpart.plot)
+require(SentimentAnalysis)
+
+## clean up first
+rm(list=ls())
+
+##get today's date
+today <- format(Sys.Date(), format = "%d %B %Y")
+```
+
+```{r connect to SQLite DB} 
+# Create an RSQLite database
+con <- dbConnect(RSQLite::SQLite(), "indexedTrialData.sqlite")
+
+dbListTables(con)
+
+```
+  
+```{r load eligibilities table}
+eligibilities <- dbGetQuery(con, statement = "SELECT * FROM eligibilities")
+
+```
+
+```{r load NCIt}
+NCIt <- dbGetQuery(con, statement = "SELECT * FROM NCIt")
+
+```
+
+
+```{r specify some example criteria}
+
+criterion1 <- "Confirmed human epidermal growth factor 2 (HER2)-overexpressing status assessed by central laboratory and defined as immunohistochemistry (IHC) 3+ or IHC 2+/ in situ hybridization (ISH) +."
+
+criterion2 <- "Histologically or cytologically proven advanced non-small-cell lung cancer (NSCLC) with a documented KRAS mutation, refractory to conventional treatment, or for which no conventional therapy exists or is declined by the patient (20 patients)."
+
+criterion3 <- "Proficient mismatch repair/microsatellite stable (pMMR/MSS), histologically or cytologically-confirmed adenocarcinoma of the colon or rectum. Patients with any BRAF or KRAS mutation status are eligible."
+
+exampleCriteria <- data.frame(criteria = c(criterion1, criterion2, criterion3))
+
+```
+
+```{r preprocess the example criteria}
+## convert to stems
+corpus::text_tokens(exampleCriteria$criteria, stemmer = "en")
+
+# corpus::text_tokens(exampleCriteria$criteria, filter=corpus::text_filter(stemmer = "english", drop_number = TRUE, drop_punct = TRUE, combine = "KRAS mutation"))
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r sentiment analysis practice}
+
+
+sentence1 <- "Proficient mismatch repair/microsatellite stable (pMMR/MSS), histologically or cytologically-confirmed adenocarcinoma of the colon or rectum. Patients with any BRAF or KRAS mutation status are eligible"
+
+
+sentiment <- analyzeSentiment(sentence1)
+convertToBinaryResponse(sentiment)$SentimentQDAP
+
+
+sentence2 <- "For participants who have non-breast or -ovarian cancers that are breast cancer susceptibility gene 1/2 (BRCA1/2) mutated (BRCAm), or who have cancers that are BRCA1/2 non-mutated and homologous recombination repair nonmutated: Has a centrally-confirmed known or suspected deleterious mutation in breast cancer susceptibility gene (BRCA) 1 or BRCA2 and does not harbor a germline BRCA1 or BRCA2 mutation."
+
+sentiment <- analyzeSentiment(sentence2)
+convertToBinaryResponse(sentiment)$SentimentQDAP
+
+```
+
+
