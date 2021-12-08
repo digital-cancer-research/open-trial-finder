@@ -1111,26 +1111,280 @@ where nct_id in (",
 # 
 ## get data from clinicaltrials.gov
 outcome_measurements <- dbGetQuery(conn2, getOutcome_measurements)
-
+ 
 
 
 ```
   
+#### **Overall survival**  
+  
+* First, filter the outcome measurements table and retain rows where the outcome measurement title contains the pattern "*\\bOS\\b|\\boverall survival\\b*"  
+  * ("\\b" enforces whole-word match)  
+* Second, filter and retain rows where units contain the pattern "*days|weeks|months|years*"  
+* Third, convert units to months (rounded to 1 decimal place):  
+  * Where units = days, divide parameter values and confidence limits by 28  
+  * Where units = weeks, divide parameter values and confidence limits by 4  
+  * Where units = years, multiply parameter values and confidence limits by 12  
+  
+* **Note we have not filtered according to *parameter type*, and so values may be median (most common), mean, min, max or any other summary statistic.**  
+  
+  
+```{r filter and return only OS data}
+
+## first filter on on presence of OS pattern
+OS_pattern <- "\\bOS\\b|\\boverall survival\\b"
+overall_survival <- outcome_measurements[grep(pattern = OS_pattern, x=outcome_measurements$title, ignore.case = TRUE), ]
+
+## second, filter on units
+# overall_survival <- overall_survival[grep(pattern = "days|weeks|months|years", x=overall_survival$units, ignore.case = TRUE), ]
+overall_survival$units <- tolower(overall_survival$units)
+overall_survival <- unique(dplyr::filter(overall_survival, units %in% c("days", "weeks", "months", "years")))
+
+## remove the param_value column
+overall_survival <- dplyr::select(overall_survival, -c(param_value))
+
+## convert days to months
+## ASSUME 28 DAYS IN A MONTH
+# convert point estimates
+overall_survival$param_value_num[grep(pattern = "days", x=overall_survival$units, ignore.case = TRUE)] <- round(overall_survival$param_value_num[grep(pattern = "days", x=overall_survival$units, ignore.case = TRUE)]/28, digits = 1)
+# convert LL
+overall_survival$dispersion_lower_limit[grep(pattern = "days", x=overall_survival$units, ignore.case = TRUE)] <- round(overall_survival$dispersion_lower_limit[grep(pattern = "days", x=overall_survival$units, ignore.case = TRUE)]/28, digits = 1)
+# convert UL
+overall_survival$dispersion_upper_limit[grep(pattern = "days", x=overall_survival$units, ignore.case = TRUE)] <- round(overall_survival$dispersion_upper_limit[grep(pattern = "days", x=overall_survival$units, ignore.case = TRUE)]/28, digits = 1)
+# reset units 
+overall_survival$units[grep(pattern = "days", x=overall_survival$units, ignore.case = TRUE)] <- "months"
+
+
+
+## convert weeks to months
+## ASSUME 4 WEEKS IN A MONTH
+# convert point estimates
+overall_survival$param_value_num[grep(pattern = "weeks", x=overall_survival$units, ignore.case = TRUE)] <- round(overall_survival$param_value_num[grep(pattern = "weeks", x=overall_survival$units, ignore.case = TRUE)]/4, digits = 1)
+# convert LL
+overall_survival$dispersion_lower_limit[grep(pattern = "weeks", x=overall_survival$units, ignore.case = TRUE)] <- round(overall_survival$dispersion_lower_limit[grep(pattern = "weeks", x=overall_survival$units, ignore.case = TRUE)]/4, digits = 1)
+# convert UL
+overall_survival$dispersion_upper_limit[grep(pattern = "weeks", x=overall_survival$units, ignore.case = TRUE)] <- round(overall_survival$dispersion_upper_limit[grep(pattern = "weeks", x=overall_survival$units, ignore.case = TRUE)]/4, digits = 1)
+# reset units 
+overall_survival$units[grep(pattern = "weeks", x=overall_survival$units, ignore.case = TRUE)] <- "months"
+
+
+
+## convert years to months
+## ASSUME 12 MONTHS IN A YEAR
+# convert point estimates
+overall_survival$param_value_num[grep(pattern = "years", x=overall_survival$units, ignore.case = TRUE)] <- round(overall_survival$param_value_num[grep(pattern = "years", x=overall_survival$units, ignore.case = TRUE)]*12, digits = 1)
+# convert LL
+overall_survival$dispersion_lower_limit[grep(pattern = "years", x=overall_survival$units, ignore.case = TRUE)] <- round(overall_survival$dispersion_lower_limit[grep(pattern = "years", x=overall_survival$units, ignore.case = TRUE)]*12, digits = 1)
+# convert UL
+overall_survival$dispersion_upper_limit[grep(pattern = "years", x=overall_survival$units, ignore.case = TRUE)] <- round(overall_survival$dispersion_upper_limit[grep(pattern = "years", x=overall_survival$units, ignore.case = TRUE)]*12, digits = 1)
+# reset units 
+overall_survival$units[grep(pattern = "years", x=overall_survival$units, ignore.case = TRUE)] <- "months"
+
+
+## add a column to indicate these are all OS data
+overall_survival$outcome_controlled <- "Overall survival"
+```
+
+
+```{r write OS table to DB}
+## create as a table in database
+dbWriteTable(conn = con,name = "overall_survival", value = overall_survival, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+
+```
+
+  
+This filtering leaves us with the following outcomes:  
+* **`r unique(overall_survival$title)`**  
+  
+#### **Get progression-free survival data**  
+     
+* Filter and retain outcome measurements where outcome title includes the pattern "*PFS|progression-free survival|progression free survival*".  
+* Filter and retain rows where units include the pattern "*days|weeks|months|years*"  
+* Convert units to months (as for OS, above)  
   
   
 
-
-
-
-
-
-
-
-
-
-
-`r knitr::knit_exit()`    
   
+```{r filter and return only PFS data}
+
+## first filter on on presence of OS pattern
+PFS_pattern <- "PFS|progression-free survival|progression free survival"
+PFS <- outcome_measurements[grep(pattern = PFS_pattern, x=outcome_measurements$title, ignore.case = TRUE), ]
+
+## second, filter on units
+# PFS <- PFS[grep(pattern = "days|weeks|months|years", x=PFS$units, ignore.case = TRUE), ]
+PFS$units <- tolower(PFS$units)
+PFS <- unique(dplyr::filter(PFS, units %in% c("days", "weeks", "months", "years")))
+
+
+## remove the param_value column
+PFS <- dplyr::select(PFS, -c(param_value))
+
+## convert days to months
+## ASSUME 28 DAYS IN A MONTH
+# convert point estimates
+PFS$param_value_num[grep(pattern = "days", x=PFS$units, ignore.case = TRUE)] <- round(PFS$param_value_num[grep(pattern = "days", x=PFS$units, ignore.case = TRUE)]/28, digits = 1)
+# convert LL
+PFS$dispersion_lower_limit[grep(pattern = "days", x=PFS$units, ignore.case = TRUE)] <- round(PFS$dispersion_lower_limit[grep(pattern = "days", x=PFS$units, ignore.case = TRUE)]/28, digits = 1)
+# convert UL
+PFS$dispersion_upper_limit[grep(pattern = "days", x=PFS$units, ignore.case = TRUE)] <- round(PFS$dispersion_upper_limit[grep(pattern = "days", x=PFS$units, ignore.case = TRUE)]/28, digits = 1)
+# reset units 
+PFS$units[grep(pattern = "days", x=PFS$units, ignore.case = TRUE)] <- "months"
+
+
+
+## convert weeks to months
+## ASSUME 4 WEEKS IN A MONTH
+# convert point estimates
+PFS$param_value_num[grep(pattern = "weeks", x=PFS$units, ignore.case = TRUE)] <- round(PFS$param_value_num[grep(pattern = "weeks", x=PFS$units, ignore.case = TRUE)]/4, digits = 1)
+# convert LL
+PFS$dispersion_lower_limit[grep(pattern = "weeks", x=PFS$units, ignore.case = TRUE)] <- round(PFS$dispersion_lower_limit[grep(pattern = "weeks", x=PFS$units, ignore.case = TRUE)]/4, digits = 1)
+# convert UL
+PFS$dispersion_upper_limit[grep(pattern = "weeks", x=PFS$units, ignore.case = TRUE)] <- round(PFS$dispersion_upper_limit[grep(pattern = "weeks", x=PFS$units, ignore.case = TRUE)]/4, digits = 1)
+# reset units 
+PFS$units[grep(pattern = "weeks", x=PFS$units, ignore.case = TRUE)] <- "months"
+
+
+
+## convert years to months
+## ASSUME 12 MONTHS IN A YEAR
+# convert point estimates
+PFS$param_value_num[grep(pattern = "years", x=PFS$units, ignore.case = TRUE)] <- round(PFS$param_value_num[grep(pattern = "years", x=PFS$units, ignore.case = TRUE)]*12, digits = 1)
+# convert LL
+PFS$dispersion_lower_limit[grep(pattern = "years", x=PFS$units, ignore.case = TRUE)] <- round(PFS$dispersion_lower_limit[grep(pattern = "years", x=PFS$units, ignore.case = TRUE)]*12, digits = 1)
+# convert UL
+PFS$dispersion_upper_limit[grep(pattern = "years", x=PFS$units, ignore.case = TRUE)] <- round(PFS$dispersion_upper_limit[grep(pattern = "years", x=PFS$units, ignore.case = TRUE)]*12, digits = 1)
+# reset units 
+PFS$units[grep(pattern = "years", x=PFS$units, ignore.case = TRUE)] <- "months"
+
+## add a column to indicate these are all PFS data
+PFS$outcome_controlled <- "Progression free survival"
+```
+  
+
+      
+    
+  
+This filtering leaves us with the following outcomes:  
+* **`r unique(PFS$title)`**  
+    
+
+
+```{r write PFS table to DB}
+## create as a table in database
+dbWriteTable(conn = con,name = "PFS", value = PFS, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+
+```
+
+
+### **Get adverse event data**  
+  
+#### **Individual adverse event counts**  
+  
+  
+  
+Individual adverse event data are stored in the *reported_events* table.  
+  
+
+```{r get reported event counts}
+
+getAEcounts <- paste0("select *
+from reported_events 
+where nct_id in (",
+"", studyIDsForSQL,
+")")
+# 
+## get criteria from clinicaltrials.gov
+AE_counts <- dbGetQuery(conn2, getAEcounts)
+
+
+## order on subjects_affected descending
+AE_counts <- AE_counts[order(AE_counts$subjects_affected, decreasing = TRUE), ]
+
+# kbl(head(AE_counts), format = "html",escape = FALSE) %>%
+#   kable_styling(fixed_thead = T, bootstrap_options = c("striped", "hover", "condensed")) %>%
+#   scroll_box(width = "125%", height = "200px")
+```
+  
+  
+Details include number of subjects affected and number of subjects at risk.  
+  
+We can derive *percent_affected* based on subjects_affected / subjects_at_risk...  
+
+  
+```{r derive AE rates}
+AE_counts$percent_affected <- round(((AE_counts$subjects_affected * 100)/ AE_counts$subjects_at_risk), digits = 1)
+
+
+kbl(head(AE_counts), format = "html",escape = FALSE) %>%
+  kable_styling(fixed_thead = T, bootstrap_options = c("striped", "hover", "condensed")) %>%
+  scroll_box(width = "125%", height = "200px")
+
+
+```
+  
+
+```{r write AE counts table to DB}
+## create as a table in database
+dbWriteTable(conn = con,name = "AE_counts", value = AE_counts, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+
+```
+
+
+#### **Combined adverse event counts (e.g. total, any adverse event)**  
+  
+         
+  
+Total event counts are also stored in the *reported_event_totals* table.  
+  
+These data include summary counts such as *Total, serious adverse events*, *Total, other adverse events* etc.  
+  
+
+
+```{r get event totals}
+
+getAEtotals <- paste0("select *
+from reported_event_totals 
+where nct_id in (",
+"", studyIDsForSQL,
+")")
+# 
+## get criteria from clinicaltrials.gov
+AE_totals <- dbGetQuery(conn2, getAEtotals)
+
+```
+  
+Number of subjects at risk and affected are also included, so we can derive *percent_affected*.  
+  
+```{r derive percent affected}
+
+## derive percent affected
+AE_totals$percent_affected <- round((AE_totals$subjects_affected * 100)/ AE_totals$subjects_at_risk, digits = 1)
+
+kbl(head(AE_totals), format = "html",escape = FALSE) %>%
+  kable_styling(fixed_thead = T, bootstrap_options = c("striped", "hover", "condensed")) %>%
+  scroll_box(width = "125%", height = "200px")
+```
+
+
+
+```{r write AE totals table to DB}
+## create as a table in database
+dbWriteTable(conn = con,name = "AE_totals", value = AE_totals, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+
+```
 
 
 ```{r disconnect from  database}
@@ -1140,7 +1394,6 @@ dbDisconnect(conn2)
 
 # Disconnect from SQLite database
 dbDisconnect(con)
-
 
 ```
   
