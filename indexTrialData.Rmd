@@ -204,6 +204,34 @@ NCIt$downloaded <- Sys.Date()
 NCIt <- unique(NCIt)
 ```
 
+  
+```{r preprocess NCIt}
+## delete any rows containing the pattern "Retired Concept"
+NCIt <- NCIt[grep(pattern = "Retired Concept", x=NCIt$Synonyms, invert = TRUE), ]
+NCIt <- NCIt[grep(pattern = "Retired Concept", x=NCIt$Parent_synonym, invert = TRUE), ]
+
+## delete any rows with Synonyms that map to >1 term within a Class
+NCIt_multiple_terms <- NCIt %>%
+  group_by(Synonyms, Class) %>%
+  summarise(
+    number_terms = length(unique(ID))
+  ) %>%
+  filter(number_terms >1) %>%
+  as.data.frame()
+## anti join
+NCIt <- anti_join(NCIt, NCIt_multiple_terms, by=c("Synonyms", "Class"))
+rm(NCIt_multiple_terms)
+
+## delete any rows that don't contain any letters... 
+NCIt <- NCIt[grep(pattern = "[a-zA-Z]", x=NCIt$Synonyms), ]
+
+## stem the synonyms 
+NCIt$Synonyms_stem <- textstem::stem_strings(NCIt$Synonyms)
+
+## convert to lowercase
+NCIt$Synonyms_stem <- tolower(NCIt$Synonyms_stem)
+```
+
 
 ```{r write NCIt to database}
 ## create as a table in database

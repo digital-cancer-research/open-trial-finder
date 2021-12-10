@@ -87,6 +87,86 @@ NCIt <- dbGetQuery(con, statement = "SELECT * FROM NCIt")
 
 ```
 
+The NCI thesaurus includes `r length(unique(NCIt$Class))` different *Classes*, such as:  
+`r head(unique(NCIt$Class))`  
+  
+We can use these as "topics" and identify topic(s) for each criterion.  
+  
+In some cases, topics are negated, such as "HER2-negative tumours defined as 0, 1+ or 2+ intensity on IHC and no evidence of amplification of the HER2 gene on ISH." (NCT03395899). We will use sentiment analysis to distinguish negative vs positive criteria.  
+  
+Note the NCI thesaurus will need some processing, e.g.  
+* Remove synonyms that are non-specific (such as "Positive" is listed as a synonym for 71 different terms, including *PD-L1 Positive, KRAS Gene Mutation, Hepatitis B Surface Antibody Positive* and others)  
+* Remove synonyms that do not contain any letters, such as *2: 162834264-162824895, 072, >=75, <1* and such.  
+  
+```{r preprocess NCIt}
+## delete any rows containing the pattern "Retired Concept"
+NCIt <- NCIt[grep(pattern = "Retired Concept", x=NCIt$Synonyms, invert = TRUE), ]
+NCIt <- NCIt[grep(pattern = "Retired Concept", x=NCIt$Parent_synonym, invert = TRUE), ]
+
+## delete any rows with Synonyms that map to >1 term within a Class
+NCIt_multiple_terms <- NCIt %>%
+  group_by(Synonyms, Class) %>%
+  summarise(
+    number_terms = length(unique(ID))
+  ) %>%
+  filter(number_terms >1) %>%
+  as.data.frame()
+## anti join
+NCIt <- anti_join(NCIt, NCIt_multiple_terms, by=c("Synonyms", "Class"))
+rm(NCIt_multiple_terms)
+
+## delete any rows that don't contain any letters... 
+NCIt <- NCIt[grep(pattern = "[a-zA-Z]", x=NCIt$Synonyms), ]
+
+## stem the synonyms 
+NCIt$Synonyms_stem <- textstem::stem_strings(NCIt$Synonyms)
+
+## convert to lowercase
+NCIt_biomarkers$Synonyms_stem <- tolower(NCIt_biomarkers$Synonyms_stem)
+```
+
+```{r stem NCIt synonyms}
+# ## stem the synonyms in same way as we will for eligibility criteria
+# NCIt$Synonyms_stem <- textstem::stem_strings(NCIt$Synonyms)
+# 
+# ## convert to lowercase
+# NCIt_biomarkers$Synonyms_stem <- tolower(NCIt_biomarkers$Synonyms_stem)
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+`r knitr::knit_exit()`    
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
 
 ```{r specify some example criteria}
 
@@ -125,7 +205,7 @@ exampleCriteria$criteria_stems <- textstem::stem_strings(exampleCriteria$criteri
 
 
 
-```{r preprocess NCIt}
+```{r preprocess NCIt 2}
 ## we will use NCIt$Class values as "topics", and NCIt$Synonyms values as "detail"
 ## in order to index on biomarkers, we will use the following Classes: 
 # "Laboratory or Test Result", "Cell or Molecular Dysfunction", "Gene or Genome"
