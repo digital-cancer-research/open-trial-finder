@@ -64,6 +64,7 @@ require(tidygeocoder)     ## MIT
 require(caret)
 require(rpart)
 require(rpart.plot)
+require(textstem)
 
 ## clean up first
 rm(list=ls())
@@ -752,6 +753,20 @@ eligibilities$maximum_age[eligibilities$maximum_age == "N/A"] <- 120
 eligibilities$maximum_age <- as.numeric(eligibilities$maximum_age)
 
 ```
+
+```{r stem eligibility criteria}
+## create a stemmed copy
+eligibilities$criteria_stem <- textstem::stem_strings(eligibilities$criteria)
+
+## convert to lowercase
+eligibilities$criteria_stem <- tolower(eligibilities$criteria_stem)
+
+
+
+```
+
+
+
   
 ##### **Index eligibility criteria**  
   

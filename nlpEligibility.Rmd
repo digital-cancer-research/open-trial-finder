@@ -97,32 +97,38 @@ In some cases, topics are negated, such as "HER2-negative tumours defined as 0, 
 Note the NCI thesaurus will need some processing, e.g.  
 * Remove synonyms that are non-specific (such as "Positive" is listed as a synonym for 71 different terms, including *PD-L1 Positive, KRAS Gene Mutation, Hepatitis B Surface Antibody Positive* and others)  
 * Remove synonyms that do not contain any letters, such as *2: 162834264-162824895, 072, >=75, <1* and such.  
+* Add a stemmed, lowercase copy of Synonyms (e.g. convert "HER2 Overexpression" to "her2 overexpress")  
+
+  
+This is all done as part of indexTrialData.Rmd, and the preprocessed NCI thesaurus is saved as the table NCIt.  
+  
+  
   
 ```{r preprocess NCIt}
-## delete any rows containing the pattern "Retired Concept"
-NCIt <- NCIt[grep(pattern = "Retired Concept", x=NCIt$Synonyms, invert = TRUE), ]
-NCIt <- NCIt[grep(pattern = "Retired Concept", x=NCIt$Parent_synonym, invert = TRUE), ]
-
-## delete any rows with Synonyms that map to >1 term within a Class
-NCIt_multiple_terms <- NCIt %>%
-  group_by(Synonyms, Class) %>%
-  summarise(
-    number_terms = length(unique(ID))
-  ) %>%
-  filter(number_terms >1) %>%
-  as.data.frame()
-## anti join
-NCIt <- anti_join(NCIt, NCIt_multiple_terms, by=c("Synonyms", "Class"))
-rm(NCIt_multiple_terms)
-
-## delete any rows that don't contain any letters... 
-NCIt <- NCIt[grep(pattern = "[a-zA-Z]", x=NCIt$Synonyms), ]
-
-## stem the synonyms 
-NCIt$Synonyms_stem <- textstem::stem_strings(NCIt$Synonyms)
-
-## convert to lowercase
-NCIt_biomarkers$Synonyms_stem <- tolower(NCIt_biomarkers$Synonyms_stem)
+# ## delete any rows containing the pattern "Retired Concept"
+# NCIt <- NCIt[grep(pattern = "Retired Concept", x=NCIt$Synonyms, invert = TRUE), ]
+# NCIt <- NCIt[grep(pattern = "Retired Concept", x=NCIt$Parent_synonym, invert = TRUE), ]
+# 
+# ## delete any rows with Synonyms that map to >1 term within a Class
+# NCIt_multiple_terms <- NCIt %>%
+#   group_by(Synonyms, Class) %>%
+#   summarise(
+#     number_terms = length(unique(ID))
+#   ) %>%
+#   filter(number_terms >1) %>%
+#   as.data.frame()
+# ## anti join
+# NCIt <- anti_join(NCIt, NCIt_multiple_terms, by=c("Synonyms", "Class"))
+# rm(NCIt_multiple_terms)
+# 
+# ## delete any rows that don't contain any letters... 
+# NCIt <- NCIt[grep(pattern = "[a-zA-Z]", x=NCIt$Synonyms), ]
+# 
+# ## stem the synonyms 
+# NCIt$Synonyms_stem <- textstem::stem_strings(NCIt$Synonyms)
+# 
+# ## convert to lowercase
+# NCIt_biomarkers$Synonyms_stem <- tolower(NCIt_biomarkers$Synonyms_stem)
 ```
 
 ```{r stem NCIt synonyms}
@@ -136,8 +142,57 @@ NCIt_biomarkers$Synonyms_stem <- tolower(NCIt_biomarkers$Synonyms_stem)
 
 ```
 
+```{r index on Cell or Molecular Dysfunction}
+tic("index all studies")
+
+example_studies <- c("NCT04607668", "NCT03875820")
+
+NCIt_cellMolecularDysfunction <- unique(dplyr::filter(NCIt, Class=="Cell or Molecular Dysfunction"))
+
+custom_tokens <- unique(NCIt_cellMolecularDysfunction$Synonyms_stem)
+
+example_criteria <- eligibilities
+
+# example_criteria <- unique(filter(example_criteria, nct_id %in% example_studies))
+
+example_criteria <- dplyr::select(example_criteria, nct_id, criteria, criterion_type)
+
+## create a stemmed copy
+example_criteria$criteria_stem <- textstem::stem_strings(example_criteria$criteria)
+
+## convert to lowercase
+example_criteria$criteria_stem <- tolower(example_criteria$criteria_stem)
+
+## tokenise
+## tokenise the condition names
+example_criteria$tokens <- as.list(corpus::text_tokens(x=example_criteria$criteria_stem,                                                filter= corpus::text_filter(combine = custom_tokens, map_case=FALSE, connector="_", drop_punct=TRUE )))
+
+## unnest
+example_criteria <- as.data.frame(unnest(data = example_criteria, tokens)) 
+
+## replace underscores with spaces
+example_criteria$tokens <- gsub(pattern = "_", replacement = " ", x=example_criteria$tokens)
 
 
+
+## inner join
+example_criteria <- unique(merge(x=example_criteria, by.x = "tokens", all.x = FALSE, y = unique(dplyr::select(NCIt_cellMolecularDysfunction, Synonyms_stem, ID,PreferredTerm, Class)), by.y = "Synonyms_stem"))
+
+toc()
+
+```
+
+taken from: https://towardsdatascience.com/introduction-to-natural-language-processing-for-text-df845750fb63  
+  
+  
+
+TF-IDF  
+One problem with scoring word frequency is that the most frequent words in the document start to have the highest scores. These frequent words may not contain as much “informational gain” to the model compared with some rarer and domain-specific words. One approach to fix that problem is to penalize words that are frequent across all the documents. This approach is called TF-IDF.
+TF-IDF, short for term frequency-inverse document frequency is a statistical measure used to evaluate the importance of a word to a document in a collection or corpus.  
+  
+The TF-IDF scoring value increases proportionally to the number of times a word appears in the document, but it is offset by the number of documents in the corpus that contain the word.  
+  
+  
 
 
 
