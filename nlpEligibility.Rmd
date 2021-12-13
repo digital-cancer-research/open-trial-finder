@@ -142,6 +142,14 @@ This is all done as part of indexTrialData.Rmd, and the preprocessed NCI thesaur
 
 ```
 
+
+
+
+
+
+
+
+
 ```{r index on Cell or Molecular Dysfunction}
 tic("index all studies")
 
@@ -155,13 +163,13 @@ example_criteria <- eligibilities
 
 # example_criteria <- unique(filter(example_criteria, nct_id %in% example_studies))
 
-example_criteria <- dplyr::select(example_criteria, nct_id, criteria, criterion_type)
+example_criteria <- dplyr::select(example_criteria, criterion_index,nct_id, criteria, criterion_type, criteria_stem)
 
 ## create a stemmed copy
-example_criteria$criteria_stem <- textstem::stem_strings(example_criteria$criteria)
+# example_criteria$criteria_stem <- textstem::stem_strings(example_criteria$criteria)
 
 ## convert to lowercase
-example_criteria$criteria_stem <- tolower(example_criteria$criteria_stem)
+# example_criteria$criteria_stem <- tolower(example_criteria$criteria_stem)
 
 ## tokenise
 ## tokenise the condition names
@@ -176,12 +184,20 @@ example_criteria$tokens <- gsub(pattern = "_", replacement = " ", x=example_crit
 
 
 ## inner join
-example_criteria <- unique(merge(x=example_criteria, by.x = "tokens", all.x = FALSE, y = unique(dplyr::select(NCIt_cellMolecularDysfunction, Synonyms_stem, ID,PreferredTerm, Class)), by.y = "Synonyms_stem"))
+example_criteria_topics <- unique(merge(x=example_criteria, by.x = "tokens", all.x = FALSE, y = unique(dplyr::select(NCIt_cellMolecularDysfunction, Synonyms_stem, ID,PreferredTerm, Class)), by.y = "Synonyms_stem"))
 
 toc()
 
 ```
-
+  
+**Note:** there are many false hits, e.g. "*abnormal*" is included as a synonym for *TP53 Gene Mutation* (C118396), which appears many times among eligibility criteria that are unrelated to this topic.  
+  
+We should penalise words that are common in the entire corpus (all eligibility criteria).  
+  
+  
+  
+  
+  
 taken from: https://towardsdatascience.com/introduction-to-natural-language-processing-for-text-df845750fb63  
   
   
@@ -192,7 +208,41 @@ TF-IDF, short for term frequency-inverse document frequency is a statistical mea
   
 The TF-IDF scoring value increases proportionally to the number of times a word appears in the document, but it is offset by the number of documents in the corpus that contain the word.  
   
-  
+```{r TF IDF calculation}
+## NOW MOVED TO INDEXTRIALDATA.RMD CODE.... 
+# eligibilities <- eligibilities %>% group_by(nct_id) %>% mutate(criterion_index = paste0(nct_id, "_", row_number())) %>% as.data.frame()
+
+## see https://bookdown.org/yann_ryan/r-for-newspaper-data/calculating-tf-idf-scores-with-tidytext.html
+
+## get a count of the frequency of each word (token) among the entire corpus of eligibility criteria
+tic("tally tokens")
+tally_tokens_by_nct_id <- example_criteria %>%
+  group_by(nct_id, tokens) %>%
+  tally() %>%
+  arrange(desc(n)) %>%
+  as.data.frame()
+toc()
+
+## just tally across the whole corpus
+# tic("tally tokens")
+# tally_tokens <- example_criteria %>% 
+#   group_by(tokens) %>%
+#   tally() %>% 
+#   arrange(desc(n)) %>%
+#   as.data.frame()
+# toc()
+
+
+
+## use bind_tf_idf() to calculate the measurement for each word in the dataframe
+tally_tokens_by_nct_id <- tally_tokens_by_nct_id %>% tidytext::bind_tf_idf(tokens, nct_id, n)
+# tally_tokens <- tally_tokens %>% tidytext::bind_tf_idf(tokens, n)
+
+## merge with example_criteria_topics
+example_criteria_topics <- merge(x=example_criteria_topics, by.x = c("nct_id", "tokens"), all.x = TRUE, y = unique(dplyr::select(tally_tokens_by_nct_id, nct_id, tokens, tf_idf)), by.y = c("nct_id", "tokens"))
+
+```
+
 
 
 

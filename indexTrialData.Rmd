@@ -765,7 +765,12 @@ eligibilities$criteria_stem <- tolower(eligibilities$criteria_stem)
 
 ```
 
+```{r add an index column to eligibilities}
+## we will add an index column that uniquely identifies each criterion
+eligibilities <- eligibilities %>% group_by(nct_id) %>% mutate(criterion_index = paste0(nct_id, "_", row_number())) %>% as.data.frame()
 
+
+```
 
   
 ##### **Index eligibility criteria**  
