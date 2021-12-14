@@ -79,8 +79,27 @@ dbListTables(con)
   
 ```{r load eligibilities table}
 eligibilities <- dbGetQuery(con, statement = "SELECT * FROM eligibilities")
+## NOW MOVED TO INDEXTRIALDATA.RMD CODE.... 
+eligibilities <- eligibilities %>% group_by(nct_id) %>% mutate(criterion_index = paste0(nct_id, "_", row_number())) %>% as.data.frame()
+```
+
+
+
+```{r sentiment analysis of eligibility criteria}
+# tic("sentiment analysis of all criteria")
+# eligibilities$sentiment_score <- analyzeSentiment(eligibilities$criteria)$SentimentQDAP
+# toc()
+
+
 
 ```
+
+
+```{r load humanGenes}
+humanGenes <- dbGetQuery(con, statement = "SELECT * FROM humanGenes")
+
+```
+
 
 ```{r load NCIt}
 NCIt <- dbGetQuery(con, statement = "SELECT * FROM NCIt")
@@ -129,6 +148,11 @@ This is all done as part of indexTrialData.Rmd, and the preprocessed NCI thesaur
 # 
 # ## convert to lowercase
 # NCIt_biomarkers$Synonyms_stem <- tolower(NCIt_biomarkers$Synonyms_stem)
+
+
+
+
+
 ```
 
 ```{r stem NCIt synonyms}
@@ -138,6 +162,9 @@ This is all done as part of indexTrialData.Rmd, and the preprocessed NCI thesaur
 # ## convert to lowercase
 # NCIt_biomarkers$Synonyms_stem <- tolower(NCIt_biomarkers$Synonyms_stem)
 
+## drop any rows where synonyms stem is a single character
+## (e.g. "r" is a synonym of C3360)
+NCIt <- NCIt[nchar(NCIt$Synonyms_stem)>1, ]
 
 
 ```
@@ -209,8 +236,7 @@ TF-IDF, short for term frequency-inverse document frequency is a statistical mea
 The TF-IDF scoring value increases proportionally to the number of times a word appears in the document, but it is offset by the number of documents in the corpus that contain the word.  
   
 ```{r TF IDF calculation}
-## NOW MOVED TO INDEXTRIALDATA.RMD CODE.... 
-# eligibilities <- eligibilities %>% group_by(nct_id) %>% mutate(criterion_index = paste0(nct_id, "_", row_number())) %>% as.data.frame()
+
 
 ## see https://bookdown.org/yann_ryan/r-for-newspaper-data/calculating-tf-idf-scores-with-tidytext.html
 
@@ -233,10 +259,12 @@ toc()
 # toc()
 
 
-
+tic("TF-IDF calculation")
 ## use bind_tf_idf() to calculate the measurement for each word in the dataframe
 tally_tokens_by_nct_id <- tally_tokens_by_nct_id %>% tidytext::bind_tf_idf(tokens, nct_id, n)
 # tally_tokens <- tally_tokens %>% tidytext::bind_tf_idf(tokens, n)
+toc()
+
 
 ## merge with example_criteria_topics
 example_criteria_topics <- merge(x=example_criteria_topics, by.x = c("nct_id", "tokens"), all.x = TRUE, y = unique(dplyr::select(tally_tokens_by_nct_id, nct_id, tokens, tf_idf)), by.y = c("nct_id", "tokens"))
@@ -244,6 +272,44 @@ example_criteria_topics <- merge(x=example_criteria_topics, by.x = c("nct_id", "
 ```
 
 
+  
+Graph analysis of text...  
+  
+See also: https://www.tidytextmining.com/ngrams.html  
+  
+We can convert each criterion into a *Markov chain*.  
+  
+```{r define example criteria}
+sentence1 <- "Proficient mismatch repair/microsatellite stable (pMMR/MSS), histologically or cytologically-confirmed adenocarcinoma of the colon or rectum. Patients with any BRAF or KRAS mutation status are eligible"
+
+
+sentence2 <- "For participants who have non-breast or -ovarian cancers that are breast cancer susceptibility gene 1/2 (BRCA1/2) mutated (BRCAm), or who have cancers that are BRCA1/2 non-mutated and homologous recombination repair nonmutated: Has a centrally-confirmed known or suspected deleterious mutation in breast cancer susceptibility gene (BRCA) 1 or BRCA2 and does not harbor a germline BRCA1 or BRCA2 mutation."
+
+
+
+```
+
+  
+  
+```{r tokenise criteria into bigrams}
+
+## split eligibilities into sentences
+eligibilities$sentences <- strsplit(eligibilities$criteria, split = "\\. ")
+eligibilities <- as.data.frame(unnest(data = eligibilities, sentences))
+## add a sentence index
+eligibilities <- eligibilities %>% group_by(criterion_index) %>% mutate(criterion_sentence_index = paste0(criterion_index, "_", row_number())) %>% as.data.frame()
+
+
+
+tic("create eligibility bigrams")
+eligibilities_bigrams <- dplyr::select(eligibilities, criterion_sentence_index, sentences) %>%
+  # head() %>%
+  tidytext::unnest_tokens(bigram, sentences, token="ngrams", n=2, to_lower=FALSE) %>%
+  separate(bigram, c("from", "to"), sep = " ", remove=FALSE)
+toc()
+
+
+```
 
 
 
@@ -375,14 +441,7 @@ eligibilities <- merge(x=eligibilities, by.x = "tokens", all.x=TRUE, y=NCIt_biom
 ```{r sentiment analysis practice}
 
 
-sentence1 <- "Proficient mismatch repair/microsatellite stable (pMMR/MSS), histologically or cytologically-confirmed adenocarcinoma of the colon or rectum. Patients with any BRAF or KRAS mutation status are eligible"
 
-
-sentiment <- analyzeSentiment(sentence1)
-convertToBinaryResponse(sentiment)$SentimentQDAP
-
-
-sentence2 <- "For participants who have non-breast or -ovarian cancers that are breast cancer susceptibility gene 1/2 (BRCA1/2) mutated (BRCAm), or who have cancers that are BRCA1/2 non-mutated and homologous recombination repair nonmutated: Has a centrally-confirmed known or suspected deleterious mutation in breast cancer susceptibility gene (BRCA) 1 or BRCA2 and does not harbor a germline BRCA1 or BRCA2 mutation."
 
 sentiment <- analyzeSentiment(sentence2)
 convertToBinaryResponse(sentiment)$SentimentQDAP
