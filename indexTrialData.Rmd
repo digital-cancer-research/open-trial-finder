@@ -95,7 +95,11 @@ tic("download a list of all human genes and their synonyms")
 
 humanGenes <- read.table(file = "humanGenes.tsv", header = TRUE, quote = "", sep = "\t", fill = TRUE, stringsAsFactors = FALSE)
 
-humanGenes <- dplyr::select(humanGenes, Symbol, Aliases)## drop everything except Symbol and Aliases columns
+
+## exclude any entries that are not for Homo Sapiens
+humanGenes <- unique(dplyr::filter(humanGenes, Org_name == "Homo sapiens"))
+
+humanGenes <- unique(dplyr::select(humanGenes, GeneID, Symbol, Aliases)) ## drop everything except GeneID, Symbol and Aliases columns
 
 
 humanGenes$Aliases <- strsplit(x=humanGenes$Aliases, split = ",")## split the aliases on comma 
@@ -106,7 +110,9 @@ humanGenes$Aliases <- str_squish(string = humanGenes$Aliases) ## trim excess whi
 
 ## Symbol values are not represented among Aliases
 # create a data frame with unique Symbol values
-symbols <- data.frame("Symbol"=unique(humanGenes$Symbol), "Aliases"=unique(humanGenes$Symbol))
+symbols <- unique(dplyr::select(humanGenes,GeneID,"Symbol"= "Symbol", "Aliases"="Symbol"))
+
+
 # bind this onto bottom of humanGenes data frame
 humanGenes <- rbind(humanGenes,symbols)
 # remove duplicated values, if any
@@ -686,6 +692,18 @@ eligibilities <- eligibilities[eligibilities$criteria != "", ] ## drop empty ele
 
 ```
 
+
+```{r add an index column to eligibilities}
+## we will add an index column that uniquely identifies each criterion
+eligibilities <- eligibilities %>% group_by(nct_id) %>% mutate(criterion_index = paste0(nct_id, "_", row_number())) %>% as.data.frame()
+
+
+```
+
+
+
+
+
 ```{r classify as inclusion exclusion criteria}
 
 ## add a column to indicate criterion type
@@ -754,48 +772,42 @@ eligibilities$maximum_age <- as.numeric(eligibilities$maximum_age)
 
 ```
 
-```{r stem eligibility criteria}
+```{r split criteria into sentences}
+## split eligibilities into individual sentences 
+eligibilities$sentences <- strsplit(eligibilities$criteria, split = "\\. ")
+eligibilities <- as.data.frame(unnest(data = eligibilities, sentences))
+
 ## create a stemmed copy
-eligibilities$criteria_stem <- textstem::stem_strings(eligibilities$criteria)
+eligibilities$sentences_stem <- textstem::stem_strings(eligibilities$sentences)
 
 ## convert to lowercase
-eligibilities$criteria_stem <- tolower(eligibilities$criteria_stem)
+eligibilities$sentences_stem <- tolower(eligibilities$sentences_stem)
+
+## add a sentence index
+eligibilities <- eligibilities %>% group_by(criterion_index) %>% mutate(criterion_sentence_index = paste0(criterion_index, "_", row_number())) %>% as.data.frame()
 
 
 
 ```
 
-```{r add an index column to eligibilities}
-## we will add an index column that uniquely identifies each criterion
-eligibilities <- eligibilities %>% group_by(nct_id) %>% mutate(criterion_index = paste0(nct_id, "_", row_number())) %>% as.data.frame()
+
+
+
+```{r stem eligibility criteria}
+## create a stemmed copy
+# eligibilities$criteria_stem <- textstem::stem_strings(eligibilities$criteria)
+
+## convert to lowercase
+# eligibilities$criteria_stem <- tolower(eligibilities$criteria_stem)
+
 
 
 ```
-
   
 ##### **Index eligibility criteria**  
   
 NOT USED - PERFORM THIS SEPARATELY, AS TOO MEMORY-INTENSIVE....  
   
-  
-```{r index on occurrence gene name}
-# ## create a copy
-# genetic_eligibilities <- unique(dplyr::select(eligibilities, nct_id, criteria, criterion_type))
-# 
-# ## split into tokens
-# # genetic_eligibilities$tokens <- as.list(corpus::text_tokens(x=genetic_eligibilities$criteria, map_case=FALSE))
-# genetic_eligibilities$tokens <- as.list(corpus::text_tokens(x=genetic_eligibilities$criteria, map_case=FALSE, filter= corpus::text_filter(combine = unique(grep(pattern = "-", x=humanGenes$Aliases, value = TRUE)))))
-# 
-# 
-# 
-# 
-# ## unnest
-# genetic_eligibilities <- as.data.frame(unnest(data = genetic_eligibilities, tokens))
-# 
-# ## join to humanGenes in Aliases so we only retain criteria that mention a human gene synonym
-# genetic_eligibilities <- unique(merge(x=genetic_eligibilities, by.x="tokens", y=humanGenes, by.y="Aliases"))
-
-```
 
   
 ```{r write eligibilities to database}

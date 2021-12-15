@@ -80,7 +80,21 @@ dbListTables(con)
 ```{r load eligibilities table}
 eligibilities <- dbGetQuery(con, statement = "SELECT * FROM eligibilities")
 ## NOW MOVED TO INDEXTRIALDATA.RMD CODE.... 
-eligibilities <- eligibilities %>% group_by(nct_id) %>% mutate(criterion_index = paste0(nct_id, "_", row_number())) %>% as.data.frame()
+# eligibilities <- eligibilities %>% group_by(nct_id) %>% mutate(criterion_index = paste0(nct_id, "_", row_number())) %>% as.data.frame()
+
+## split eligibilities into individual sentences 
+# eligibilities$sentences <- strsplit(eligibilities$criteria, split = "\\. ")
+# eligibilities <- as.data.frame(unnest(data = eligibilities, sentences))
+
+## create a stemmed copy
+# eligibilities_temp$sentences_stem <- textstem::stem_strings(eligibilities_temp$sentences)
+
+
+## add a sentence index
+# eligibilities <- eligibilities %>% group_by(criterion_index) %>% mutate(criterion_sentence_index = paste0(criterion_index, "_", row_number())) %>% as.data.frame()
+
+
+
 ```
 
 
@@ -169,31 +183,65 @@ NCIt <- NCIt[nchar(NCIt$Synonyms_stem)>1, ]
 
 ```
 
+## **Index eligibility criteria**  
+  
+  
+
+```{r define tidy format for index data}
+eligibility_indices <- data.frame(criterion_sentence_index = character(0), 
+                                  matching_token = character(0),
+                                  topic = character(0), 
+                                  PT = character(0), 
+                                  vocab = character(0), 
+                                  vocab_id = character(0))
+
+```
 
 
 
+### **Index on gene names**  
+  
+```{r index on genes}
+## WE WILL ONLY MATCH ON GENE NAMES THAT ARE SINGLE WORDS 
+## (otherwise, we would have to supply 124,848 aliases as custom tokens, and this throws an error - protection stack overflow... 
+## we will perform case-sensitive matching (using case as in humanGenes dataframe)
+## we will not use the stemmed version
+eligibilities_genes <- dplyr::select(eligibilities, criterion_sentence_index, sentences) %>%
+  unique() %>%
+  tidytext::unnest_tokens(tokens, sentences, token="words", to_lower=FALSE) 
 
+eligibilities_genes <- unique(merge(x=eligibilities_genes, by.x="tokens", y=humanGenes, by.y = "Aliases"))
 
+eligibilities_genes$topic <- "Gene"
+eligibilities_genes$vocab <- "Entrez"
+eligibilities_genes <- unique(dplyr::select(eligibilities_genes, criterion_sentence_index, "matching_token"="tokens", topic, "PT"="Symbol", vocab, "vocab_id"="GeneID"))
 
+## row-bind onto eligibility_indices table
+eligibility_indices <- unique(rbind(eligibility_indices, eligibilities_genes))
 
+## delete eligibilities_genes from memory
+rm(eligibilities_genes)
+```
 
+### **Index on Cell or Molecular Dysfunction**  
+  
 ```{r index on Cell or Molecular Dysfunction}
 tic("index all studies")
 
-example_studies <- c("NCT04607668", "NCT03875820")
+# example_studies <- c("NCT04607668", "NCT03875820")
 
 NCIt_cellMolecularDysfunction <- unique(dplyr::filter(NCIt, Class=="Cell or Molecular Dysfunction"))
 
 custom_tokens <- unique(NCIt_cellMolecularDysfunction$Synonyms_stem)
 
-example_criteria <- eligibilities
+eligibilities_temp <- eligibilities
 
-# example_criteria <- unique(filter(example_criteria, nct_id %in% example_studies))
+# eligibilities_temp <- unique(filter(eligibilities_temp, nct_id %in% example_studies))
 
-example_criteria <- dplyr::select(example_criteria, criterion_index,nct_id, criteria, criterion_type, criteria_stem)
+eligibilities_temp <- unique(dplyr::select(eligibilities_temp, criterion_sentence_index, sentences))
 
 ## create a stemmed copy
-# example_criteria$criteria_stem <- textstem::stem_strings(example_criteria$criteria)
+eligibilities_temp$sentences_stem <- textstem::stem_strings(eligibilities_temp$sentences)
 
 ## convert to lowercase
 # example_criteria$criteria_stem <- tolower(example_criteria$criteria_stem)
@@ -293,11 +341,7 @@ sentence2 <- "For participants who have non-breast or -ovarian cancers that are 
   
 ```{r tokenise criteria into bigrams}
 
-## split eligibilities into sentences
-eligibilities$sentences <- strsplit(eligibilities$criteria, split = "\\. ")
-eligibilities <- as.data.frame(unnest(data = eligibilities, sentences))
-## add a sentence index
-eligibilities <- eligibilities %>% group_by(criterion_index) %>% mutate(criterion_sentence_index = paste0(criterion_index, "_", row_number())) %>% as.data.frame()
+
 
 
 
