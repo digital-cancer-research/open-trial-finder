@@ -232,36 +232,38 @@ tic("index all studies")
 
 NCIt_cellMolecularDysfunction <- unique(dplyr::filter(NCIt, Class=="Cell or Molecular Dysfunction"))
 
+## we will match stemmed NCIt synonyms against stemmed tokens
 custom_tokens <- unique(NCIt_cellMolecularDysfunction$Synonyms_stem)
 
-eligibilities_temp <- eligibilities
+## select required columns
+eligibilities_CMD <- unique(dplyr::select(eligibilities, criterion_sentence_index, sentences, sentences_stem)) 
 
-# eligibilities_temp <- unique(filter(eligibilities_temp, nct_id %in% example_studies))
-
-eligibilities_temp <- unique(dplyr::select(eligibilities_temp, criterion_sentence_index, sentences))
-
-## create a stemmed copy
-eligibilities_temp$sentences_stem <- textstem::stem_strings(eligibilities_temp$sentences)
-
-## convert to lowercase
-# example_criteria$criteria_stem <- tolower(example_criteria$criteria_stem)
 
 ## tokenise
-## tokenise the condition names
-example_criteria$tokens <- as.list(corpus::text_tokens(x=example_criteria$criteria_stem,                                                filter= corpus::text_filter(combine = custom_tokens, map_case=FALSE, connector="_", drop_punct=TRUE )))
+eligibilities_CMD$tokens <- as.list(corpus::text_tokens(x=eligibilities_CMD$sentences_stem,                                                filter= corpus::text_filter(combine = custom_tokens, map_case=FALSE, connector="_", drop_punct=TRUE )))
 
 ## unnest
-example_criteria <- as.data.frame(unnest(data = example_criteria, tokens)) 
+eligibilities_CMD <- as.data.frame(unnest(data = eligibilities_CMD, tokens)) 
 
 ## replace underscores with spaces
-example_criteria$tokens <- gsub(pattern = "_", replacement = " ", x=example_criteria$tokens)
+eligibilities_CMD$tokens <- gsub(pattern = "_", replacement = " ", x=eligibilities_CMD$tokens)
 
 
 
 ## inner join
-example_criteria_topics <- unique(merge(x=example_criteria, by.x = "tokens", all.x = FALSE, y = unique(dplyr::select(NCIt_cellMolecularDysfunction, Synonyms_stem, ID,PreferredTerm, Class)), by.y = "Synonyms_stem"))
+eligibilities_CMD <- unique(merge(x=eligibilities_CMD, by.x = "tokens", all.x = FALSE, y = unique(dplyr::select(NCIt_cellMolecularDysfunction, Synonyms_stem, ID,PreferredTerm, Class)), by.y = "Synonyms_stem"))
 
-toc()
+eligibilities_CMD$vocab <- "NCIt"
+
+## select and rename columns to match eligibility indices
+eligibilities_CMD <- dplyr::select(eligibilities_CMD, criterion_sentence_index, "matching_token"="tokens", "topic" = "Class", "PT" = "PreferredTerm", vocab, "vocab_id" = "ID")
+
+
+## row-bind onto eligibility_indices table
+eligibility_indices <- unique(rbind(eligibility_indices, eligibilities_CMD))
+
+## delete eligibilities_CMD from memory
+rm(eligibilities_CMD)
 
 ```
   

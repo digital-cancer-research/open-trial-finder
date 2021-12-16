@@ -712,6 +712,9 @@ eligibilities$criterion_type <- NA
 ## set first value as "INCLUSION"
 eligibilities$criterion_type[1] <- "INCLUSION"
 
+## tag first criterion that equals "inclusion criteria:" (case-insensitive, with or without colon)
+eligibilities$criterion_type[grep(pattern = "inclusion criteria:?$", x=eligibilities$criteria, ignore.case = TRUE)] <- "INCLUSION"
+
 ## tag first criterion that equals "exclusion criteria:" (case-insensitive, with or without colon)
 eligibilities$criterion_type[grep(pattern = "exclusion criteria:?$", x=eligibilities$criteria, ignore.case = TRUE)] <- "EXCLUSION"
 
