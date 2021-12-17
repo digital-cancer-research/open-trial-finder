@@ -226,7 +226,6 @@ rm(eligibilities_genes)
 ### **Index on Cell or Molecular Dysfunction**  
   
 ```{r index on Cell or Molecular Dysfunction}
-tic("index all studies")
 
 # example_studies <- c("NCT04607668", "NCT03875820")
 
@@ -251,19 +250,19 @@ eligibilities_CMD$tokens <- gsub(pattern = "_", replacement = " ", x=eligibiliti
 
 
 ## inner join
-eligibilities_CMD <- unique(merge(x=eligibilities_CMD, by.x = "tokens", all.x = FALSE, y = unique(dplyr::select(NCIt_cellMolecularDysfunction, Synonyms_stem, ID,PreferredTerm, Class)), by.y = "Synonyms_stem"))
+eligibilities_CMD <- unique(merge(x=eligibilities_CMD, by.x = "tokens", all.x = FALSE, y = unique(dplyr::select(NCIt_cellMolecularDysfunction, Synonyms_stem, ID,PreferredTerm, Parent_synonym,Class)), by.y = "Synonyms_stem"))
 
 eligibilities_CMD$vocab <- "NCIt"
 
 ## select and rename columns to match eligibility indices
-eligibilities_CMD <- dplyr::select(eligibilities_CMD, criterion_sentence_index, "matching_token"="tokens", "topic" = "Class", "PT" = "PreferredTerm", vocab, "vocab_id" = "ID")
+eligibilities_CMD <- dplyr::select(eligibilities_CMD, criterion_sentence_index, "matching_token"="tokens", "topic" = "Class", "PT" = "Parent_synonym", vocab, "vocab_id" = "ID")
 
 
 ## row-bind onto eligibility_indices table
-eligibility_indices <- unique(rbind(eligibility_indices, eligibilities_CMD))
+#eligibility_indices <- unique(rbind(eligibility_indices, eligibilities_CMD))
 
 ## delete eligibilities_CMD from memory
-rm(eligibilities_CMD)
+#rm(eligibilities_CMD)
 
 ```
   
