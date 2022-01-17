@@ -61,6 +61,7 @@ require(caret)
 require(rpart)
 require(rpart.plot)
 require(SentimentAnalysis)
+require(conText)
 
 ## clean up first
 rm(list=ls())

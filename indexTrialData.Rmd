@@ -807,11 +807,133 @@ eligibilities <- eligibilities %>% group_by(criterion_index) %>% mutate(criterio
 
 ```
   
+#### **NLP eligibility criteria**   
+  
+##### **Construct a corpus from eligibility criteria**  
+  
+See also https://tutorials.quanteda.io/basic-operations/corpus/corpus/ for workflow from quanteda...  
+
+  
+```{r construct corpus from eligibility criteria}
+
+eligibilities_corpus <-  quanteda::corpus(x=unique(dplyr::select(eligibilities, nct_id, criterion_index, criteria, criterion_type)),
+                                          text_field = "criteria", 
+                                          docid_field = "criterion_index",
+                                          unique_docnames = FALSE)
+
+
+head(summary(eligibilities_corpus))
+
+## Change the unit of texts to sentences
+# eligibilities_corpus <- corpus_reshape(eligibilities_corpus, to = "sentences")
+# head(summary(eligibilities_corpus))
+
+## change back to criteria
+# eligibilities_corpus <- corpus_reshape(eligibilities_corpus, to = "documents")
+# head(summary(eligibilities_corpus))
+
+
+```
+
+  
+```{r tokenise the corpus}
+eligibilities_tokens <- tokens(eligibilities_corpus, remove_punct=TRUE)
+
+```
+
+
+
+```{r keywords in context}
+
+kw_mutations <- kwic(eligibilities_tokens, pattern =  c("mutat*", "mutan*"), window = 5)
+formattable(head(as.data.frame(kw_mutations), 30))
+
+kw_genes <- kwic(eligibilities_tokens, pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE)
+formattable(head(as.data.frame(kw_genes), 30))
+
+
+msi_synonyms <- NCIt$Synonyms[NCIt$ID=="C131459"]
+msi_synonyms <- msi_synonyms[msi_synonyms != "Stable"]
+msi_synonyms
+kw_msi <- kwic(eligibilities_tokens, pattern =  phrase(msi_synonyms), window = 5, case_insensitive = TRUE)
+formattable(head(as.data.frame(kw_msi), 30))
+```
+
+  
+  
+  
+  
 ##### **Index eligibility criteria**  
   
 NOT USED - PERFORM THIS SEPARATELY, AS TOO MEMORY-INTENSIVE....  
   
+```{r define function to get pattern and context}
+#' Get context words (words within a symmetric window around the target word/phrase)
+#' sorrounding a user defined target.
 
+## reuse code from https://rdrr.io/github/prodriguezsosa/conText/src/R/get_context.R with modification to get useable values for docname
+
+## pattern may be a single string, or a vector of strings...
+
+## specify some sensible defaults...
+get_context_mod <- function(dataframe, textcolumn, docid_field, pattern, window = 6, valuetype = "regex",what="word", ignore_case = TRUE) {
+  #dataframe <- dataframe
+  #pattern <- pattern
+  #window <- window
+  #valuetype <- valuetype
+  #what <- what
+  
+  ## get a vector of TRUE/FALSE values indicating whether pattern present in dataframe
+  pattern_present <- stringr::str_detect(dataframe[ ,which(names(dataframe)==textcolumn)], paste(stringr::regex(pattern, ignore_case = ignore_case), collapse = '|'))
+  
+  ## subset dataframe
+  dataframe_subset <- dataframe[pattern_present, ]
+  
+  ## turn into a corpus object
+  dataframe_subset_corpus <-  quanteda::corpus(x=dataframe_subset,
+                      text_field = textcolumn, 
+                      docid_field = docid_field,
+                      #docid_field = "criterion_sentence_index", 
+                      unique_docnames = FALSE)
+  
+  #out <- dataframe_subset_corpus
+  
+  ## get context of pattern
+  kwic_i <- as.data.frame(quanteda::kwic(quanteda::tokens(dataframe_subset_corpus, what = what), pattern = quanteda::phrase(pattern), window = window, valuetype = valuetype, case_insensitive = TRUE))
+  
+  out <- kwic_i
+  out <- as.data.frame(kwic_i) %>%
+      dplyr::select(docname, keyword, pre, post) %>% # keep pre and post (see kwic documentation for info on values)
+      dplyr::mutate(context = paste(pre,keyword, post, sep = " ")) %>% # combine pre and post into one variable named context
+      dplyr::select(-c('pre', 'post')) %>% # drop pre & post
+      dplyr::rename(target = keyword) # align variable names (we use target instead of keyword)
+  
+  return(out)
+}
+
+
+
+```
+
+###### **Index on mutations**  
+  
+```{r index on mutations}
+## for example 
+# head(get_context_mod(dataframe = eligibilities, textcolumn = "sentences", docid_field = "criterion_sentence_index", pattern = c("mutat", "\\bdeficien")),20)
+
+
+## can do something like this....
+## pass a list of human gene aliases as the pattern to detect...
+
+# head(quanteda::kwic(x=eligibilities_subset$sentences, pattern=humanGenes$Aliases, case_insensitive=FALSE))
+
+
+```
+
+  
+  
+  
+##### **Write eligibility criteria to database**  
   
 ```{r write eligibilities to database}
 ## create as a table in database
