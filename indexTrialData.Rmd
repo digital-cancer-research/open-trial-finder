@@ -842,16 +842,66 @@ eligibilities_tokens <- tokens(eligibilities_corpus, remove_punct=TRUE)
 ```
 
 
+```{r apply dictionary}
+## Convert tokens into equivalence classes defined by values of a dictionary object.
+## this works, but is relatively slow... 
+# dict4 <- dictionary(list(gene = humanGenes$Aliases, alteration = "KRAS mutation"))
+# toks4 <- tokens("Patients with any BRAF or KRAS mutation status are eligible.")
+# tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE)
+
+## also this... 
+labResultSynonyms <- unique(NCIt$Synonyms[NCIt$Class == "Laboratory or Test Result"])
+dict4 <- dictionary(list(gene = humanGenes$Aliases, lab_result = labResultSynonyms))
+toks4 <- tokens("Proficient mismatch repair/microsatellite stable (pMMR/MSS), histologically or cytologically-confirmed adenocarcinoma of the colon or rectum. Patients with any BRAF or KRAS mutation status are eligible.")
+tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE)
+as.character(tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE))
+
+
+## and this
+cellMolDysfSynonyms <- unique(NCIt$Synonyms[NCIt$Class == "Cell or Molecular Dysfunction"])
+dict4 <- dictionary(list(gene = humanGenes$Aliases, lab_result = labResultSynonyms, cellMol_dysfunction = cellMolDysfSynonyms))
+toks4 <- tokens("Proficient mismatch repair/microsatellite stable (pMMR/MSS), histologically or cytologically-confirmed adenocarcinoma of the colon or rectum. Patients with any BRAF or KRAS mutation status are eligible.")
+tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE)
+as.character(tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE))
+
+## and this
+neoProcessSynonyms <- unique(NCIt$Synonyms[NCIt$Class == "Neoplastic Process"])
+dict4 <- dictionary(list(gene = humanGenes$Aliases, 
+                         lab_result = labResultSynonyms, 
+                         cellMol_dysfunction = cellMolDysfSynonyms, 
+                         neoplastic_process = neoProcessSynonyms))
+
+toks4 <- tokens("Proficient mismatch repair/microsatellite stable (pMMR/MSS), histologically or cytologically-confirmed adenocarcinoma of the colon or rectum. Patients with any BRAF or KRAS mutation status are eligible.")
+#tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE)
+as.character(tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE))
+
+```
+
+
+
+
+```{r stem the corpus}
+
+
+
+
+
+```
+
+
+
+
 
 ```{r keywords in context}
-
+## basic kwic, simple pattern...
 kw_mutations <- kwic(eligibilities_tokens, pattern =  c("mutat*", "mutan*"), window = 5)
 formattable(head(as.data.frame(kw_mutations), 30))
 
+## can use (big) lists of patterns
 kw_genes <- kwic(eligibilities_tokens, pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE)
 formattable(head(as.data.frame(kw_genes), 30))
 
-
+## can use multi-word tokens as patterns
 msi_synonyms <- NCIt$Synonyms[NCIt$ID=="C131459"]
 msi_synonyms <- msi_synonyms[msi_synonyms != "Stable"]
 msi_synonyms
