@@ -65,6 +65,8 @@ require(caret)
 require(rpart)
 require(rpart.plot)
 require(textstem)
+require(quanteda)         ## GPL-3
+
 
 ## clean up first
 rm(list=ls())
@@ -701,9 +703,6 @@ eligibilities <- eligibilities %>% group_by(nct_id) %>% mutate(criterion_index =
 ```
 
 
-
-
-
 ```{r classify as inclusion exclusion criteria}
 
 ## add a column to indicate criterion type
@@ -775,212 +774,6 @@ eligibilities$maximum_age <- as.numeric(eligibilities$maximum_age)
 
 ```
 
-```{r split criteria into sentences}
-## split eligibilities into individual sentences 
-eligibilities$sentences <- strsplit(eligibilities$criteria, split = "\\. ")
-eligibilities <- as.data.frame(unnest(data = eligibilities, sentences))
-
-## create a stemmed copy
-eligibilities$sentences_stem <- textstem::stem_strings(eligibilities$sentences)
-
-## convert to lowercase
-eligibilities$sentences_stem <- tolower(eligibilities$sentences_stem)
-
-## add a sentence index
-eligibilities <- eligibilities %>% group_by(criterion_index) %>% mutate(criterion_sentence_index = paste0(criterion_index, "_", row_number())) %>% as.data.frame()
-
-
-
-```
-
-
-
-
-```{r stem eligibility criteria}
-## create a stemmed copy
-# eligibilities$criteria_stem <- textstem::stem_strings(eligibilities$criteria)
-
-## convert to lowercase
-# eligibilities$criteria_stem <- tolower(eligibilities$criteria_stem)
-
-
-
-```
-  
-#### **NLP eligibility criteria**   
-  
-##### **Construct a corpus from eligibility criteria**  
-  
-See also https://tutorials.quanteda.io/basic-operations/corpus/corpus/ for workflow from quanteda...  
-
-  
-```{r construct corpus from eligibility criteria}
-
-eligibilities_corpus <-  quanteda::corpus(x=unique(dplyr::select(eligibilities, nct_id, criterion_index, criteria, criterion_type)),
-                                          text_field = "criteria", 
-                                          docid_field = "criterion_index",
-                                          unique_docnames = FALSE)
-
-
-head(summary(eligibilities_corpus))
-
-## Change the unit of texts to sentences
-# eligibilities_corpus <- corpus_reshape(eligibilities_corpus, to = "sentences")
-# head(summary(eligibilities_corpus))
-
-## change back to criteria
-# eligibilities_corpus <- corpus_reshape(eligibilities_corpus, to = "documents")
-# head(summary(eligibilities_corpus))
-
-
-```
-
-  
-```{r tokenise the corpus}
-eligibilities_tokens <- tokens(eligibilities_corpus, remove_punct=TRUE)
-
-```
-
-
-```{r apply dictionary}
-## Convert tokens into equivalence classes defined by values of a dictionary object.
-## this works, but is relatively slow... 
-# dict4 <- dictionary(list(gene = humanGenes$Aliases, alteration = "KRAS mutation"))
-# toks4 <- tokens("Patients with any BRAF or KRAS mutation status are eligible.")
-# tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE)
-
-## also this... 
-labResultSynonyms <- unique(NCIt$Synonyms[NCIt$Class == "Laboratory or Test Result"])
-dict4 <- dictionary(list(gene = humanGenes$Aliases, lab_result = labResultSynonyms))
-toks4 <- tokens("Proficient mismatch repair/microsatellite stable (pMMR/MSS), histologically or cytologically-confirmed adenocarcinoma of the colon or rectum. Patients with any BRAF or KRAS mutation status are eligible.")
-tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE)
-as.character(tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE))
-
-
-## and this
-cellMolDysfSynonyms <- unique(NCIt$Synonyms[NCIt$Class == "Cell or Molecular Dysfunction"])
-dict4 <- dictionary(list(gene = humanGenes$Aliases, lab_result = labResultSynonyms, cellMol_dysfunction = cellMolDysfSynonyms))
-toks4 <- tokens("Proficient mismatch repair/microsatellite stable (pMMR/MSS), histologically or cytologically-confirmed adenocarcinoma of the colon or rectum. Patients with any BRAF or KRAS mutation status are eligible.")
-tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE)
-as.character(tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE))
-
-## and this
-neoProcessSynonyms <- unique(NCIt$Synonyms[NCIt$Class == "Neoplastic Process"])
-dict4 <- dictionary(list(gene = humanGenes$Aliases, 
-                         lab_result = labResultSynonyms, 
-                         cellMol_dysfunction = cellMolDysfSynonyms, 
-                         neoplastic_process = neoProcessSynonyms))
-
-toks4 <- tokens("Proficient mismatch repair/microsatellite stable (pMMR/MSS), histologically or cytologically-confirmed adenocarcinoma of the colon or rectum. Patients with any BRAF or KRAS mutation status are eligible.")
-#tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE)
-as.character(tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE))
-
-```
-
-
-
-
-```{r stem the corpus}
-
-
-
-
-
-```
-
-
-
-
-
-```{r keywords in context}
-## basic kwic, simple pattern...
-kw_mutations <- kwic(eligibilities_tokens, pattern =  c("mutat*", "mutan*"), window = 5)
-formattable(head(as.data.frame(kw_mutations), 30))
-
-## can use (big) lists of patterns
-kw_genes <- kwic(eligibilities_tokens, pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE)
-formattable(head(as.data.frame(kw_genes), 30))
-
-## can use multi-word tokens as patterns
-msi_synonyms <- NCIt$Synonyms[NCIt$ID=="C131459"]
-msi_synonyms <- msi_synonyms[msi_synonyms != "Stable"]
-msi_synonyms
-kw_msi <- kwic(eligibilities_tokens, pattern =  phrase(msi_synonyms), window = 5, case_insensitive = TRUE)
-formattable(head(as.data.frame(kw_msi), 30))
-```
-
-  
-  
-  
-  
-##### **Index eligibility criteria**  
-  
-NOT USED - PERFORM THIS SEPARATELY, AS TOO MEMORY-INTENSIVE....  
-  
-```{r define function to get pattern and context}
-#' Get context words (words within a symmetric window around the target word/phrase)
-#' sorrounding a user defined target.
-
-## reuse code from https://rdrr.io/github/prodriguezsosa/conText/src/R/get_context.R with modification to get useable values for docname
-
-## pattern may be a single string, or a vector of strings...
-
-## specify some sensible defaults...
-get_context_mod <- function(dataframe, textcolumn, docid_field, pattern, window = 6, valuetype = "regex",what="word", ignore_case = TRUE) {
-  #dataframe <- dataframe
-  #pattern <- pattern
-  #window <- window
-  #valuetype <- valuetype
-  #what <- what
-  
-  ## get a vector of TRUE/FALSE values indicating whether pattern present in dataframe
-  pattern_present <- stringr::str_detect(dataframe[ ,which(names(dataframe)==textcolumn)], paste(stringr::regex(pattern, ignore_case = ignore_case), collapse = '|'))
-  
-  ## subset dataframe
-  dataframe_subset <- dataframe[pattern_present, ]
-  
-  ## turn into a corpus object
-  dataframe_subset_corpus <-  quanteda::corpus(x=dataframe_subset,
-                      text_field = textcolumn, 
-                      docid_field = docid_field,
-                      #docid_field = "criterion_sentence_index", 
-                      unique_docnames = FALSE)
-  
-  #out <- dataframe_subset_corpus
-  
-  ## get context of pattern
-  kwic_i <- as.data.frame(quanteda::kwic(quanteda::tokens(dataframe_subset_corpus, what = what), pattern = quanteda::phrase(pattern), window = window, valuetype = valuetype, case_insensitive = TRUE))
-  
-  out <- kwic_i
-  out <- as.data.frame(kwic_i) %>%
-      dplyr::select(docname, keyword, pre, post) %>% # keep pre and post (see kwic documentation for info on values)
-      dplyr::mutate(context = paste(pre,keyword, post, sep = " ")) %>% # combine pre and post into one variable named context
-      dplyr::select(-c('pre', 'post')) %>% # drop pre & post
-      dplyr::rename(target = keyword) # align variable names (we use target instead of keyword)
-  
-  return(out)
-}
-
-
-
-```
-
-###### **Index on mutations**  
-  
-```{r index on mutations}
-## for example 
-# head(get_context_mod(dataframe = eligibilities, textcolumn = "sentences", docid_field = "criterion_sentence_index", pattern = c("mutat", "\\bdeficien")),20)
-
-
-## can do something like this....
-## pass a list of human gene aliases as the pattern to detect...
-
-# head(quanteda::kwic(x=eligibilities_subset$sentences, pattern=humanGenes$Aliases, case_insensitive=FALSE))
-
-
-```
-
-  
   
   
 ##### **Write eligibility criteria to database**  
@@ -1000,6 +793,307 @@ rm(min_age_month_indices)
 ```
   
   
+
+##### **Index eligibility criteria**  
+  
+See also https://tutorials.quanteda.io/basic-operations/corpus/corpus/ for workflow from quanteda...  
+
+    
+```{r create corpus}
+tic("create eligibilities corpus")
+eligibilities_corpus <-  quanteda::corpus(x=unique(dplyr::select(eligibilities, nct_id, criterion_index, criteria, criterion_type)),
+                                          text_field = "criteria", 
+                                          docid_field = "criterion_index",
+                                          unique_docnames = FALSE)
+toc()
+
+
+```
+
+```{r tokenise the corpus}
+tic("tokenise eligibilities corpus")
+eligibilities_tokens <- tokens(eligibilities_corpus, remove_punct=TRUE, padding = FALSE)
+toc()
+```
+
+```{r remove stopwords}
+tic("remove stopwords")
+eligibilities_tokens <- tokens_select(x=eligibilities_tokens, pattern = stopwords("en"), selection = "remove", padding = FALSE)
+toc()
+```
+
+```{r get context words surrounding gene names}
+
+tic("get kwic for genes")
+kwic_genes <- as.data.frame(kwic(eligibilities_tokens, pattern =  unique(humanGenes$Aliases), window = 6, case_insensitive = FALSE))
+toc()
+#formattable(head(as.data.frame(kw_genes), 30))
+
+## concatenate pre, gene name and post tokens
+kwic_genes <- dplyr::mutate(kwic_genes, context = paste(pre,keyword, post, sep = " "))
+
+
+## select and rename columns
+kwic_genes <- dplyr::select(kwic_genes, "criterion_index"="docname", context, "gene_synonym"=pattern)
+
+```
+
+
+```{r join Entrez Symbols}
+
+kwic_genes <- merge(x=kwic_genes, by.x="gene_synonym", y=dplyr::select(humanGenes, Symbol, Aliases), by.y = "Aliases")
+
+```
+
+
+```{r join verbatim criteria and nct_id}
+kwic_genes <- merge(x=dplyr::select(eligibilities, nct_id, criterion_index, criteria, criterion_type), by.x="criterion_index", y=kwic_genes, by.y="criterion_index")
+
+## rename and reorder columns
+kwic_genes <- unique(dplyr::select(kwic_genes, nct_id, criterion_index, criterion_type,criteria, context, "match"="gene_synonym", "controlled_match"="Symbol"))
+
+```
+
+
+
+
+```{r define function to index on pattern}
+indexOnPattern <- function(dataframe, pattern, featureLabel) {
+  ## get indices with matching pattern
+  indices <- grep(pattern = pattern, x=kwic_genes$context, ignore.case = TRUE)
+  ## subset dataframe
+  dataframe <- dataframe[indices, ]
+  ## add a column with featurelabel
+  dataframe$feature <- featureLabel
+  return(dataframe)
+}
+
+
+
+
+
+```
+
+
+
+
+```{r index on mutations}
+
+## define mutant pattern
+mutant_pattern <- "mutat|mutant|defect|deficien|alter|loss of function|loss-of-function"
+
+
+# mutantIndices <- grep(pattern = "mutat|mutant|defect|deficien|alter|loss of function|loss-of-function", x=kwic_genes$context, ignore.case = TRUE)
+
+# mutation_eligibilities <- kwic_genes[mutantIndices, ]
+
+## add a column to indicate matched feature
+# mutation_eligibilities$feature <- "mutation"
+
+mutation_eligibilities <- indexOnPattern(dataframe = kwic_genes, pattern = mutant_pattern, featureLabel = "mutation")
+
+
+## select and reorder columns for consistency with trialMatchDataRefresh
+mutation_eligibilities <- unique(dplyr::select(mutation_eligibilities, match, nct_id, criteria, criterion_type, feature, controlled_match ))
+```
+
+
+
+
+
+```{r split criteria into sentences}
+## split eligibilities into individual sentences 
+# eligibilities$sentences <- strsplit(eligibilities$criteria, split = "\\. ")
+# eligibilities <- as.data.frame(unnest(data = eligibilities, sentences))
+# 
+# ## create a stemmed copy
+# eligibilities$sentences_stem <- textstem::stem_strings(eligibilities$sentences)
+# 
+# ## convert to lowercase
+# eligibilities$sentences_stem <- tolower(eligibilities$sentences_stem)
+# 
+# ## add a sentence index
+# eligibilities <- eligibilities %>% group_by(criterion_index) %>% mutate(criterion_sentence_index = paste0(criterion_index, "_", row_number())) %>% as.data.frame()
+```
+
+
+
+
+```{r stem eligibility criteria}
+## create a stemmed copy
+# eligibilities$criteria_stem <- textstem::stem_strings(eligibilities$criteria)
+
+## convert to lowercase
+# eligibilities$criteria_stem <- tolower(eligibilities$criteria_stem)
+
+
+
+```
+  
+#### **NLP eligibility criteria**   
+  
+
+
+```{r apply dictionary}
+## Convert tokens into equivalence classes defined by values of a dictionary object.
+## this works, but is relatively slow... 
+# dict4 <- dictionary(list(gene = humanGenes$Aliases, alteration = "KRAS mutation"))
+# toks4 <- tokens("Patients with any BRAF or KRAS mutation status are eligible.")
+# tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE)
+
+## also this... 
+# labResultSynonyms <- unique(NCIt$Synonyms[NCIt$Class == "Laboratory or Test Result"])
+# dict4 <- dictionary(list(gene = humanGenes$Aliases, lab_result = labResultSynonyms))
+# toks4 <- tokens("Proficient mismatch repair/microsatellite stable (pMMR/MSS), histologically or cytologically-confirmed adenocarcinoma of the colon or rectum. Patients with any BRAF or KRAS mutation status are eligible.")
+# tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE)
+# as.character(tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE))
+
+
+## and this
+# cellMolDysfSynonyms <- unique(NCIt$Synonyms[NCIt$Class == "Cell or Molecular Dysfunction"])
+# dict4 <- dictionary(list(gene = humanGenes$Aliases, lab_result = labResultSynonyms, cellMol_dysfunction = cellMolDysfSynonyms))
+# toks4 <- tokens("Proficient mismatch repair/microsatellite stable (pMMR/MSS), histologically or cytologically-confirmed adenocarcinoma of the colon or rectum. Patients with any BRAF or KRAS mutation status are eligible.")
+# tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE)
+# as.character(tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE))
+
+## and this
+# neoProcessSynonyms <- unique(NCIt$Synonyms[NCIt$Class == "Neoplastic Process"])
+# dict4 <- dictionary(list(gene = humanGenes$Aliases, 
+#                          lab_result = labResultSynonyms, 
+#                          cellMol_dysfunction = cellMolDysfSynonyms, 
+#                          neoplastic_process = neoProcessSynonyms))
+
+
+
+
+# toks4 <- tokens("Proficient mismatch repair/microsatellite stable (pMMR/MSS), histologically or cytologically-confirmed adenocarcinoma of the colon or rectum. Patients with any BRAF or KRAS mutation status are eligible.")
+# #tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE)
+# as.character(tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE))
+
+
+
+## piped version
+# "BRCA Positive Serous Ovarian: Patients with serous ovarian cancer who have a harmful mutation in the breast cancer genes BRCA1 or BRCA2. (Serous tumors are the most common subtype of ovarian cancer)." %>%
+#     tokens( padding = TRUE, remove_punct=TRUE) %>%
+#     tokens_select( pattern = stopwords("en"), selection = "remove") %>%
+#     tokens_lookup( dict4, nested_scope = "key", exclusive = FALSE,valuetype = "fixed") %>%
+#     as.character() %>%
+#     paste(collapse = "', '")
+
+
+## apply to whole set of criteria
+# tic("index all criteria")
+# 
+# eligibilities_tokens_dict <- eligibilities_corpus %>%
+#   tokens( padding = TRUE, remove_punct=TRUE) %>%
+#     tokens_select( pattern = stopwords("en"), selection = "remove") %>%
+#     tokens_lookup( dict4, nested_scope = "key", exclusive = FALSE,valuetype = "fixed")
+# 
+# toc()
+
+```
+
+
+
+
+
+
+```{r keywords in context}
+## basic kwic, simple pattern...
+# kw_mutations <- kwic(eligibilities_tokens, pattern =  c("mutat*", "mutan*"), window = 5)
+# formattable(head(as.data.frame(kw_mutations), 30))
+# 
+# 
+# 
+# ## can use multi-word tokens as patterns
+# msi_synonyms <- NCIt$Synonyms[NCIt$ID=="C131459"]
+# msi_synonyms <- msi_synonyms[msi_synonyms != "Stable"]
+# msi_synonyms
+# kw_msi <- kwic(eligibilities_tokens, pattern =  phrase(msi_synonyms), window = 5, case_insensitive = TRUE)
+# formattable(head(as.data.frame(kw_msi), 30))
+```
+
+  
+  
+  
+  
+
+
+```{r define function to get pattern and context}
+#' Get context words (words within a symmetric window around the target word/phrase)
+#' sorrounding a user defined target.
+
+## reuse code from https://rdrr.io/github/prodriguezsosa/conText/src/R/get_context.R with modification to get useable values for docname
+
+## pattern may be a single string, or a vector of strings...
+
+## specify some sensible defaults...
+# get_context_mod <- function(dataframe, textcolumn, docid_field, pattern, window = 6, valuetype = "regex",what="word", ignore_case = TRUE) {
+#   #dataframe <- dataframe
+#   #pattern <- pattern
+#   #window <- window
+#   #valuetype <- valuetype
+#   #what <- what
+#   
+#   ## get a vector of TRUE/FALSE values indicating whether pattern present in dataframe
+#   pattern_present <- stringr::str_detect(dataframe[ ,which(names(dataframe)==textcolumn)], paste(stringr::regex(pattern, ignore_case = ignore_case), collapse = '|'))
+#   
+#   ## subset dataframe
+#   dataframe_subset <- dataframe[pattern_present, ]
+#   
+#   ## turn into a corpus object
+#   dataframe_subset_corpus <-  quanteda::corpus(x=dataframe_subset,
+#                       text_field = textcolumn, 
+#                       docid_field = docid_field,
+#                       #docid_field = "criterion_sentence_index", 
+#                       unique_docnames = FALSE)
+#   
+#   #out <- dataframe_subset_corpus
+#   
+#   ## get context of pattern
+#   kwic_i <- as.data.frame(quanteda::kwic(quanteda::tokens(dataframe_subset_corpus, what = what), pattern = quanteda::phrase(pattern), window = window, valuetype = valuetype, case_insensitive = TRUE))
+#   
+#   out <- kwic_i
+#   out <- as.data.frame(kwic_i) %>%
+#       dplyr::select(docname, keyword, pre, post) %>% # keep pre and post (see kwic documentation for info on values)
+#       dplyr::mutate(context = paste(pre,keyword, post, sep = " ")) %>% # combine pre and post into one variable named context
+#       dplyr::select(-c('pre', 'post')) %>% # drop pre & post
+#       dplyr::rename(target = keyword) # align variable names (we use target instead of keyword)
+#   
+#   return(out)
+# }
+# 
+
+
+```
+
+
+```{r index on mutations}
+## for example 
+# head(get_context_mod(dataframe = eligibilities, textcolumn = "sentences", docid_field = "criterion_sentence_index", pattern = c("mutat", "\\bdeficien")),20)
+
+
+## can do something like this....
+## pass a list of human gene aliases as the pattern to detect...
+
+# head(quanteda::kwic(x=eligibilities_subset$sentences, pattern=humanGenes$Aliases, case_insensitive=FALSE))
+
+
+```
+
+##### **Write indexed eligibility criteria to database**  
+
+
+
+
+
+
+
+
+
+
+
+
 ### **Map result groups to design groups**  
   
 Interventions are linked to design groups (study arms).   
