@@ -131,9 +131,10 @@ humanGenes <- dplyr::filter(humanGenes, nchar(Aliases)>1)
 ## drop any rows where Aliases is a number
 humanGenes <- humanGenes[is.na(as.numeric(humanGenes$Aliases)), ]
 
+## drop any rows where Aliases is a common false hit (e.g. Roman numerals)
+humanGenes <- humanGenes[!humanGenes$Aliases %in% c("I", "II", "III", "IV", "V", "VI", "VII", "VIII"), ]
 
 ## NOW humanGenes TABLE CONTAINS ALL HUMAN GENES AND THEIR SYNONYMS
-## (61,593 unique symbols, 130,989 rows)
 
 ## stop timer
 toc()
@@ -832,19 +833,16 @@ toc()
 ## concatenate pre, gene name and post tokens
 kwic_genes <- dplyr::mutate(kwic_genes, context = paste(pre,keyword, post, sep = " "))
 
-
 ## select and rename columns
 kwic_genes <- dplyr::select(kwic_genes, "criterion_index"="docname", context, "gene_synonym"=pattern)
 
 ```
-
 
 ```{r join Entrez Symbols}
 
 kwic_genes <- merge(x=kwic_genes, by.x="gene_synonym", y=dplyr::select(humanGenes, Symbol, Aliases), by.y = "Aliases")
 
 ```
-
 
 ```{r join verbatim criteria and nct_id}
 kwic_genes <- merge(x=dplyr::select(eligibilities, nct_id, criterion_index, criteria, criterion_type), by.x="criterion_index", y=kwic_genes, by.y="criterion_index")
@@ -853,9 +851,6 @@ kwic_genes <- merge(x=dplyr::select(eligibilities, nct_id, criterion_index, crit
 kwic_genes <- unique(dplyr::select(kwic_genes, nct_id, criterion_index, criterion_type,criteria, context, "match"="gene_synonym", "controlled_match"="Symbol"))
 
 ```
-
-
-
 
 ```{r define function to index on pattern}
 indexOnPattern <- function(dataframe, pattern, featureLabel) {
@@ -874,28 +869,109 @@ indexOnPattern <- function(dataframe, pattern, featureLabel) {
 
 ```
 
-
-
-
 ```{r index on mutations}
 
 ## define mutant pattern
 mutant_pattern <- "mutat|mutant|defect|deficien|alter|loss of function|loss-of-function"
 
-
-# mutantIndices <- grep(pattern = "mutat|mutant|defect|deficien|alter|loss of function|loss-of-function", x=kwic_genes$context, ignore.case = TRUE)
-
-# mutation_eligibilities <- kwic_genes[mutantIndices, ]
-
-## add a column to indicate matched feature
-# mutation_eligibilities$feature <- "mutation"
-
 mutation_eligibilities <- indexOnPattern(dataframe = kwic_genes, pattern = mutant_pattern, featureLabel = "mutation")
-
 
 ## select and reorder columns for consistency with trialMatchDataRefresh
 mutation_eligibilities <- unique(dplyr::select(mutation_eligibilities, match, nct_id, criteria, criterion_type, feature, controlled_match ))
 ```
+
+```{r index on rearrangements}
+
+rearrangement_eligibilities <- indexOnPattern(dataframe = kwic_genes, pattern = " fusion|rearrangement|truncation|truncated|deletion|deleted|lost|duplication|duplicated|trasloc", featureLabel = "rearrangement")
+
+## select and reorder columns for consistency with trialMatchDataRefresh
+rearrangement_eligibilities <- unique(dplyr::select(rearrangement_eligibilities, names(mutation_eligibilities) ))
+
+```
+
+```{r index on copy number loss}
+## NOTE USE WORD RANGE OF 2 FOR LOSS, OTHERWISE GET TOO MANY FALSE HITS (including "loss of function" etc, which is indexed as a mutation)
+tic("get kwic for genes 2")
+kwic_genes_2 <- as.data.frame(kwic(eligibilities_tokens, pattern =  unique(humanGenes$Aliases), window = 2, case_insensitive = FALSE))
+toc()
+#formattable(head(as.data.frame(kw_genes), 30))
+
+## concatenate pre, gene name and post tokens
+kwic_genes_2 <- dplyr::mutate(kwic_genes_2, context = paste(pre,keyword, post, sep = " "))
+
+## select and rename columns
+kwic_genes_2 <- dplyr::select(kwic_genes_2, "criterion_index"="docname", context, "gene_synonym"=pattern)
+
+
+loss_eligibilities <- indexOnPattern(dataframe = kwic_genes, pattern = " loss", featureLabel = "loss")
+
+## select and reorder columns for consistency with trialMatchDataRefresh
+loss_eligibilities <- unique(dplyr::select(loss_eligibilities, names(mutation_eligibilities) ))
+
+```
+
+```{r index on amplifications}
+
+amplification_eligibilities <- indexOnPattern(dataframe = kwic_genes, pattern = " amplifi|overexpress", featureLabel = "amplification")
+
+## select and reorder columns for consistency with trialMatchDataRefresh
+amplification_eligibilities <- unique(dplyr::select(amplification_eligibilities, names(mutation_eligibilities) ))
+
+```
+
+```{r index on prior therapies}
+
+
+therapy_eligibilities <- eligibilities[grep(pattern = "previous therapy|prior therapy|previous treatment|prior treatment", x=eligibilities$criteria, ignore.case = TRUE), ]
+
+therapy_eligibilities$feature <- "PRIOR_THERAPY"
+
+## drop redundant rows, if any
+therapy_eligibilities <- unique(therapy_eligibilities)
+
+## since prior therapies tend to be a mixture of 2-word synonyms, 3-word synonyms etc, plus parent terms, best approach for now is to not try and match against a therapy
+
+
+
+# add columns for row binding only
+therapy_eligibilities$match <- NA
+therapy_eligibilities$controlled_match <- NA
+therapy_eligibilities <- unique(dplyr::select(therapy_eligibilities, names(mutation_eligibilities) ))
+
+
+## instead, in the UI, just show inclusion and exclusion criteria (separately) related to prior therapies
+```
+
+
+
+```{r sentiment analysis practice}
+
+
+# sentence2 <- "Part A3: Participants with presence of loss of function mutation in the gene for ARIDIA, ATRX and /or DAXX and ATM"
+# 
+# sentiment <- SentimentAnalysis::analyzeSentiment(sentence2)
+# convertToBinaryResponse(sentiment)$SentimentQDAP
+
+
+# sentimentr::sentiment("Part A3: Participants with presence of loss of function mutation in the gene for ARIDIA, ATRX and /or DAXX and ATM")$sentiment
+# 
+# sentimentr::sentiment("Known BAP1 loss per immunohistochemistry (IHC) or NGS")$sentiment
+# 
+# sentimentr::sentiment("No genomic alteration of APC, MUTYH, SMAD4, BMPR1A, PTEN or STK11 in case of adenomatous polyposis or hamartoma presentation")$sentiment
+# 
+# sentimentr::sentiment("")$sentiment
+# 
+# sentimentr::sentiment("")$sentiment
+
+
+```
+
+
+
+
+
+
+
 
 
 
@@ -916,9 +992,6 @@ mutation_eligibilities <- unique(dplyr::select(mutation_eligibilities, match, nc
 # eligibilities <- eligibilities %>% group_by(criterion_index) %>% mutate(criterion_sentence_index = paste0(criterion_index, "_", row_number())) %>% as.data.frame()
 ```
 
-
-
-
 ```{r stem eligibility criteria}
 ## create a stemmed copy
 # eligibilities$criteria_stem <- textstem::stem_strings(eligibilities$criteria)
@@ -930,10 +1003,6 @@ mutation_eligibilities <- unique(dplyr::select(mutation_eligibilities, match, nc
 
 ```
   
-#### **NLP eligibility criteria**   
-  
-
-
 ```{r apply dictionary}
 ## Convert tokens into equivalence classes defined by values of a dictionary object.
 ## this works, but is relatively slow... 
@@ -993,11 +1062,6 @@ mutation_eligibilities <- unique(dplyr::select(mutation_eligibilities, match, nc
 
 ```
 
-
-
-
-
-
 ```{r keywords in context}
 ## basic kwic, simple pattern...
 # kw_mutations <- kwic(eligibilities_tokens, pattern =  c("mutat*", "mutan*"), window = 5)
@@ -1012,12 +1076,6 @@ mutation_eligibilities <- unique(dplyr::select(mutation_eligibilities, match, nc
 # kw_msi <- kwic(eligibilities_tokens, pattern =  phrase(msi_synonyms), window = 5, case_insensitive = TRUE)
 # formattable(head(as.data.frame(kw_msi), 30))
 ```
-
-  
-  
-  
-  
-
 
 ```{r define function to get pattern and context}
 #' Get context words (words within a symmetric window around the target word/phrase)
@@ -1067,23 +1125,33 @@ mutation_eligibilities <- unique(dplyr::select(mutation_eligibilities, match, nc
 
 ```
 
+##### **Write indexed eligibility criteria to database**  
 
-```{r index on mutations}
-## for example 
-# head(get_context_mod(dataframe = eligibilities, textcolumn = "sentences", docid_field = "criterion_sentence_index", pattern = c("mutat", "\\bdeficien")),20)
+```{r write indexed eligibilities to database}
 
 
-## can do something like this....
-## pass a list of human gene aliases as the pattern to detect...
-
-# head(quanteda::kwic(x=eligibilities_subset$sentences, pattern=humanGenes$Aliases, case_insensitive=FALSE))
+indexed_eligibilities <- unique(rbind(mutation_eligibilities, rearrangement_eligibilities, loss_eligibilities, amplification_eligibilities, therapy_eligibilities))
 
 
 ```
 
-##### **Write indexed eligibility criteria to database**  
+```{r write data to csv for word embeddings}
 
+## select all verbatim criteria
+raw_criteria <- unique(dplyr::select(eligibilities, criteria))
 
+## select and rename columns from indexed eligibilities
+annotated_criteria <- unique(dplyr::select(indexed_eligibilities, match, "criterion"="criteria", feature, "entrez_gene"="controlled_match"))
+## drop rows related to prior tx
+annotated_criteria <- unique(dplyr::filter(annotated_criteria, feature != "PRIOR_THERAPY"))
+## drop rows with obvious false hits
+annotated_criteria <- annotated_criteria[!annotated_criteria$match %in% c("B12", "EL", "G6PD", "CAT", "MRI", "CT", "polymerase", "A1", "AA", "ARMS", "IMPACT", "STEPS", "OTC", "CAV", "NB", "PSA", "PK"), ]
+
+## write to file
+write.csv(x=raw_criteria, file = "raw_criteria.csv", row.names = FALSE)
+write.csv(x=annotated_criteria, file = "annotated_criteria.csv", row.names = FALSE)
+
+```
 
 
 
