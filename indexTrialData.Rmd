@@ -249,6 +249,18 @@ dbWriteTable(conn = con,name = "NCIt", value = NCIt, overwrite=TRUE)
 
 ```
   
+```{r subset NCIt for Pharmacologic Substance}
+
+
+NCIt_Pharmacologics <- unique(dplyr::filter(NCIt, Class=="Pharmacologic Substance"))
+
+## delete NCIt and NCItParents objects to save memory
+# rm(NCIt)
+rm(NCItParents)
+
+```
+  
+
 #### **Map NCIt drugs to targets via KEGG**  
   
 ```{r use KEGG BRITE}
@@ -402,17 +414,6 @@ dbListTables(con)
 
 
 
-
-```
-
-```{r subset NCIt for Pharmacologic Substance}
-
-
-NCIt_Pharmacologics <- unique(dplyr::filter(NCIt, Class=="Pharmacologic Substance"))
-
-## delete NCIt and NCItParents objects to save memory
-# rm(NCIt)
-rm(NCItParents)
 
 ```
 
