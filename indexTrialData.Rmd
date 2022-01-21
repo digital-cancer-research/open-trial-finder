@@ -1513,7 +1513,7 @@ amplification_rg <- unique(dplyr::select(amplification_rg, names(mutation_rg) ))
 ```
   
 
-```{r write indexed design groups to database}
+```{r write indexed result groups to database}
 
 indexed_rg <- unique(rbind(mutation_rg, rearrangement_rg, amplification_rg))
 
