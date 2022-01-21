@@ -813,7 +813,7 @@ toc()
 
 ```{r tokenise the corpus}
 tic("tokenise eligibilities corpus")
-eligibilities_tokens <- tokens(eligibilities_corpus, remove_punct=TRUE, padding = FALSE)
+eligibilities_tokens <- tokens(eligibilities_corpus, remove_punct=TRUE, padding = FALSE, split_hyphens = TRUE)
 toc()
 ```
 
@@ -826,7 +826,7 @@ toc()
 ```{r get context words surrounding gene names}
 
 tic("get kwic for genes")
-kwic_genes <- as.data.frame(kwic(eligibilities_tokens, pattern =  unique(humanGenes$Aliases), window = 6, case_insensitive = FALSE))
+kwic_genes <- as.data.frame(kwic(eligibilities_tokens, pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE))
 toc()
 #formattable(head(as.data.frame(kw_genes), 30))
 
@@ -855,7 +855,7 @@ kwic_genes <- unique(dplyr::select(kwic_genes, nct_id, criterion_index, criterio
 ```{r define function to index on pattern}
 indexOnPattern <- function(dataframe, pattern, featureLabel) {
   ## get indices with matching pattern
-  indices <- grep(pattern = pattern, x=kwic_genes$context, ignore.case = TRUE)
+  indices <- grep(pattern = pattern, x=dataframe$context, ignore.case = TRUE)
   ## subset dataframe
   dataframe <- dataframe[indices, ]
   ## add a column with featurelabel
@@ -872,7 +872,7 @@ indexOnPattern <- function(dataframe, pattern, featureLabel) {
 ```{r index on mutations}
 
 ## define mutant pattern
-mutant_pattern <- "mutat|mutant|defect|deficien|alter|loss of function|loss-of-function"
+mutant_pattern <- "mutat|mutant|defect|deficien|altera|altere|loss of function|loss-of-function"
 
 mutation_eligibilities <- indexOnPattern(dataframe = kwic_genes, pattern = mutant_pattern, featureLabel = "mutation")
 
@@ -882,7 +882,9 @@ mutation_eligibilities <- unique(dplyr::select(mutation_eligibilities, match, nc
 
 ```{r index on rearrangements}
 
-rearrangement_eligibilities <- indexOnPattern(dataframe = kwic_genes, pattern = " fusion|rearrangement|truncation|truncated|deletion|deleted|lost|duplication|duplicated|trasloc", featureLabel = "rearrangement")
+rearrangement_pattern <- " fusion|rearrangement|truncation|truncated|deletion|deleted|lost|duplication|duplicated|transloc"
+
+rearrangement_eligibilities <- indexOnPattern(dataframe = kwic_genes, pattern = rearrangement_pattern, featureLabel = "rearrangement")
 
 ## select and reorder columns for consistency with trialMatchDataRefresh
 rearrangement_eligibilities <- unique(dplyr::select(rearrangement_eligibilities, names(mutation_eligibilities) ))
@@ -902,8 +904,9 @@ kwic_genes_2 <- dplyr::mutate(kwic_genes_2, context = paste(pre,keyword, post, s
 ## select and rename columns
 kwic_genes_2 <- dplyr::select(kwic_genes_2, "criterion_index"="docname", context, "gene_synonym"=pattern)
 
+loss_pattern <- " loss"
 
-loss_eligibilities <- indexOnPattern(dataframe = kwic_genes, pattern = " loss", featureLabel = "loss")
+loss_eligibilities <- indexOnPattern(dataframe = kwic_genes, pattern = loss_pattern, featureLabel = "loss")
 
 ## select and reorder columns for consistency with trialMatchDataRefresh
 loss_eligibilities <- unique(dplyr::select(loss_eligibilities, names(mutation_eligibilities) ))
@@ -912,7 +915,9 @@ loss_eligibilities <- unique(dplyr::select(loss_eligibilities, names(mutation_el
 
 ```{r index on amplifications}
 
-amplification_eligibilities <- indexOnPattern(dataframe = kwic_genes, pattern = " amplifi|overexpress", featureLabel = "amplification")
+amplification_pattern <- " amplifi|overexpress"
+
+amplification_eligibilities <- indexOnPattern(dataframe = kwic_genes, pattern = amplification_pattern, featureLabel = "amplification")
 
 ## select and reorder columns for consistency with trialMatchDataRefresh
 amplification_eligibilities <- unique(dplyr::select(amplification_eligibilities, names(mutation_eligibilities) ))
@@ -921,8 +926,9 @@ amplification_eligibilities <- unique(dplyr::select(amplification_eligibilities,
 
 ```{r index on prior therapies}
 
+prior_tx_pattern <- "previous therapy|prior therapy|previous treatment|prior treatment"
 
-therapy_eligibilities <- eligibilities[grep(pattern = "previous therapy|prior therapy|previous treatment|prior treatment", x=eligibilities$criteria, ignore.case = TRUE), ]
+therapy_eligibilities <- eligibilities[grep(pattern = prior_tx_pattern, x=eligibilities$criteria, ignore.case = TRUE), ]
 
 therapy_eligibilities$feature <- "PRIOR_THERAPY"
 
@@ -965,17 +971,6 @@ therapy_eligibilities <- unique(dplyr::select(therapy_eligibilities, names(mutat
 
 
 ```
-
-
-
-
-
-
-
-
-
-
-
 
 ```{r split criteria into sentences}
 ## split eligibilities into individual sentences 
@@ -1132,7 +1127,11 @@ therapy_eligibilities <- unique(dplyr::select(therapy_eligibilities, names(mutat
 
 indexed_eligibilities <- unique(rbind(mutation_eligibilities, rearrangement_eligibilities, loss_eligibilities, amplification_eligibilities, therapy_eligibilities))
 
+## create as a table in database
+dbWriteTable(conn = con,name = "indexedEligibility", value = indexed_eligibilities, overwrite=TRUE)
 
+## check it has saved
+dbListTables(con)
 ```
 
 ```{r write data to csv for word embeddings}
@@ -1152,28 +1151,8 @@ write.csv(x=raw_criteria, file = "raw_criteria.csv", row.names = FALSE)
 write.csv(x=annotated_criteria, file = "annotated_criteria.csv", row.names = FALSE)
 
 ```
-
-
-
-
-
-
-
-
-
-
-### **Map result groups to design groups**  
   
-Interventions are linked to design groups (study arms).   
-  
-Results are reported for result groups, but these are not explicitly mapped to design groups. In order to know how outcomes relate to treatment, we need to map from result groups to design groups.  
-  
-This is not always obvious...  
-  
-* Where a study has only a single design group, we will map all result groups for that study to that design group.  
-* If a result group title exactly matches a design group title, we will associate interventions based on the design group interventions.  
-* For remaining studies, we will predict which design group each result group belongs to based on comparison of the titles and descriptions for design and result groups.    
-  
+### **Get design group information**  
   
 #### **Get design groups (study arms)**  
   
@@ -1192,6 +1171,146 @@ design_groups <- dbGetQuery(conn2,getDesignGroupsQ)
 
 ```
   
+#### **Index design groups**  
+
+In some cases, patients are allocated to arms according to features (e.g. genetic alterations) - this information is relevant to clinician's evaluation of potential studies.  
+  
+Therefore, we will index design groups (titles and descriptions) in same way as for eligibility criteria...   
+  
+
+```{r create corpus for design groups}
+tic("create design groups corpus")
+dg_corpus <-  quanteda::corpus(x=unique(dplyr::select(design_groups, nct_id, dg_id, dg_title_description)),
+                                          text_field = "dg_title_description", 
+                                          docid_field = "dg_id",
+                                          unique_docnames = FALSE)
+toc()
+
+
+```
+
+```{r change units of dg corpus to sentences}
+dg_corpus <- corpus_reshape(dg_corpus, to = "sentences")
+
+```
+
+```{r tokenise the dg corpus}
+tic("tokenise dg corpus")
+dg_tokens <- tokens(dg_corpus, remove_punct=TRUE, padding = FALSE, split_hyphens = TRUE)
+toc()
+```
+
+```{r remove stopwords from dg tokens}
+# tic("remove stopwords")
+# dg_tokens <- tokens_select(x=dg_tokens, pattern = stopwords("en"), selection = "remove", padding = FALSE)
+# toc()
+```
+
+```{r get context words surrounding gene names in dg}
+
+tic("get kwic for genes, dgs")
+kwic_genes_dg <- as.data.frame(kwic(dg_tokens, pattern =  unique(humanGenes$Aliases), window = 6, case_insensitive = FALSE))
+toc()
+#formattable(head(as.data.frame(kw_genes), 30))
+
+## concatenate pre, gene name and post tokens
+kwic_genes_dg <- dplyr::mutate(kwic_genes_dg, context = paste(pre,keyword, post, sep = " "))
+
+## select and rename columns
+kwic_genes_dg <- dplyr::select(kwic_genes_dg, "dg_id"="docname", context, "gene_synonym"=pattern)
+
+## trim off the sentence ID added to dg_id (if using sentence-level corpus)
+kwic_genes_dg$dg_id <- gsub(pattern = "\\..*" , replacement = "", x=kwic_genes_dg$dg_id)
+
+```
+
+```{r join Entrez Symbols to kwic_genes_dg}
+
+kwic_genes_dg <- merge(x=kwic_genes_dg, by.x="gene_synonym", y=dplyr::select(humanGenes, Symbol, Aliases), by.y = "Aliases")
+
+```
+
+```{r join dg title and nct_id}
+kwic_genes_dg <- merge(x=dplyr::select(design_groups, nct_id, dg_id, dg_title, dg_description), by.x="dg_id", y=kwic_genes_dg, by.y="dg_id")
+
+## rename and reorder columns
+kwic_genes_dg <- unique(dplyr::select(kwic_genes_dg, nct_id, dg_id, dg_title,dg_description, context, "match"="gene_synonym", "controlled_match"="Symbol"))
+
+```
+  
+
+```{r index dg on mutations}
+
+
+
+mutation_dg <- indexOnPattern(dataframe = kwic_genes_dg, pattern = mutant_pattern, featureLabel = "mutation")
+
+## select and reorder columns for consistency with trialMatchDataRefresh
+mutation_dg <- unique(dplyr::select(mutation_dg, match, nct_id, dg_title, context, feature, controlled_match ))
+```
+
+```{r index dg on rearrangements}
+
+rearrangement_dg <- indexOnPattern(dataframe = kwic_genes_dg, pattern = rearrangement_pattern, featureLabel = "rearrangement")
+
+## select and reorder columns for consistency 
+rearrangement_dg <- unique(dplyr::select(rearrangement_dg, match, nct_id, dg_title, context, feature, controlled_match ))
+
+```
+
+```{r index on copy number loss}
+## NOTE USE WORD RANGE OF 2 FOR LOSS, OTHERWISE GET TOO MANY FALSE HITS (including "loss of function" etc, which is indexed as a mutation)
+tic("get kwic for genes 2")
+kwic_genes_2 <- as.data.frame(kwic(eligibilities_tokens, pattern =  unique(humanGenes$Aliases), window = 2, case_insensitive = FALSE))
+toc()
+#formattable(head(as.data.frame(kw_genes), 30))
+
+## concatenate pre, gene name and post tokens
+kwic_genes_2 <- dplyr::mutate(kwic_genes_2, context = paste(pre,keyword, post, sep = " "))
+
+## select and rename columns
+kwic_genes_2 <- dplyr::select(kwic_genes_2, "criterion_index"="docname", context, "gene_synonym"=pattern)
+
+loss_pattern <- " loss"
+
+loss_eligibilities <- indexOnPattern(dataframe = kwic_genes, pattern = loss_pattern, featureLabel = "loss")
+
+## select and reorder columns for consistency with trialMatchDataRefresh
+loss_eligibilities <- unique(dplyr::select(loss_eligibilities, names(mutation_eligibilities) ))
+
+```
+
+```{r index on amplifications}
+
+amplification_pattern <- " amplifi|overexpress"
+
+amplification_eligibilities <- indexOnPattern(dataframe = kwic_genes, pattern = amplification_pattern, featureLabel = "amplification")
+
+## select and reorder columns for consistency with trialMatchDataRefresh
+amplification_eligibilities <- unique(dplyr::select(amplification_eligibilities, names(mutation_eligibilities) ))
+
+```
+  
+  
+  
+  
+  
+  
+  
+### **Map result groups to design groups**  
+  
+Interventions are linked to design groups (study arms).   
+  
+Results are reported for result groups, but these are not explicitly mapped to design groups. In order to know how outcomes relate to treatment, we need to map from result groups to design groups.  
+  
+This is not always obvious...  
+  
+* Where a study has only a single design group, we will map all result groups for that study to that design group.  
+* If a result group title exactly matches a design group title, we will associate interventions based on the design group interventions.  
+* For remaining studies, we will predict which design group each result group belongs to based on comparison of the titles and descriptions for design and result groups.    
+  
+  
+
 #### **Get result groups**  
   
 ```{r get result groups}
