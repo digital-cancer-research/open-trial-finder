@@ -132,7 +132,7 @@ humanGenes <- dplyr::filter(humanGenes, nchar(Aliases)>1)
 humanGenes <- humanGenes[is.na(as.numeric(humanGenes$Aliases)), ]
 
 ## drop any rows where Aliases is a common false hit (e.g. Roman numerals)
-humanGenes <- humanGenes[!humanGenes$Aliases %in% c("I", "II", "III", "IV", "V", "VI", "VII", "VIII"), ]
+humanGenes <- humanGenes[!humanGenes$Aliases %in% c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "NA", "B12", "EL", "G6PD", "CAT", "CT", "MRI", "OTC", "polymerase", "G1", "PI", "COPD", "A1", "ARM", "ALS", "AA", "B5", "C1", "C2", "C3", "C5", "C6", "D3", "D4", "A-2", "A3", "1D", "1A", "L1"), ]
 
 ## NOW humanGenes TABLE CONTAINS ALL HUMAN GENES AND THEIR SYNONYMS
 
@@ -260,6 +260,106 @@ dbWriteTable(conn = con,name = "NCIt", value = NCIt, overwrite=TRUE)
 
 
 
+```
+  
+```{r use pathways in cancer}
+
+## the KEGG pathways in cancer entry (hsa05200) is associated with 329 different drugs...
+hsa05200_list <- keggGet("hsa05200")
+# the drug names are stored in even numbered elements
+# the KEGG drug IDs are stored in odd numbered elements
+hsa05200_list_drugs <- hsa05200_list[1][[1]]$DRUG
+
+kegg_drugs <- data.frame(
+  drug_name = hsa05200_list_drugs[seq(2, length(hsa05200_list_drugs), 2)], ## get even numbered elements 
+  kegg_drug_id = hsa05200_list_drugs[seq(1, length(hsa05200_list_drugs), 2)] ## get odd numbered elements
+)
+
+## process drug names
+kegg_drugs$drug_name <- gsub(pattern = " \\(.*", replacement = "", x=kegg_drugs$drug_name)
+
+## join to NCIt ID
+kegg_drugs$drug_name_lower <- tolower(kegg_drugs$drug_name)
+NCIt_Pharmacologics$Synonyms_lower <- tolower(NCIt_Pharmacologics$Synonyms)
+
+kegg_drugs <- unique(merge(x=dplyr::select(NCIt_Pharmacologics, "NCIt_drug_id"="ID", Synonyms_lower ), 
+      by.x = "Synonyms_lower", 
+      y=kegg_drugs, by.y="drug_name_lower", all.y=TRUE))
+
+# can use drug IDs to get targets, e.g. 
+# keggGet("D12282")[[1]]$TARGET$TARGET
+## however, cannot use this directly, as some drugs map to multiple targets, e.g. 
+# keggGet("D11138")[[1]]$TARGET$TARGET
+
+## add a column that will hold ID for target gene(s)
+kegg_drugs$target_id <- NA
+for(i in 1:nrow(kegg_drugs)) {
+  drug_id = as.character(kegg_drugs$kegg_drug_id[i])
+  geneid <- NA
+  tryCatch({geneid <- keggGet(drug_id)[[1]]$TARGET$TARGET},
+             error=function(cond) {return(NA)})
+  print(geneid)
+  if(length(geneid)>0) kegg_drugs$target_id[i] <- geneid
+}
+## parse to retain only the id numbers for target genes
+kegg_drugs$target_id <- gsub(pattern = ".*HSA:", replacement = "", x=kegg_drugs$target_id)
+
+kegg_drugs$target_id <- gsub(pattern = "\\].*", replacement = "", x=kegg_drugs$target_id)
+
+# split on space into individual ids, where applicable
+kegg_drugs$target_id <- strsplit(kegg_drugs$target_id, split = " ")
+kegg_drugs <- unnest(data = kegg_drugs, target_id)
+kegg_drugs <- as.data.frame(kegg_drugs)
+kegg_drugs$target_id <- str_squish(kegg_drugs$target_id)
+kegg_drugs$target_id <- paste0("hsa:", kegg_drugs$target_id)
+## need to parse the hsa codes, convert to lowercase and then call e.g. 
+# keggGet("hsa:4914")[[1]]$SYMBOL
+
+## add a column that will hold symbol for target gene(s)
+kegg_drugs$target_symbol <- NA
+for(i in 1:nrow(kegg_drugs)) {
+  target_id = as.character(kegg_drugs$target_id[i])
+  target_symbol <- NA
+  tryCatch({target_symbol <- keggGet(target_id)[[1]]$SYMBOL},
+             error=function(cond) {return(NA)})
+  print(target_symbol)
+  if(length(target_symbol)>0) kegg_drugs$target_symbol[i] <- target_symbol
+}
+## parse to retain only the first value (Entrez symbol)
+kegg_drugs$target_symbol <- gsub(pattern = ",.*", replacement = "", x=kegg_drugs$target_symbol)
+
+## select and reorder columns
+kegg_drugs <- unique(dplyr::select(kegg_drugs, NCIt_drug_id, drug_name, target_symbol))
+
+
+```
+
+  
+```{r write kegg drugs to database}
+
+## create as a table in database
+dbWriteTable(conn = con,name = "kegg_drugs", value = kegg_drugs, overwrite=TRUE)
+
+dbListTables(con)
+
+```
+
+  
+#### **Get list of drugs and targets from cancer drugs database**  
+  
+
+
+```{r get cancer drugs from db}
+
+## a database of licensed cancer drugs is maintained at https://www.anticancerfund.org/en/cancerdrugs-db 
+## machine-readable version can be downloaded from... 
+# https://acfdata.coworks.be/cancerdrugsdb.txt
+
+# cancer_drugs <- read.delim(file="https://acfdata.coworks.be/cancerdrugsdb.txt", header = TRUE, sep = "\t", quote = "\"", dec = ".", fill = TRUE, comment.char = "", stringsAsFactors = FALSE)
+## as of 01/11/2021, there are 282 drugs in this database
+
+
+## however, drugs such as Inavolisib don't appear in this list, but do have entries in KEGG... 
 ```
   
 #### **Map NCIt drugs to targets via NCIt relationships**   
@@ -1170,6 +1270,16 @@ design_groups <- dbGetQuery(conn2,getDesignGroupsQ)
 ## NOTE, SOME STUDIES HAVE NO DESIGN GROUPS SPECIFIED, BUT MAY HAVE RESULT GROUPS SPECIFIED
 
 ```
+
+```{r concatenate titles and descriptions for design groups}
+
+design_groups$dg_title_description <- paste(design_groups$dg_title, design_groups$dg_description, sep = ": ")
+
+## replace mu (micro) symbols with u as this causes mapping function to barf
+design_groups$dg_title_description <- gsub(pattern = "\U00B5|\U03BC", replacement = "u", x=design_groups$dg_title_description)
+
+```
+
   
 #### **Index design groups**  
 
@@ -1241,8 +1351,6 @@ kwic_genes_dg <- unique(dplyr::select(kwic_genes_dg, nct_id, dg_id, dg_title,dg_
 
 ```{r index dg on mutations}
 
-
-
 mutation_dg <- indexOnPattern(dataframe = kwic_genes_dg, pattern = mutant_pattern, featureLabel = "mutation")
 
 ## select and reorder columns for consistency with trialMatchDataRefresh
@@ -1258,40 +1366,27 @@ rearrangement_dg <- unique(dplyr::select(rearrangement_dg, match, nct_id, dg_tit
 
 ```
 
-```{r index on copy number loss}
-## NOTE USE WORD RANGE OF 2 FOR LOSS, OTHERWISE GET TOO MANY FALSE HITS (including "loss of function" etc, which is indexed as a mutation)
-tic("get kwic for genes 2")
-kwic_genes_2 <- as.data.frame(kwic(eligibilities_tokens, pattern =  unique(humanGenes$Aliases), window = 2, case_insensitive = FALSE))
-toc()
-#formattable(head(as.data.frame(kw_genes), 30))
+```{r index dg on amplifications}
 
-## concatenate pre, gene name and post tokens
-kwic_genes_2 <- dplyr::mutate(kwic_genes_2, context = paste(pre,keyword, post, sep = " "))
 
-## select and rename columns
-kwic_genes_2 <- dplyr::select(kwic_genes_2, "criterion_index"="docname", context, "gene_synonym"=pattern)
+amplification_dg <- indexOnPattern(dataframe = kwic_genes_dg, pattern = amplification_pattern, featureLabel = "amplification")
 
-loss_pattern <- " loss"
-
-loss_eligibilities <- indexOnPattern(dataframe = kwic_genes, pattern = loss_pattern, featureLabel = "loss")
-
-## select and reorder columns for consistency with trialMatchDataRefresh
-loss_eligibilities <- unique(dplyr::select(loss_eligibilities, names(mutation_eligibilities) ))
-
-```
-
-```{r index on amplifications}
-
-amplification_pattern <- " amplifi|overexpress"
-
-amplification_eligibilities <- indexOnPattern(dataframe = kwic_genes, pattern = amplification_pattern, featureLabel = "amplification")
-
-## select and reorder columns for consistency with trialMatchDataRefresh
-amplification_eligibilities <- unique(dplyr::select(amplification_eligibilities, names(mutation_eligibilities) ))
+## select and reorder columns for consistency 
+amplification_dg <- unique(dplyr::select(amplification_dg, names(rearrangement_dg) ))
 
 ```
   
-  
+
+```{r write indexed design groups to database}
+
+indexed_dg <- unique(rbind(mutation_dg, rearrangement_dg, amplification_dg))
+
+## create as a table in database
+dbWriteTable(conn = con,name = "indexedDesignGroups", value = indexed_dg, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+```  
   
   
   
@@ -1416,15 +1511,6 @@ result_groups$rg_title_description <- paste(result_groups$rg_title, result_group
 
 ## replace mu (micro) symbols with u as this causes mapping function to barf
 result_groups$rg_title_description <- gsub(pattern = "\U00B5|\U03BC", replacement = "u", x=result_groups$rg_title_description)
-
-```
-
-```{r concatenate titles and descriptions for design groups}
-
-design_groups$dg_title_description <- paste(design_groups$dg_title, design_groups$dg_description, sep = ": ")
-
-## replace mu (micro) symbols with u as this causes mapping function to barf
-design_groups$dg_title_description <- gsub(pattern = "\U00B5|\U03BC", replacement = "u", x=design_groups$dg_title_description)
 
 ```
 
