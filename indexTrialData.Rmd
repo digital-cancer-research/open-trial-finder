@@ -1388,7 +1388,142 @@ dbWriteTable(conn = con,name = "indexedDesignGroups", value = indexed_dg, overwr
 dbListTables(con)
 ```  
   
+### **Get result groups**  
   
+#### **Get result groups**  
+  
+```{r get result groups}
+getResultGroupsQ <- paste0("select rg.nct_id, rg.id as rg_id, ctgov_group_code, result_type, rg.title as rg_title, rg.description as rg_description
+from result_groups rg 
+where rg.nct_id in (",
+"", studyIDsForSQL,
+")")
+
+## get criteria from clinicaltrials.gov
+result_groups <- dbGetQuery(conn2,getResultGroupsQ)
+
+```
+    
+
+```{r concatenate titles and descriptions for result groups}
+
+result_groups$rg_title_description <- paste(result_groups$rg_title, result_groups$rg_description, sep = ": ")
+
+## replace mu (micro) symbols with u as this causes mapping function to barf
+result_groups$rg_title_description <- gsub(pattern = "\U00B5|\U03BC", replacement = "u", x=result_groups$rg_title_description)
+
+```
+  
+  
+  
+  
+  
+#### **Index result groups**  
+
+In some cases, results are analysed according to features (e.g. genetic alterations) - this information is relevant to clinician's evaluation of potential studies.  
+  
+Therefore, we will index result groups (titles and descriptions) in same way as for eligibility criteria...   
+  
+
+```{r create corpus for result groups}
+tic("create design groups corpus")
+rg_corpus <-  quanteda::corpus(x=unique(dplyr::select(result_groups, nct_id, rg_id, rg_title_description)),
+                                          text_field = "rg_title_description", 
+                                          docid_field = "rg_id",
+                                          unique_docnames = FALSE)
+toc()
+
+
+```
+
+```{r change units of rg corpus to sentences}
+rg_corpus <- corpus_reshape(rg_corpus, to = "sentences")
+
+```
+
+```{r tokenise the rg corpus}
+tic("tokenise rg corpus")
+rg_tokens <- tokens(rg_corpus, remove_punct=TRUE, padding = FALSE, split_hyphens = TRUE)
+toc()
+```
+
+```{r remove stopwords from rg tokens}
+# tic("remove stopwords")
+# rg_tokens <- tokens_select(x=rg_tokens, pattern = stopwords("en"), selection = "remove", padding = FALSE)
+# toc()
+```
+
+```{r get context words surrounding gene names in rg}
+
+tic("get kwic for genes, rgs")
+kwic_genes_rg <- as.data.frame(kwic(rg_tokens, pattern =  unique(humanGenes$Aliases), window = 6, case_insensitive = FALSE))
+toc()
+
+## concatenate pre, gene name and post tokens
+kwic_genes_rg <- dplyr::mutate(kwic_genes_rg, context = paste(pre,keyword, post, sep = " "))
+
+## select and rename columns
+kwic_genes_rg <- dplyr::select(kwic_genes_rg, "rg_id"="docname", context, "gene_synonym"=pattern)
+
+## trim off the sentence ID added to dg_id (if using sentence-level corpus)
+kwic_genes_rg$rg_id <- gsub(pattern = "\\..*" , replacement = "", x=kwic_genes_rg$rg_id)
+
+```
+
+```{r join Entrez Symbols to kwic_genes_rg}
+
+kwic_genes_rg <- merge(x=kwic_genes_rg, by.x="gene_synonym", y=dplyr::select(humanGenes, Symbol, Aliases), by.y = "Aliases")
+
+```
+
+```{r join rg title and nct_id}
+kwic_genes_rg <- merge(x=dplyr::select(result_groups, nct_id, rg_id, rg_title, rg_description), by.x="rg_id", y=kwic_genes_rg, by.y="rg_id")
+
+## rename and reorder columns
+kwic_genes_rg <- unique(dplyr::select(kwic_genes_rg, nct_id, rg_id, rg_title,rg_description, context, "match"="gene_synonym", "controlled_match"="Symbol"))
+
+```
+  
+
+```{r index rg on mutations}
+
+mutation_rg <- indexOnPattern(dataframe = kwic_genes_rg, pattern = mutant_pattern, featureLabel = "mutation")
+
+## select and reorder columns for consistency with trialMatchDataRefresh
+mutation_rg <- unique(dplyr::select(mutation_rg, match, nct_id, rg_title, context, feature, controlled_match ))
+```
+
+```{r index rg on rearrangements}
+
+rearrangement_rg <- indexOnPattern(dataframe = kwic_genes_rg, pattern = rearrangement_pattern, featureLabel = "rearrangement")
+
+## select and reorder columns for consistency 
+rearrangement_rg <- unique(dplyr::select(rearrangement_rg, names(mutation_rg) ))
+
+```
+
+```{r index rg on amplifications}
+
+
+amplification_rg <- indexOnPattern(dataframe = kwic_genes_rg, pattern = amplification_pattern, featureLabel = "amplification")
+
+## select and reorder columns for consistency 
+amplification_rg <- unique(dplyr::select(amplification_rg, names(mutation_rg) ))
+
+```
+  
+
+```{r write indexed design groups to database}
+
+indexed_rg <- unique(rbind(mutation_rg, rearrangement_rg, amplification_rg))
+
+## create as a table in database
+dbWriteTable(conn = con,name = "indexedResultGroups", value = indexed_rg, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+```  
+    
   
   
   
@@ -1406,20 +1541,7 @@ This is not always obvious...
   
   
 
-#### **Get result groups**  
-  
-```{r get result groups}
-getResultGroupsQ <- paste0("select rg.nct_id, rg.id as rg_id, ctgov_group_code, result_type, rg.title as rg_title, rg.description as rg_description
-from result_groups rg 
-where rg.nct_id in (",
-"", studyIDsForSQL,
-")")
 
-## get criteria from clinicaltrials.gov
-result_groups <- dbGetQuery(conn2,getResultGroupsQ)
-
-```
-  
 ```{r create empty dataframe that will hold predicted mappings}
 
 predictions <- data.frame(nct_id = character(0),
@@ -1503,15 +1625,6 @@ result_groups <- unique(dplyr::filter(result_groups, result_type %in% c("Outcome
 
 ## update list of unmapped result groups ids
 unmapped_result_group_ids <- setdiff(x=result_groups$rg_id, y=predictions$rg_id)
-```
-
-```{r concatenate titles and descriptions for result groups}
-
-result_groups$rg_title_description <- paste(result_groups$rg_title, result_groups$rg_description, sep = ": ")
-
-## replace mu (micro) symbols with u as this causes mapping function to barf
-result_groups$rg_title_description <- gsub(pattern = "\U00B5|\U03BC", replacement = "u", x=result_groups$rg_title_description)
-
 ```
 
 ```{r define stopwords}
