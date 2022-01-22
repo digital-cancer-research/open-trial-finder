@@ -87,7 +87,7 @@ dbListTables(con)
 
 ```
   
-#### **Download and save a table of human genes and synonyms**  
+### **Download and save a table of human genes and synonyms**  
   
 ```{r download and process a list of all human genes and their synonyms}
 
@@ -142,7 +142,11 @@ toc()
 ## delete symbols object to save memory
 rm(symbols)
 ```
-
+  
+List of human genes and their synonyms is saved in the humanGenes table:  
+  
+`r formattable(head(humanGenes))`  
+  
   
 ```{r save table of human genes to DB}
 ## preview
@@ -156,7 +160,7 @@ dbListTables(con)
 
 ```
     
-#### **Download and save NCI thesaurus**  
+### **Download and save NCI thesaurus**  
   
 ```{r download and create NCIthesaurus table}
 
@@ -241,7 +245,13 @@ NCIt$Synonyms_stem <- textstem::stem_strings(NCIt$Synonyms)
 ## convert to lowercase
 NCIt$Synonyms_stem <- tolower(NCIt$Synonyms_stem)
 ```
-
+  
+  
+Preprocessed NCI thesaurus is saved in the NCIt table:  
+  
+`r formattable(head(NCIt))`  
+  
+    
 
 ```{r write NCIt to database}
 ## create as a table in database
@@ -249,6 +259,10 @@ dbWriteTable(conn = con,name = "NCIt", value = NCIt, overwrite=TRUE)
 
 ```
   
+  
+  
+A subset of the preprocessed NCI thesaurus (Class=="Pharmacologic Substance" is saved in memory in the NCIt_Pharmacologics table (not saved to DB).  
+
 ```{r subset NCIt for Pharmacologic Substance}
 
 
@@ -261,7 +275,7 @@ rm(NCItParents)
 ```
   
 
-#### **Map NCIt drugs to targets via KEGG**  
+### **Map NCIt drugs to targets via KEGG**  
   
 ```{r use KEGG BRITE}
 ## download Target-based Classification of Drugs (JSON format) from: https://www.genome.jp/kegg-bin/download_htext?htext=br08310&format=json&filedir=
@@ -269,8 +283,6 @@ rm(NCItParents)
 # kegg_brite <- fromJSON("kegg_brite.json")
 
 ## CAN'T USE THIS, AS SOME OF THE TARGETS LISTED REFER TO GROUPS OF PROTEINS, NOT INDIVIDUAL PROTEINS.. 
-
-
 
 ```
   
@@ -343,9 +355,16 @@ kegg_drugs$target_symbol <- gsub(pattern = ",.*", replacement = "", x=kegg_drugs
 ## select and reorder columns
 kegg_drugs <- unique(dplyr::select(kegg_drugs, NCIt_drug_id, drug_name, target_symbol))
 
-
+ 
 ```
 
+  
+  
+A list of cancer drugs, their molecular targets, and mapping to NCIt entities is saved in the kegg_drugs table:  
+  
+`r formattable(head(kegg_drugs))`  
+  
+   
   
 ```{r write kegg drugs to database}
 
@@ -356,9 +375,6 @@ dbListTables(con)
 
 ```
 
-  
-#### **Get list of drugs and targets from cancer drugs database**  
-  
 
 
 ```{r get cancer drugs from db}
@@ -374,7 +390,6 @@ dbListTables(con)
 ## however, drugs such as Inavolisib don't appear in this list, but do have entries in KEGG... 
 ```
   
-#### **Map NCIt drugs to targets via NCIt relationships**   
 
 ```{r download NCIt in OWL format}
 ## we will download the inferred version of the thesaurus, described at https://evs.nci.nih.gov/evs-download/thesaurus-downloads 
@@ -462,7 +477,7 @@ getDrugID <- function(drugName){
 
 ```
   
-#### **Download lat, long values for UK postcodes**  
+### **Download lat, long values for UK postcodes**  
   
 ```{r download ordnance survey data}
 ## download from https://www.freemaptools.com/download/full-uk-postcodes/ukpostcodes.zip
@@ -492,7 +507,13 @@ dbWriteTable(conn = con,name = "uk_postcodes", value = uk_postcodes, overwrite=T
 
 ```
 
-#### **Define controlled terms and synonyms for cancer types**  
+  
+A list of latitude, longitude values for UK postcodes is saved in the uk_postcodes table:  
+  
+`r formattable(head(uk_postcodes))`  
+  
+   
+### **Define controlled terms and synonyms for cancer types**  
   
 ```{r create table of cancer types}
 ## conditionSynonyms specifies which cancer types are of interest, and which condition names (as used by clinicaltrials.gov) will be considered as matches for each
@@ -514,7 +535,13 @@ dbListTables(con)
 
 ```
   
-#### **Connect to clinicaltrials.gov**  
+
+  
+A list of cancer types of interest and their mappings to condition names (as used by clinicaltrials.gov) is saved in the conditionSynonyms table:  
+  
+`r formattable(head(conditionSynonyms))`  
+    
+### **Connect to clinicaltrials.gov**  
   
 ```{r connect to clinicaltrialsgov}  
 ## specify user name and password for AACT account
@@ -534,7 +561,7 @@ drv = RPostgres::Postgres()
 conn2 <- dbConnect(drv, dbname="aact",host="aact-db.ctti-clinicaltrials.org", port=5432, user=aact.username, password=aact.password )
 ```
  
-#### **Get study info for all interventional cancer studies (globally, ever)**  
+### **Get study info for all interventional cancer studies (globally, ever)**  
   
 ```{r get study data}
 
@@ -542,14 +569,12 @@ conn2 <- dbConnect(drv, dbname="aact",host="aact-db.ctti-clinicaltrials.org", po
 cancerStudiesQ <- "SELECT s.nct_id, s.brief_title, s.phase, s.acronym, s.number_of_arms, s.number_of_groups,  s.overall_status, s.last_update_posted_date, c.name AS condition
 FROM studies s
 INNER JOIN conditions c ON c.nct_id = s.nct_id
-inner join calculated_values cv on cv.nct_id = s.nct_id
+INNER JOIN calculated_values cv ON cv.nct_id = s.nct_id
 WHERE s.study_type LIKE ('Interventional')
-and (c.downcase_name like '%cancer%'
-or c.downcase_name like '%neoplasm%'
-or c.downcase_name like '%carcinoma%'
-or c.downcase_name like '%tumo%')"
-
-
+AND (c.downcase_name LIKE '%cancer%'
+OR c.downcase_name LIKE '%neoplasm%'
+OR c.downcase_name LIKE '%carcinoma%'
+OR c.downcase_name LIKE '%tumo%')"
 
 ## get data from clinicaltrials.gov
 cancerStudies <- dbGetQuery(conn2,cancerStudiesQ)
@@ -558,7 +583,12 @@ cancerStudies <- dbGetQuery(conn2,cancerStudiesQ)
 cancerStudies$Refresh.date <- today
 
 ```
-   
+  
+As of `r today`, there are a total of `r length(unique(cancerStudies$nct_id))` cancer studies listed in clinicaltrials.gov and included in this analysis.  
+  
+  
+`r formattable(head(cancerStudies))`  
+    
 
 #### **Map verbatim condition names to controlled set of cancer types**  
   
@@ -590,8 +620,13 @@ cancerStudies <- unique(dplyr::select(cancerStudies, -c(word)))
 
 ```
   
-
-#### **Get study interventions**  
+After mapping to controlled terms for cancer types, `r length(unique(cancerStudies$nct_id))` studies remain...  
+  
+  
+`r formattable(head(cancerStudies))`  
+    
+  
+### **Get study interventions**  
   
 ```{r get study interventions}
 ## format study IDs for SQL query
@@ -608,65 +643,134 @@ interventions <- dbGetQuery(conn2,getInterventionsQ)
 
 ```
 
-```{r process intervention names}
-## duplicate intervention name
-interventions$intervention_name_processed <- interventions$intervention_name
-## convert to lowercase 
-interventions$intervention_name_processed <- tolower(interventions$intervention_name_processed)
+Interventions are stored as follows in clinicaltrials.gov (each intervention_id value is unique, i.e. same intervention in different studies is given different intervention_id values):  
+  
+`r formattable(head(interventions))`  
+  
+    
+```{r create corpus from intervention names}
+tic("create interventions corpus")
+interventions_corpus <-  quanteda::corpus(x=unique(dplyr::select(interventions, nct_id, intervention_id, intervention_name)),
+                                          text_field = "intervention_name", 
+                                          docid_field = "intervention_id",
+                                          unique_docnames = FALSE)
+toc()
 
-## split on words related to combinations of therapy
-combinations_pattern = "\\bwith\\b|\\band\\b|\\/|\\+|\\bplus\\b|\\,|\\bcombination\\b"
-interventions$intervention_name_processed <- strsplit(interventions$intervention_name_processed, split = combinations_pattern)
-interventions <- as.data.frame(unnest(data = interventions, intervention_name_processed))
+```
 
-## split on brackets (e.g. values like "roniciclib (bay1000394)" and "e39 peptide (100mcg)")
-brackets_pattern <- "\\(|\\)"
-interventions$intervention_name_processed <- strsplit(interventions$intervention_name_processed, split = brackets_pattern)
-interventions <- as.data.frame(unnest(data = interventions, intervention_name_processed))
+```{r tokenise interventions corpus}
+tic("tokenise interventions corpus")
+interventions_tokens <- tokens(interventions_corpus, remove_punct=TRUE, padding = FALSE, split_hyphens = FALSE)
+toc()
+```
 
-## split on any substrings related to dose
-## matches any digit, optionally followed by space, followed by "mg"
-dose_pattern <- "[0-9]+ ?mg"
-interventions$intervention_name_processed <- strsplit(interventions$intervention_name_processed, split = dose_pattern)
-interventions <- as.data.frame(unnest(data = interventions, intervention_name_processed))
+```{r get context words surrounding gene names}
+## we can specify any window size, since we just want to pick out drug synonyms from surrounding text
+tic("get kwic for interventions")
+kwic_interventions <- as.data.frame(kwic(interventions_tokens, pattern =  unique(NCIt_Pharmacologics$Synonyms), window = 1, valuetype = "fixed", case_insensitive = TRUE))
+toc()
+#formattable(head(as.data.frame(kw_genes), 30))
 
-## trim excess whitespace
-interventions$intervention_name_processed <- str_squish(interventions$intervention_name_processed)
+## we just want the intervention ID and the matching pattern
+kwic_interventions <- unique(dplyr::select(kwic_interventions, "intervention_id"="docname", "intervention_synonym"=pattern))
 
-## replace terms related to placebo with "placebo"
-interventions$intervention_name_processed[grep(pattern = "placebo|dummy", x=interventions$intervention_name_processed, ignore.case = TRUE)] <- "placebo"
-
-# design_group_interventions$intervention_name[grep(pattern = "placebo|dummy", x=design_group_interventions$intervention_name, ignore.case = TRUE)] <- "Placebo"
 ```
   
-#### **Join study interventions to NCIt pharmacologics**  
-  
-```{r join interventions to NCIt pharmacologics}
-## create a temporary copy of NCIt pharmacologics
-NCIt_Pharmacologics_temp <- unique(dplyr::select(NCIt_Pharmacologics, "NCIt_ID"="ID", Synonyms, PreferredTerm, "Mechanism"="Parent_synonym"))
-## convert synonyms to lower case for joining
-NCIt_Pharmacologics_temp$Synonyms <- tolower(NCIt_Pharmacologics_temp$Synonyms)
+```{r join intervention_id to intervention name}
 
-NCIt_Pharmacologics_temp <- unique(dplyr::select(NCIt_Pharmacologics, "NCIt_ID"="ID", Synonyms, PreferredTerm, "Mechanism"="Parent_synonym"))
+kwic_interventions <- unique(merge(x=interventions, by.x="intervention_id", all.x=TRUE, y=kwic_interventions, by.y = "intervention_id", incomparables = NA))
 
-interventions <- merge(x=interventions, by.x = "intervention_name_processed", all.x=TRUE, 
-                       y=NCIt_Pharmacologics_temp, by.y = "Synonyms")
+```
 
-## delete temporary copy
-rm(NCIt_Pharmacologics_temp)
+```{r join NCIt IDs to kwic interventions}
+kwic_interventions <- unique(merge(x=kwic_interventions, by.x="intervention_synonym", all.x=TRUE, y=NCIt_Pharmacologics, by.y = "Synonyms", incomparables = NA))
+
+```
+
+
+```{r drop redundant rows in kwic interventions}
+kwic_interventions <- unique(dplyr::select(kwic_interventions, nct_id, intervention_id, intervention_name, "NCIt_id"="ID", PreferredTerm, "Mechanism"="Parent_synonym"))
+
+```
+
+
+
+
+
+```{r join kegg targets to kwic interventions}
+
+## seems to join NA's in each column?!...
+## see https://community.rstudio.com/t/why-does-na-match-na-when-joining-two-dataframes/28785/2
+
+kwic_interventions <- unique(merge(x=kwic_interventions, by.x="NCIt_id", all.x=TRUE, y=unique(dplyr::select(kegg_drugs, NCIt_drug_id, target_symbol)), by.y = "NCIt_drug_id", incomparables = NA))
 
 ## select and reorder columns
-## remove duplicates
-interventions <- unique(dplyr::select(interventions, nct_id, intervention_id, intervention_name, NCIt_ID, PreferredTerm, Mechanism))
+kwic_interventions <- unique(dplyr::select(kwic_interventions, nct_id, intervention_id, intervention_name, NCIt_id, PreferredTerm,target_symbol, Mechanism))
 
+interventions <- kwic_interventions
+```
+
+
+
+
+```{r process intervention names}
+# ## duplicate intervention name
+# interventions$intervention_name_processed <- interventions$intervention_name
+# ## convert to lowercase 
+# interventions$intervention_name_processed <- tolower(interventions$intervention_name_processed)
+# 
+# ## split on words related to combinations of therapy
+# combinations_pattern = "\\bwith\\b|\\band\\b|\\/|\\+|\\bplus\\b|\\,|\\bcombination\\b"
+# interventions$intervention_name_processed <- strsplit(interventions$intervention_name_processed, split = combinations_pattern)
+# interventions <- as.data.frame(unnest(data = interventions, intervention_name_processed))
+# 
+# ## split on brackets (e.g. values like "roniciclib (bay1000394)" and "e39 peptide (100mcg)")
+# brackets_pattern <- "\\(|\\)"
+# interventions$intervention_name_processed <- strsplit(interventions$intervention_name_processed, split = brackets_pattern)
+# interventions <- as.data.frame(unnest(data = interventions, intervention_name_processed))
+# 
+# ## split on any substrings related to dose
+# ## matches any digit, optionally followed by space, followed by "mg"
+# dose_pattern <- "[0-9]+ ?mg"
+# interventions$intervention_name_processed <- strsplit(interventions$intervention_name_processed, split = dose_pattern)
+# interventions <- as.data.frame(unnest(data = interventions, intervention_name_processed))
+# 
+# ## trim excess whitespace
+# interventions$intervention_name_processed <- str_squish(interventions$intervention_name_processed)
+# 
+# ## replace terms related to placebo with "placebo"
+# interventions$intervention_name_processed[grep(pattern = "placebo|dummy", x=interventions$intervention_name_processed, ignore.case = TRUE)] <- "placebo"
+# 
+# # design_group_interventions$intervention_name[grep(pattern = "placebo|dummy", x=design_group_interventions$intervention_name, ignore.case = TRUE)] <- "Placebo"
+```
+  
+#### **Map study interventions to NCIt pharmacologics**  
+  
+```{r join interventions to NCIt pharmacologics}
+# ## create a temporary copy of NCIt pharmacologics
+# NCIt_Pharmacologics_temp <- unique(dplyr::select(NCIt_Pharmacologics, "NCIt_ID"="ID", Synonyms, PreferredTerm, "Mechanism"="Parent_synonym"))
+# ## convert synonyms to lower case for joining
+# NCIt_Pharmacologics_temp$Synonyms <- tolower(NCIt_Pharmacologics_temp$Synonyms)
+# 
+# NCIt_Pharmacologics_temp <- unique(dplyr::select(NCIt_Pharmacologics, "NCIt_ID"="ID", Synonyms, PreferredTerm, "Mechanism"="Parent_synonym"))
+# 
+# interventions <- merge(x=interventions, by.x = "intervention_name_processed", all.x=TRUE, 
+#                        y=NCIt_Pharmacologics_temp, by.y = "Synonyms")
+# 
+# ## delete temporary copy
+# rm(NCIt_Pharmacologics_temp)
+# 
+# ## select and reorder columns
+# ## remove duplicates
+# interventions <- unique(dplyr::select(interventions, nct_id, intervention_id, intervention_name, NCIt_ID, PreferredTerm, Mechanism))
+# 
 
 ```
 
 
-#### **Drop studies with unmapped interventions from cancerStudies table**  
-  
+
 ```{r omit cancerstudies with unmapped interventions}
-cancerStudies <- unique(dplyr::filter(cancerStudies, nct_id %in% interventions$nct_id))
+# cancerStudies <- unique(dplyr::filter(cancerStudies, nct_id %in% interventions$nct_id))
 
 
 
@@ -674,6 +778,12 @@ cancerStudies <- unique(dplyr::filter(cancerStudies, nct_id %in% interventions$n
 
   
 #### **write indexed cancer studies to database**  
+  
+Cancer study information is saved to the cancerStudies table:  
+  
+  
+`r formattable(head(cancerStudies))`  
+    
   
 ```{r write cancerStudies to database}
 ## create as a table in database
@@ -688,6 +798,11 @@ dbListTables(con)
 
 #### **Write indexed interventions to database**  
   
+Study interventions (including mapping to NCIt entities and KEGG target genes where applicable) are saved to the interventions table:  
+  
+`r formattable(head(interventions))`
+
+
 ```{r write interventions to database}
 ## create as a table in database
 dbWriteTable(conn = con,name = "interventions", value = interventions, overwrite=TRUE)
