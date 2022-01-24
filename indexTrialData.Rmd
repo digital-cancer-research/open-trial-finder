@@ -322,7 +322,7 @@ for(i in 1:nrow(kegg_drugs)) {
   geneid <- NA
   tryCatch({geneid <- keggGet(drug_id)[[1]]$TARGET$TARGET},
              error=function(cond) {return(NA)})
-  print(geneid)
+  #print(geneid)
   if(length(geneid)>0) kegg_drugs$target_id[i] <- geneid
 }
 ## parse to retain only the id numbers for target genes
@@ -346,7 +346,7 @@ for(i in 1:nrow(kegg_drugs)) {
   target_symbol <- NA
   tryCatch({target_symbol <- keggGet(target_id)[[1]]$SYMBOL},
              error=function(cond) {return(NA)})
-  print(target_symbol)
+  #print(target_symbol)
   if(length(target_symbol)>0) kegg_drugs$target_symbol[i] <- target_symbol
 }
 ## parse to retain only the first value (Entrez symbol)
@@ -436,16 +436,16 @@ dbListTables(con)
 
 # test using "1-methyl-D-tryptophan", aka "Indoximod"
 
-getDrugID <- function(drugName){
-  if(is.na(drugName)) return(NA)
-  ## get drug ID
-  drugid <- tryCatch({names(keggFind(database = "drug", query = drugName))},
-             error=function(cond) {return(NA)})
-  if(is.null(drugid)) return(NA)
-  if(is.na(drugid)) return(NA)
-  drugid <- as.list(drugid)
-  return(drugid)
-}
+# getDrugID <- function(drugName){
+#   if(is.na(drugName)) return(NA)
+#   ## get drug ID
+#   drugid <- tryCatch({names(keggFind(database = "drug", query = drugName))},
+#              error=function(cond) {return(NA)})
+#   if(is.null(drugid)) return(NA)
+#   if(is.na(drugid)) return(NA)
+#   drugid <- as.list(drugid)
+#   return(drugid)
+# }
 
 ```
 
@@ -522,7 +522,7 @@ A list of latitude, longitude values for UK postcodes is saved in the uk_postcod
 conditionSynonyms <- read.csv(file = "conditionSynonyms5.csv", stringsAsFactors = FALSE)
 
 ## trim leading/trailing whitespace, if any
-conditionSynonyms$condition.synonyms <- str_squish(string = conditionSynonyms$condition.synonyms)
+conditionSynonyms$condition_synonyms <- str_squish(string = conditionSynonyms$condition_synonyms)
 
 ## remove redundancy, if any
 conditionSynonyms <- unique(conditionSynonyms)
@@ -580,7 +580,7 @@ OR c.downcase_name LIKE '%tumo%')"
 cancerStudies <- dbGetQuery(conn2,cancerStudiesQ)
 
 ## add a column to indicate refresh date
-cancerStudies$Refresh.date <- today
+cancerStudies$refresh_date <- today
 
 ```
   
@@ -597,7 +597,7 @@ As of `r today`, there are a total of `r length(unique(cancerStudies$nct_id))` c
 ## such as "Stage IV Lung Cancer AJCC v8" and "Metastatic Lung Non-Small Cell Carcinoma"
 
 ## we will provide condition synonyms as custom tokens, then tokenise, unnest and perform the join
-custom_tokens <- unique(conditionSynonyms$condition.synonyms)
+custom_tokens <- unique(conditionSynonyms$condition_synonyms)
 
 ## tokenise the condition names
 cancerStudies$word <- as.list(corpus::text_tokens(x=cancerStudies$condition,                                                filter= corpus::text_filter(combine = custom_tokens, map_case=TRUE, connector="_", drop_punct=TRUE )))
@@ -609,8 +609,8 @@ cancerStudies <- as.data.frame(unnest(data = cancerStudies, word))
 cancerStudies$word <- gsub(pattern = "_", replacement = " ", x=cancerStudies$word)
 
 
-## join on word = conditionSynonyms$condition.synonyms
-cancerStudies <- unique(merge(x=cancerStudies, by.x = "word", y=conditionSynonyms, by.y="condition.synonyms"))
+## join on word = conditionSynonyms$condition_synonyms
+cancerStudies <- unique(merge(x=cancerStudies, by.x = "word", y=conditionSynonyms, by.y="condition_synonyms"))
 
 ## NOTE: ANY STUDY-CONDITION COMBINATIONS NOT REPRESENTED IN THE CONTROLLED TERMS WILL BE LOST AT THIS STAGE
 
@@ -664,7 +664,7 @@ interventions_tokens <- tokens(interventions_corpus, remove_punct=TRUE, padding 
 toc()
 ```
 
-```{r get context words surrounding gene names}
+```{r get context words surrounding intervention names}
 ## we can specify any window size, since we just want to pick out drug synonyms from surrounding text
 tic("get kwic for interventions")
 kwic_interventions <- as.data.frame(kwic(interventions_tokens, pattern =  unique(NCIt_Pharmacologics$Synonyms), window = 1, valuetype = "fixed", case_insensitive = TRUE))
@@ -687,15 +687,10 @@ kwic_interventions <- unique(merge(x=kwic_interventions, by.x="intervention_syno
 
 ```
 
-
 ```{r drop redundant rows in kwic interventions}
 kwic_interventions <- unique(dplyr::select(kwic_interventions, nct_id, intervention_id, intervention_name, "NCIt_id"="ID", PreferredTerm, "Mechanism"="Parent_synonym"))
 
 ```
-
-
-
-
 
 ```{r join kegg targets to kwic interventions}
 
@@ -709,9 +704,6 @@ kwic_interventions <- unique(dplyr::select(kwic_interventions, nct_id, intervent
 
 interventions <- kwic_interventions
 ```
-
-
-
 
 ```{r process intervention names}
 # ## duplicate intervention name
@@ -816,7 +808,7 @@ dbListTables(con)
   
 ```{r download facilities}
 
-UKfacilitiesQ <- paste0("select f.nct_id, f.status, f.name AS facility_name, f.city, f.zip 
+UKfacilitiesQ <- paste0("select f.nct_id, f.status AS facility_status, f.name AS facility_name, f.city, f.zip 
 from facilities f
 where f.nct_id in (",
 "", studyIDsForSQL,
@@ -876,7 +868,13 @@ uk_facilities$longitude[is.na(uk_facilities$longitude)] <- uk_facilities$geo_lon
 ## select and reorder columns
 uk_facilities <- unique(dplyr::select(uk_facilities, nct_id, facility_name, status, city, latitude, longitude))
 ```
-
+  
+A table of study sites, their statuses and lat, long values for their location has been saved to the uk_facilities table:  
+  
+`r formattable(head(uk_facilities))`  
+  
+  
+  
 ```{r write uk facilities to database}
 ## create as a table in database
 dbWriteTable(conn = con,name = "uk_facilities", value = uk_facilities, overwrite=TRUE)
@@ -995,6 +993,7 @@ eligibilities$maximum_age <- as.numeric(eligibilities$maximum_age)
   
 ##### **Write eligibility criteria to database**  
   
+  
 ```{r write eligibilities to database}
 ## create as a table in database
 dbWriteTable(conn = con,name = "eligibilities", value = eligibilities, overwrite=TRUE)
@@ -1009,364 +1008,10 @@ rm(min_age_month_indices)
 
 ```
   
+Individual eligibility criteria for all studies has been written to the eligibilities table:  
   
-
-##### **Index eligibility criteria**  
+`r formattable(head(eligibilities))`  
   
-See also https://tutorials.quanteda.io/basic-operations/corpus/corpus/ for workflow from quanteda...  
-
-    
-```{r create corpus}
-tic("create eligibilities corpus")
-eligibilities_corpus <-  quanteda::corpus(x=unique(dplyr::select(eligibilities, nct_id, criterion_index, criteria, criterion_type)),
-                                          text_field = "criteria", 
-                                          docid_field = "criterion_index",
-                                          unique_docnames = FALSE)
-toc()
-
-
-```
-
-```{r tokenise the corpus}
-tic("tokenise eligibilities corpus")
-eligibilities_tokens <- tokens(eligibilities_corpus, remove_punct=TRUE, padding = FALSE, split_hyphens = TRUE)
-toc()
-```
-
-```{r remove stopwords}
-tic("remove stopwords")
-eligibilities_tokens <- tokens_select(x=eligibilities_tokens, pattern = stopwords("en"), selection = "remove", padding = FALSE)
-toc()
-```
-
-```{r get context words surrounding gene names}
-
-tic("get kwic for genes")
-kwic_genes <- as.data.frame(kwic(eligibilities_tokens, pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE))
-toc()
-#formattable(head(as.data.frame(kw_genes), 30))
-
-## concatenate pre, gene name and post tokens
-kwic_genes <- dplyr::mutate(kwic_genes, context = paste(pre,keyword, post, sep = " "))
-
-## select and rename columns
-kwic_genes <- dplyr::select(kwic_genes, "criterion_index"="docname", context, "gene_synonym"=pattern)
-
-```
-
-```{r join Entrez Symbols}
-
-kwic_genes <- merge(x=kwic_genes, by.x="gene_synonym", y=dplyr::select(humanGenes, Symbol, Aliases), by.y = "Aliases")
-
-```
-
-```{r join verbatim criteria and nct_id}
-kwic_genes <- merge(x=dplyr::select(eligibilities, nct_id, criterion_index, criteria, criterion_type), by.x="criterion_index", y=kwic_genes, by.y="criterion_index")
-
-## rename and reorder columns
-kwic_genes <- unique(dplyr::select(kwic_genes, nct_id, criterion_index, criterion_type,criteria, context, "match"="gene_synonym", "controlled_match"="Symbol"))
-
-```
-
-```{r define function to index on pattern}
-indexOnPattern <- function(dataframe, pattern, featureLabel) {
-  ## get indices with matching pattern
-  indices <- grep(pattern = pattern, x=dataframe$context, ignore.case = TRUE)
-  ## subset dataframe
-  dataframe <- dataframe[indices, ]
-  ## add a column with featurelabel
-  dataframe$feature <- featureLabel
-  return(dataframe)
-}
-
-
-
-
-
-```
-
-```{r index on mutations}
-
-## define mutant pattern
-mutant_pattern <- "mutat|mutant|defect|deficien|altera|altere|loss of function|loss-of-function"
-
-mutation_eligibilities <- indexOnPattern(dataframe = kwic_genes, pattern = mutant_pattern, featureLabel = "mutation")
-
-## select and reorder columns for consistency with trialMatchDataRefresh
-mutation_eligibilities <- unique(dplyr::select(mutation_eligibilities, match, nct_id, criteria, criterion_type, feature, controlled_match ))
-```
-
-```{r index on rearrangements}
-
-rearrangement_pattern <- " fusion|rearrangement|truncation|truncated|deletion|deleted|lost|duplication|duplicated|transloc"
-
-rearrangement_eligibilities <- indexOnPattern(dataframe = kwic_genes, pattern = rearrangement_pattern, featureLabel = "rearrangement")
-
-## select and reorder columns for consistency with trialMatchDataRefresh
-rearrangement_eligibilities <- unique(dplyr::select(rearrangement_eligibilities, names(mutation_eligibilities) ))
-
-```
-
-```{r index on copy number loss}
-## NOTE USE WORD RANGE OF 2 FOR LOSS, OTHERWISE GET TOO MANY FALSE HITS (including "loss of function" etc, which is indexed as a mutation)
-tic("get kwic for genes 2")
-kwic_genes_2 <- as.data.frame(kwic(eligibilities_tokens, pattern =  unique(humanGenes$Aliases), window = 2, case_insensitive = FALSE))
-toc()
-#formattable(head(as.data.frame(kw_genes), 30))
-
-## concatenate pre, gene name and post tokens
-kwic_genes_2 <- dplyr::mutate(kwic_genes_2, context = paste(pre,keyword, post, sep = " "))
-
-## select and rename columns
-kwic_genes_2 <- dplyr::select(kwic_genes_2, "criterion_index"="docname", context, "gene_synonym"=pattern)
-
-loss_pattern <- " loss"
-
-loss_eligibilities <- indexOnPattern(dataframe = kwic_genes, pattern = loss_pattern, featureLabel = "loss")
-
-## select and reorder columns for consistency with trialMatchDataRefresh
-loss_eligibilities <- unique(dplyr::select(loss_eligibilities, names(mutation_eligibilities) ))
-
-```
-
-```{r index on amplifications}
-
-amplification_pattern <- " amplifi|overexpress"
-
-amplification_eligibilities <- indexOnPattern(dataframe = kwic_genes, pattern = amplification_pattern, featureLabel = "amplification")
-
-## select and reorder columns for consistency with trialMatchDataRefresh
-amplification_eligibilities <- unique(dplyr::select(amplification_eligibilities, names(mutation_eligibilities) ))
-
-```
-
-```{r index on prior therapies}
-
-prior_tx_pattern <- "previous therapy|prior therapy|previous treatment|prior treatment"
-
-therapy_eligibilities <- eligibilities[grep(pattern = prior_tx_pattern, x=eligibilities$criteria, ignore.case = TRUE), ]
-
-therapy_eligibilities$feature <- "PRIOR_THERAPY"
-
-## drop redundant rows, if any
-therapy_eligibilities <- unique(therapy_eligibilities)
-
-## since prior therapies tend to be a mixture of 2-word synonyms, 3-word synonyms etc, plus parent terms, best approach for now is to not try and match against a therapy
-
-
-
-# add columns for row binding only
-therapy_eligibilities$match <- NA
-therapy_eligibilities$controlled_match <- NA
-therapy_eligibilities <- unique(dplyr::select(therapy_eligibilities, names(mutation_eligibilities) ))
-
-
-## instead, in the UI, just show inclusion and exclusion criteria (separately) related to prior therapies
-```
-
-
-
-```{r sentiment analysis practice}
-
-
-# sentence2 <- "Part A3: Participants with presence of loss of function mutation in the gene for ARIDIA, ATRX and /or DAXX and ATM"
-# 
-# sentiment <- SentimentAnalysis::analyzeSentiment(sentence2)
-# convertToBinaryResponse(sentiment)$SentimentQDAP
-
-
-# sentimentr::sentiment("Part A3: Participants with presence of loss of function mutation in the gene for ARIDIA, ATRX and /or DAXX and ATM")$sentiment
-# 
-# sentimentr::sentiment("Known BAP1 loss per immunohistochemistry (IHC) or NGS")$sentiment
-# 
-# sentimentr::sentiment("No genomic alteration of APC, MUTYH, SMAD4, BMPR1A, PTEN or STK11 in case of adenomatous polyposis or hamartoma presentation")$sentiment
-# 
-# sentimentr::sentiment("")$sentiment
-# 
-# sentimentr::sentiment("")$sentiment
-
-
-```
-
-```{r split criteria into sentences}
-## split eligibilities into individual sentences 
-# eligibilities$sentences <- strsplit(eligibilities$criteria, split = "\\. ")
-# eligibilities <- as.data.frame(unnest(data = eligibilities, sentences))
-# 
-# ## create a stemmed copy
-# eligibilities$sentences_stem <- textstem::stem_strings(eligibilities$sentences)
-# 
-# ## convert to lowercase
-# eligibilities$sentences_stem <- tolower(eligibilities$sentences_stem)
-# 
-# ## add a sentence index
-# eligibilities <- eligibilities %>% group_by(criterion_index) %>% mutate(criterion_sentence_index = paste0(criterion_index, "_", row_number())) %>% as.data.frame()
-```
-
-```{r stem eligibility criteria}
-## create a stemmed copy
-# eligibilities$criteria_stem <- textstem::stem_strings(eligibilities$criteria)
-
-## convert to lowercase
-# eligibilities$criteria_stem <- tolower(eligibilities$criteria_stem)
-
-
-
-```
-  
-```{r apply dictionary}
-## Convert tokens into equivalence classes defined by values of a dictionary object.
-## this works, but is relatively slow... 
-# dict4 <- dictionary(list(gene = humanGenes$Aliases, alteration = "KRAS mutation"))
-# toks4 <- tokens("Patients with any BRAF or KRAS mutation status are eligible.")
-# tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE)
-
-## also this... 
-# labResultSynonyms <- unique(NCIt$Synonyms[NCIt$Class == "Laboratory or Test Result"])
-# dict4 <- dictionary(list(gene = humanGenes$Aliases, lab_result = labResultSynonyms))
-# toks4 <- tokens("Proficient mismatch repair/microsatellite stable (pMMR/MSS), histologically or cytologically-confirmed adenocarcinoma of the colon or rectum. Patients with any BRAF or KRAS mutation status are eligible.")
-# tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE)
-# as.character(tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE))
-
-
-## and this
-# cellMolDysfSynonyms <- unique(NCIt$Synonyms[NCIt$Class == "Cell or Molecular Dysfunction"])
-# dict4 <- dictionary(list(gene = humanGenes$Aliases, lab_result = labResultSynonyms, cellMol_dysfunction = cellMolDysfSynonyms))
-# toks4 <- tokens("Proficient mismatch repair/microsatellite stable (pMMR/MSS), histologically or cytologically-confirmed adenocarcinoma of the colon or rectum. Patients with any BRAF or KRAS mutation status are eligible.")
-# tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE)
-# as.character(tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE))
-
-## and this
-# neoProcessSynonyms <- unique(NCIt$Synonyms[NCIt$Class == "Neoplastic Process"])
-# dict4 <- dictionary(list(gene = humanGenes$Aliases, 
-#                          lab_result = labResultSynonyms, 
-#                          cellMol_dysfunction = cellMolDysfSynonyms, 
-#                          neoplastic_process = neoProcessSynonyms))
-
-
-
-
-# toks4 <- tokens("Proficient mismatch repair/microsatellite stable (pMMR/MSS), histologically or cytologically-confirmed adenocarcinoma of the colon or rectum. Patients with any BRAF or KRAS mutation status are eligible.")
-# #tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE)
-# as.character(tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE))
-
-
-
-## piped version
-# "BRCA Positive Serous Ovarian: Patients with serous ovarian cancer who have a harmful mutation in the breast cancer genes BRCA1 or BRCA2. (Serous tumors are the most common subtype of ovarian cancer)." %>%
-#     tokens( padding = TRUE, remove_punct=TRUE) %>%
-#     tokens_select( pattern = stopwords("en"), selection = "remove") %>%
-#     tokens_lookup( dict4, nested_scope = "key", exclusive = FALSE,valuetype = "fixed") %>%
-#     as.character() %>%
-#     paste(collapse = "', '")
-
-
-## apply to whole set of criteria
-# tic("index all criteria")
-# 
-# eligibilities_tokens_dict <- eligibilities_corpus %>%
-#   tokens( padding = TRUE, remove_punct=TRUE) %>%
-#     tokens_select( pattern = stopwords("en"), selection = "remove") %>%
-#     tokens_lookup( dict4, nested_scope = "key", exclusive = FALSE,valuetype = "fixed")
-# 
-# toc()
-
-```
-
-```{r keywords in context}
-## basic kwic, simple pattern...
-# kw_mutations <- kwic(eligibilities_tokens, pattern =  c("mutat*", "mutan*"), window = 5)
-# formattable(head(as.data.frame(kw_mutations), 30))
-# 
-# 
-# 
-# ## can use multi-word tokens as patterns
-# msi_synonyms <- NCIt$Synonyms[NCIt$ID=="C131459"]
-# msi_synonyms <- msi_synonyms[msi_synonyms != "Stable"]
-# msi_synonyms
-# kw_msi <- kwic(eligibilities_tokens, pattern =  phrase(msi_synonyms), window = 5, case_insensitive = TRUE)
-# formattable(head(as.data.frame(kw_msi), 30))
-```
-
-```{r define function to get pattern and context}
-#' Get context words (words within a symmetric window around the target word/phrase)
-#' sorrounding a user defined target.
-
-## reuse code from https://rdrr.io/github/prodriguezsosa/conText/src/R/get_context.R with modification to get useable values for docname
-
-## pattern may be a single string, or a vector of strings...
-
-## specify some sensible defaults...
-# get_context_mod <- function(dataframe, textcolumn, docid_field, pattern, window = 6, valuetype = "regex",what="word", ignore_case = TRUE) {
-#   #dataframe <- dataframe
-#   #pattern <- pattern
-#   #window <- window
-#   #valuetype <- valuetype
-#   #what <- what
-#   
-#   ## get a vector of TRUE/FALSE values indicating whether pattern present in dataframe
-#   pattern_present <- stringr::str_detect(dataframe[ ,which(names(dataframe)==textcolumn)], paste(stringr::regex(pattern, ignore_case = ignore_case), collapse = '|'))
-#   
-#   ## subset dataframe
-#   dataframe_subset <- dataframe[pattern_present, ]
-#   
-#   ## turn into a corpus object
-#   dataframe_subset_corpus <-  quanteda::corpus(x=dataframe_subset,
-#                       text_field = textcolumn, 
-#                       docid_field = docid_field,
-#                       #docid_field = "criterion_sentence_index", 
-#                       unique_docnames = FALSE)
-#   
-#   #out <- dataframe_subset_corpus
-#   
-#   ## get context of pattern
-#   kwic_i <- as.data.frame(quanteda::kwic(quanteda::tokens(dataframe_subset_corpus, what = what), pattern = quanteda::phrase(pattern), window = window, valuetype = valuetype, case_insensitive = TRUE))
-#   
-#   out <- kwic_i
-#   out <- as.data.frame(kwic_i) %>%
-#       dplyr::select(docname, keyword, pre, post) %>% # keep pre and post (see kwic documentation for info on values)
-#       dplyr::mutate(context = paste(pre,keyword, post, sep = " ")) %>% # combine pre and post into one variable named context
-#       dplyr::select(-c('pre', 'post')) %>% # drop pre & post
-#       dplyr::rename(target = keyword) # align variable names (we use target instead of keyword)
-#   
-#   return(out)
-# }
-# 
-
-
-```
-
-##### **Write indexed eligibility criteria to database**  
-
-```{r write indexed eligibilities to database}
-
-
-indexed_eligibilities <- unique(rbind(mutation_eligibilities, rearrangement_eligibilities, loss_eligibilities, amplification_eligibilities, therapy_eligibilities))
-
-## create as a table in database
-dbWriteTable(conn = con,name = "indexedEligibility", value = indexed_eligibilities, overwrite=TRUE)
-
-## check it has saved
-dbListTables(con)
-```
-
-```{r write data to csv for word embeddings}
-
-## select all verbatim criteria
-raw_criteria <- unique(dplyr::select(eligibilities, criteria))
-
-## select and rename columns from indexed eligibilities
-annotated_criteria <- unique(dplyr::select(indexed_eligibilities, match, "criterion"="criteria", feature, "entrez_gene"="controlled_match"))
-## drop rows related to prior tx
-annotated_criteria <- unique(dplyr::filter(annotated_criteria, feature != "PRIOR_THERAPY"))
-## drop rows with obvious false hits
-annotated_criteria <- annotated_criteria[!annotated_criteria$match %in% c("B12", "EL", "G6PD", "CAT", "MRI", "CT", "polymerase", "A1", "AA", "ARMS", "IMPACT", "STEPS", "OTC", "CAV", "NB", "PSA", "PK"), ]
-
-## write to file
-write.csv(x=raw_criteria, file = "raw_criteria.csv", row.names = FALSE)
-write.csv(x=annotated_criteria, file = "annotated_criteria.csv", row.names = FALSE)
-
-```
   
 ### **Get design group information**  
   
@@ -1397,113 +1042,7 @@ design_groups$dg_title_description <- gsub(pattern = "\U00B5|\U03BC", replacemen
 ```
 
   
-#### **Index design groups**  
 
-In some cases, patients are allocated to arms according to features (e.g. genetic alterations) - this information is relevant to clinician's evaluation of potential studies.  
-  
-Therefore, we will index design groups (titles and descriptions) in same way as for eligibility criteria...   
-  
-
-```{r create corpus for design groups}
-tic("create design groups corpus")
-dg_corpus <-  quanteda::corpus(x=unique(dplyr::select(design_groups, nct_id, dg_id, dg_title_description)),
-                                          text_field = "dg_title_description", 
-                                          docid_field = "dg_id",
-                                          unique_docnames = FALSE)
-toc()
-
-
-```
-
-```{r change units of dg corpus to sentences}
-dg_corpus <- corpus_reshape(dg_corpus, to = "sentences")
-
-```
-
-```{r tokenise the dg corpus}
-tic("tokenise dg corpus")
-dg_tokens <- tokens(dg_corpus, remove_punct=TRUE, padding = FALSE, split_hyphens = TRUE)
-toc()
-```
-
-```{r remove stopwords from dg tokens}
-# tic("remove stopwords")
-# dg_tokens <- tokens_select(x=dg_tokens, pattern = stopwords("en"), selection = "remove", padding = FALSE)
-# toc()
-```
-
-```{r get context words surrounding gene names in dg}
-
-tic("get kwic for genes, dgs")
-kwic_genes_dg <- as.data.frame(kwic(dg_tokens, pattern =  unique(humanGenes$Aliases), window = 6, case_insensitive = FALSE))
-toc()
-#formattable(head(as.data.frame(kw_genes), 30))
-
-## concatenate pre, gene name and post tokens
-kwic_genes_dg <- dplyr::mutate(kwic_genes_dg, context = paste(pre,keyword, post, sep = " "))
-
-## select and rename columns
-kwic_genes_dg <- dplyr::select(kwic_genes_dg, "dg_id"="docname", context, "gene_synonym"=pattern)
-
-## trim off the sentence ID added to dg_id (if using sentence-level corpus)
-kwic_genes_dg$dg_id <- gsub(pattern = "\\..*" , replacement = "", x=kwic_genes_dg$dg_id)
-
-```
-
-```{r join Entrez Symbols to kwic_genes_dg}
-
-kwic_genes_dg <- merge(x=kwic_genes_dg, by.x="gene_synonym", y=dplyr::select(humanGenes, Symbol, Aliases), by.y = "Aliases")
-
-```
-
-```{r join dg title and nct_id}
-kwic_genes_dg <- merge(x=dplyr::select(design_groups, nct_id, dg_id, dg_title, dg_description), by.x="dg_id", y=kwic_genes_dg, by.y="dg_id")
-
-## rename and reorder columns
-kwic_genes_dg <- unique(dplyr::select(kwic_genes_dg, nct_id, dg_id, dg_title,dg_description, context, "match"="gene_synonym", "controlled_match"="Symbol"))
-
-```
-  
-
-```{r index dg on mutations}
-
-mutation_dg <- indexOnPattern(dataframe = kwic_genes_dg, pattern = mutant_pattern, featureLabel = "mutation")
-
-## select and reorder columns for consistency with trialMatchDataRefresh
-mutation_dg <- unique(dplyr::select(mutation_dg, match, nct_id, dg_title, context, feature, controlled_match ))
-```
-
-```{r index dg on rearrangements}
-
-rearrangement_dg <- indexOnPattern(dataframe = kwic_genes_dg, pattern = rearrangement_pattern, featureLabel = "rearrangement")
-
-## select and reorder columns for consistency 
-rearrangement_dg <- unique(dplyr::select(rearrangement_dg, match, nct_id, dg_title, context, feature, controlled_match ))
-
-```
-
-```{r index dg on amplifications}
-
-
-amplification_dg <- indexOnPattern(dataframe = kwic_genes_dg, pattern = amplification_pattern, featureLabel = "amplification")
-
-## select and reorder columns for consistency 
-amplification_dg <- unique(dplyr::select(amplification_dg, names(rearrangement_dg) ))
-
-```
-  
-
-```{r write indexed design groups to database}
-
-indexed_dg <- unique(rbind(mutation_dg, rearrangement_dg, amplification_dg))
-
-## create as a table in database
-dbWriteTable(conn = con,name = "indexedDesignGroups", value = indexed_dg, overwrite=TRUE)
-
-## check it has saved
-dbListTables(con)
-```  
-  
 ### **Get result groups**  
   
 #### **Get result groups**  
@@ -1532,115 +1071,7 @@ result_groups$rg_title_description <- gsub(pattern = "\U00B5|\U03BC", replacemen
   
   
   
-  
-  
-#### **Index result groups**  
 
-In some cases, results are analysed according to features (e.g. genetic alterations) - this information is relevant to clinician's evaluation of potential studies.  
-  
-Therefore, we will index result groups (titles and descriptions) in same way as for eligibility criteria...   
-  
-
-```{r create corpus for result groups}
-tic("create design groups corpus")
-rg_corpus <-  quanteda::corpus(x=unique(dplyr::select(result_groups, nct_id, rg_id, rg_title_description)),
-                                          text_field = "rg_title_description", 
-                                          docid_field = "rg_id",
-                                          unique_docnames = FALSE)
-toc()
-
-
-```
-
-```{r change units of rg corpus to sentences}
-rg_corpus <- corpus_reshape(rg_corpus, to = "sentences")
-
-```
-
-```{r tokenise the rg corpus}
-tic("tokenise rg corpus")
-rg_tokens <- tokens(rg_corpus, remove_punct=TRUE, padding = FALSE, split_hyphens = TRUE)
-toc()
-```
-
-```{r remove stopwords from rg tokens}
-# tic("remove stopwords")
-# rg_tokens <- tokens_select(x=rg_tokens, pattern = stopwords("en"), selection = "remove", padding = FALSE)
-# toc()
-```
-
-```{r get context words surrounding gene names in rg}
-
-tic("get kwic for genes, rgs")
-kwic_genes_rg <- as.data.frame(kwic(rg_tokens, pattern =  unique(humanGenes$Aliases), window = 6, case_insensitive = FALSE))
-toc()
-
-## concatenate pre, gene name and post tokens
-kwic_genes_rg <- dplyr::mutate(kwic_genes_rg, context = paste(pre,keyword, post, sep = " "))
-
-## select and rename columns
-kwic_genes_rg <- dplyr::select(kwic_genes_rg, "rg_id"="docname", context, "gene_synonym"=pattern)
-
-## trim off the sentence ID added to dg_id (if using sentence-level corpus)
-kwic_genes_rg$rg_id <- gsub(pattern = "\\..*" , replacement = "", x=kwic_genes_rg$rg_id)
-
-```
-
-```{r join Entrez Symbols to kwic_genes_rg}
-
-kwic_genes_rg <- merge(x=kwic_genes_rg, by.x="gene_synonym", y=dplyr::select(humanGenes, Symbol, Aliases), by.y = "Aliases")
-
-```
-
-```{r join rg title and nct_id}
-kwic_genes_rg <- merge(x=dplyr::select(result_groups, nct_id, rg_id, rg_title, rg_description), by.x="rg_id", y=kwic_genes_rg, by.y="rg_id")
-
-## rename and reorder columns
-kwic_genes_rg <- unique(dplyr::select(kwic_genes_rg, nct_id, rg_id, rg_title,rg_description, context, "match"="gene_synonym", "controlled_match"="Symbol"))
-
-```
-  
-
-```{r index rg on mutations}
-
-mutation_rg <- indexOnPattern(dataframe = kwic_genes_rg, pattern = mutant_pattern, featureLabel = "mutation")
-
-## select and reorder columns for consistency with trialMatchDataRefresh
-mutation_rg <- unique(dplyr::select(mutation_rg, match, nct_id, rg_title, context, feature, controlled_match ))
-```
-
-```{r index rg on rearrangements}
-
-rearrangement_rg <- indexOnPattern(dataframe = kwic_genes_rg, pattern = rearrangement_pattern, featureLabel = "rearrangement")
-
-## select and reorder columns for consistency 
-rearrangement_rg <- unique(dplyr::select(rearrangement_rg, names(mutation_rg) ))
-
-```
-
-```{r index rg on amplifications}
-
-
-amplification_rg <- indexOnPattern(dataframe = kwic_genes_rg, pattern = amplification_pattern, featureLabel = "amplification")
-
-## select and reorder columns for consistency 
-amplification_rg <- unique(dplyr::select(amplification_rg, names(mutation_rg) ))
-
-```
-  
-
-```{r write indexed result groups to database}
-
-indexed_rg <- unique(rbind(mutation_rg, rearrangement_rg, amplification_rg))
-
-## create as a table in database
-dbWriteTable(conn = con,name = "indexedResultGroups", value = indexed_rg, overwrite=TRUE)
-
-## check it has saved
-dbListTables(con)
-```  
-    
-  
   
   
 ### **Map result groups to design groups**  
@@ -2216,6 +1647,597 @@ dbWriteTable(conn = con,name = "AE_totals", value = AE_totals, overwrite=TRUE)
 dbListTables(con)
 
 ```
+
+
+
+
+
+
+
+
+### **Index trial populations**  
+  
+See also https://tutorials.quanteda.io/basic-operations/corpus/corpus/ for workflow from quanteda...  
+
+```{r create corpus}
+tic("create eligibilities corpus")
+eligibilities_corpus <-  quanteda::corpus(x=unique(dplyr::select(eligibilities, nct_id, criterion_index, criteria, criterion_type)),
+                                          text_field = "criteria", 
+                                          docid_field = "criterion_index",
+                                          unique_docnames = FALSE)
+toc()
+
+
+```
+
+```{r tokenise the corpus}
+tic("tokenise eligibilities corpus")
+eligibilities_tokens <- tokens(eligibilities_corpus, remove_punct=TRUE, padding = FALSE, split_hyphens = TRUE)
+toc()
+```
+
+```{r remove stopwords}
+tic("remove stopwords")
+eligibilities_tokens <- tokens_select(x=eligibilities_tokens, pattern = stopwords("en"), selection = "remove", padding = FALSE)
+toc()
+```
+
+```{r get context words surrounding gene names}
+
+tic("get kwic for genes")
+kwic_genes <- as.data.frame(kwic(eligibilities_tokens, pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE))
+toc()
+#formattable(head(as.data.frame(kw_genes), 30))
+
+## concatenate pre, gene name and post tokens
+kwic_genes <- dplyr::mutate(kwic_genes, context = paste(pre,keyword, post, sep = " "))
+
+## select and rename columns
+kwic_genes <- dplyr::select(kwic_genes, "criterion_index"="docname", context, "gene_synonym"=pattern)
+
+```
+
+```{r join Entrez Symbols}
+
+kwic_genes <- merge(x=kwic_genes, by.x="gene_synonym", y=dplyr::select(humanGenes, Symbol, Aliases), by.y = "Aliases")
+
+```
+
+```{r join verbatim criteria and nct_id}
+kwic_genes <- merge(x=dplyr::select(eligibilities, nct_id, criterion_index, criteria, criterion_type), by.x="criterion_index", y=kwic_genes, by.y="criterion_index")
+
+## rename and reorder columns
+kwic_genes <- unique(dplyr::select(kwic_genes, nct_id, criterion_index, criterion_type,criteria, context, "match"="gene_synonym", "controlled_match"="Symbol"))
+
+```
+
+```{r define function to index on pattern}
+indexOnPattern <- function(dataframe, pattern, featureLabel) {
+  ## get indices with matching pattern
+  indices <- grep(pattern = pattern, x=dataframe$context, ignore.case = TRUE)
+  ## subset dataframe
+  dataframe <- dataframe[indices, ]
+  ## add a column with featurelabel
+  dataframe$feature <- featureLabel
+  return(dataframe)
+}
+
+
+
+
+
+```
+
+```{r index on mutations}
+
+## define mutant pattern
+mutant_pattern <- "mutat|mutant|defect|deficien|altera|altere|loss of function|loss-of-function"
+
+mutation_eligibilities <- indexOnPattern(dataframe = kwic_genes, pattern = mutant_pattern, featureLabel = "mutation")
+
+## select and reorder columns for consistency with trialMatchDataRefresh
+mutation_eligibilities <- unique(dplyr::select(mutation_eligibilities, match, nct_id, criteria, criterion_type, feature, controlled_match ))
+```
+
+```{r index on rearrangements}
+
+rearrangement_pattern <- " fusion|rearrangement|truncation|truncated|deletion|deleted|lost|duplication|duplicated|transloc"
+
+rearrangement_eligibilities <- indexOnPattern(dataframe = kwic_genes, pattern = rearrangement_pattern, featureLabel = "rearrangement")
+
+## select and reorder columns for consistency with trialMatchDataRefresh
+rearrangement_eligibilities <- unique(dplyr::select(rearrangement_eligibilities, names(mutation_eligibilities) ))
+
+```
+
+```{r index on copy number loss}
+## NOTE USE WORD RANGE OF 2 FOR LOSS, OTHERWISE GET TOO MANY FALSE HITS (including "loss of function" etc, which is indexed as a mutation)
+tic("get kwic for genes 2")
+kwic_genes_2 <- as.data.frame(kwic(eligibilities_tokens, pattern =  unique(humanGenes$Aliases), window = 2, case_insensitive = FALSE))
+toc()
+#formattable(head(as.data.frame(kw_genes), 30))
+
+## concatenate pre, gene name and post tokens
+kwic_genes_2 <- dplyr::mutate(kwic_genes_2, context = paste(pre,keyword, post, sep = " "))
+
+## select and rename columns
+kwic_genes_2 <- dplyr::select(kwic_genes_2, "criterion_index"="docname", context, "gene_synonym"=pattern)
+
+loss_pattern <- " loss"
+
+loss_eligibilities <- indexOnPattern(dataframe = kwic_genes, pattern = loss_pattern, featureLabel = "loss")
+
+## select and reorder columns for consistency with trialMatchDataRefresh
+loss_eligibilities <- unique(dplyr::select(loss_eligibilities, names(mutation_eligibilities) ))
+
+```
+
+```{r index on amplifications}
+
+amplification_pattern <- " amplifi|overexpress"
+
+amplification_eligibilities <- indexOnPattern(dataframe = kwic_genes, pattern = amplification_pattern, featureLabel = "amplification")
+
+## select and reorder columns for consistency with trialMatchDataRefresh
+amplification_eligibilities <- unique(dplyr::select(amplification_eligibilities, names(mutation_eligibilities) ))
+
+```
+
+```{r index on prior therapies}
+
+prior_tx_pattern <- "previous therapy|prior therapy|previous treatment|prior treatment"
+
+therapy_eligibilities <- eligibilities[grep(pattern = prior_tx_pattern, x=eligibilities$criteria, ignore.case = TRUE), ]
+
+therapy_eligibilities$feature <- "PRIOR_THERAPY"
+
+## drop redundant rows, if any
+therapy_eligibilities <- unique(therapy_eligibilities)
+
+## since prior therapies tend to be a mixture of 2-word synonyms, 3-word synonyms etc, plus parent terms, best approach for now is to not try and match against a therapy
+
+
+
+# add columns for row binding only
+therapy_eligibilities$match <- NA
+therapy_eligibilities$controlled_match <- NA
+therapy_eligibilities <- unique(dplyr::select(therapy_eligibilities, names(mutation_eligibilities) ))
+
+
+## instead, in the UI, just show inclusion and exclusion criteria (separately) related to prior therapies
+```
+
+```{r sentiment analysis practice}
+
+
+# sentence2 <- "Part A3: Participants with presence of loss of function mutation in the gene for ARIDIA, ATRX and /or DAXX and ATM"
+# 
+# sentiment <- SentimentAnalysis::analyzeSentiment(sentence2)
+# convertToBinaryResponse(sentiment)$SentimentQDAP
+
+
+# sentimentr::sentiment("Part A3: Participants with presence of loss of function mutation in the gene for ARIDIA, ATRX and /or DAXX and ATM")$sentiment
+# 
+# sentimentr::sentiment("Known BAP1 loss per immunohistochemistry (IHC) or NGS")$sentiment
+# 
+# sentimentr::sentiment("No genomic alteration of APC, MUTYH, SMAD4, BMPR1A, PTEN or STK11 in case of adenomatous polyposis or hamartoma presentation")$sentiment
+# 
+# sentimentr::sentiment("")$sentiment
+# 
+# sentimentr::sentiment("")$sentiment
+
+
+```
+
+```{r split criteria into sentences}
+## split eligibilities into individual sentences 
+# eligibilities$sentences <- strsplit(eligibilities$criteria, split = "\\. ")
+# eligibilities <- as.data.frame(unnest(data = eligibilities, sentences))
+# 
+# ## create a stemmed copy
+# eligibilities$sentences_stem <- textstem::stem_strings(eligibilities$sentences)
+# 
+# ## convert to lowercase
+# eligibilities$sentences_stem <- tolower(eligibilities$sentences_stem)
+# 
+# ## add a sentence index
+# eligibilities <- eligibilities %>% group_by(criterion_index) %>% mutate(criterion_sentence_index = paste0(criterion_index, "_", row_number())) %>% as.data.frame()
+```
+
+```{r stem eligibility criteria}
+## create a stemmed copy
+# eligibilities$criteria_stem <- textstem::stem_strings(eligibilities$criteria)
+
+## convert to lowercase
+# eligibilities$criteria_stem <- tolower(eligibilities$criteria_stem)
+
+
+
+```
+  
+```{r apply dictionary}
+## Convert tokens into equivalence classes defined by values of a dictionary object.
+## this works, but is relatively slow... 
+# dict4 <- dictionary(list(gene = humanGenes$Aliases, alteration = "KRAS mutation"))
+# toks4 <- tokens("Patients with any BRAF or KRAS mutation status are eligible.")
+# tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE)
+
+## also this... 
+# labResultSynonyms <- unique(NCIt$Synonyms[NCIt$Class == "Laboratory or Test Result"])
+# dict4 <- dictionary(list(gene = humanGenes$Aliases, lab_result = labResultSynonyms))
+# toks4 <- tokens("Proficient mismatch repair/microsatellite stable (pMMR/MSS), histologically or cytologically-confirmed adenocarcinoma of the colon or rectum. Patients with any BRAF or KRAS mutation status are eligible.")
+# tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE)
+# as.character(tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE))
+
+
+## and this
+# cellMolDysfSynonyms <- unique(NCIt$Synonyms[NCIt$Class == "Cell or Molecular Dysfunction"])
+# dict4 <- dictionary(list(gene = humanGenes$Aliases, lab_result = labResultSynonyms, cellMol_dysfunction = cellMolDysfSynonyms))
+# toks4 <- tokens("Proficient mismatch repair/microsatellite stable (pMMR/MSS), histologically or cytologically-confirmed adenocarcinoma of the colon or rectum. Patients with any BRAF or KRAS mutation status are eligible.")
+# tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE)
+# as.character(tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE))
+
+## and this
+# neoProcessSynonyms <- unique(NCIt$Synonyms[NCIt$Class == "Neoplastic Process"])
+# dict4 <- dictionary(list(gene = humanGenes$Aliases, 
+#                          lab_result = labResultSynonyms, 
+#                          cellMol_dysfunction = cellMolDysfSynonyms, 
+#                          neoplastic_process = neoProcessSynonyms))
+
+
+
+
+# toks4 <- tokens("Proficient mismatch repair/microsatellite stable (pMMR/MSS), histologically or cytologically-confirmed adenocarcinoma of the colon or rectum. Patients with any BRAF or KRAS mutation status are eligible.")
+# #tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE)
+# as.character(tokens_lookup(toks4, dict4, nested_scope = "key", exclusive = FALSE))
+
+
+
+## piped version
+# "BRCA Positive Serous Ovarian: Patients with serous ovarian cancer who have a harmful mutation in the breast cancer genes BRCA1 or BRCA2. (Serous tumors are the most common subtype of ovarian cancer)." %>%
+#     tokens( padding = TRUE, remove_punct=TRUE) %>%
+#     tokens_select( pattern = stopwords("en"), selection = "remove") %>%
+#     tokens_lookup( dict4, nested_scope = "key", exclusive = FALSE,valuetype = "fixed") %>%
+#     as.character() %>%
+#     paste(collapse = "', '")
+
+
+## apply to whole set of criteria
+# tic("index all criteria")
+# 
+# eligibilities_tokens_dict <- eligibilities_corpus %>%
+#   tokens( padding = TRUE, remove_punct=TRUE) %>%
+#     tokens_select( pattern = stopwords("en"), selection = "remove") %>%
+#     tokens_lookup( dict4, nested_scope = "key", exclusive = FALSE,valuetype = "fixed")
+# 
+# toc()
+
+```
+
+```{r keywords in context}
+## basic kwic, simple pattern...
+# kw_mutations <- kwic(eligibilities_tokens, pattern =  c("mutat*", "mutan*"), window = 5)
+# formattable(head(as.data.frame(kw_mutations), 30))
+# 
+# 
+# 
+# ## can use multi-word tokens as patterns
+# msi_synonyms <- NCIt$Synonyms[NCIt$ID=="C131459"]
+# msi_synonyms <- msi_synonyms[msi_synonyms != "Stable"]
+# msi_synonyms
+# kw_msi <- kwic(eligibilities_tokens, pattern =  phrase(msi_synonyms), window = 5, case_insensitive = TRUE)
+# formattable(head(as.data.frame(kw_msi), 30))
+```
+
+```{r define function to get pattern and context}
+#' Get context words (words within a symmetric window around the target word/phrase)
+#' sorrounding a user defined target.
+
+## reuse code from https://rdrr.io/github/prodriguezsosa/conText/src/R/get_context.R with modification to get useable values for docname
+
+## pattern may be a single string, or a vector of strings...
+
+## specify some sensible defaults...
+# get_context_mod <- function(dataframe, textcolumn, docid_field, pattern, window = 6, valuetype = "regex",what="word", ignore_case = TRUE) {
+#   #dataframe <- dataframe
+#   #pattern <- pattern
+#   #window <- window
+#   #valuetype <- valuetype
+#   #what <- what
+#   
+#   ## get a vector of TRUE/FALSE values indicating whether pattern present in dataframe
+#   pattern_present <- stringr::str_detect(dataframe[ ,which(names(dataframe)==textcolumn)], paste(stringr::regex(pattern, ignore_case = ignore_case), collapse = '|'))
+#   
+#   ## subset dataframe
+#   dataframe_subset <- dataframe[pattern_present, ]
+#   
+#   ## turn into a corpus object
+#   dataframe_subset_corpus <-  quanteda::corpus(x=dataframe_subset,
+#                       text_field = textcolumn, 
+#                       docid_field = docid_field,
+#                       #docid_field = "criterion_sentence_index", 
+#                       unique_docnames = FALSE)
+#   
+#   #out <- dataframe_subset_corpus
+#   
+#   ## get context of pattern
+#   kwic_i <- as.data.frame(quanteda::kwic(quanteda::tokens(dataframe_subset_corpus, what = what), pattern = quanteda::phrase(pattern), window = window, valuetype = valuetype, case_insensitive = TRUE))
+#   
+#   out <- kwic_i
+#   out <- as.data.frame(kwic_i) %>%
+#       dplyr::select(docname, keyword, pre, post) %>% # keep pre and post (see kwic documentation for info on values)
+#       dplyr::mutate(context = paste(pre,keyword, post, sep = " ")) %>% # combine pre and post into one variable named context
+#       dplyr::select(-c('pre', 'post')) %>% # drop pre & post
+#       dplyr::rename(target = keyword) # align variable names (we use target instead of keyword)
+#   
+#   return(out)
+# }
+# 
+
+
+```
+
+##### **Write indexed eligibility criteria to database**  
+
+```{r write indexed eligibilities to database}
+
+
+indexed_eligibilities <- unique(rbind(mutation_eligibilities, rearrangement_eligibilities, loss_eligibilities, amplification_eligibilities, therapy_eligibilities))
+
+## create as a table in database
+dbWriteTable(conn = con,name = "indexedEligibility", value = indexed_eligibilities, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+```
+
+```{r write data to csv for word embeddings}
+
+## select all verbatim criteria
+raw_criteria <- unique(dplyr::select(eligibilities, criteria))
+
+## select and rename columns from indexed eligibilities
+annotated_criteria <- unique(dplyr::select(indexed_eligibilities, match, "criterion"="criteria", feature, "entrez_gene"="controlled_match"))
+## drop rows related to prior tx
+annotated_criteria <- unique(dplyr::filter(annotated_criteria, feature != "PRIOR_THERAPY"))
+## drop rows with obvious false hits
+annotated_criteria <- annotated_criteria[!annotated_criteria$match %in% c("B12", "EL", "G6PD", "CAT", "MRI", "CT", "polymerase", "A1", "AA", "ARMS", "IMPACT", "STEPS", "OTC", "CAV", "NB", "PSA", "PK"), ]
+
+## write to file
+write.csv(x=raw_criteria, file = "raw_criteria.csv", row.names = FALSE)
+write.csv(x=annotated_criteria, file = "annotated_criteria.csv", row.names = FALSE)
+
+```
+  
+#### **Index design groups**  
+
+In some cases, patients are allocated to arms according to features (e.g. genetic alterations) - this information is relevant to clinician's evaluation of potential studies.  
+  
+Therefore, we will index design groups (titles and descriptions) in same way as for eligibility criteria...   
+  
+```{r create corpus for design groups}
+tic("create design groups corpus")
+dg_corpus <-  quanteda::corpus(x=unique(dplyr::select(design_groups, nct_id, dg_id, dg_title_description)),
+                                          text_field = "dg_title_description", 
+                                          docid_field = "dg_id",
+                                          unique_docnames = FALSE)
+toc()
+
+
+```
+
+```{r change units of dg corpus to sentences}
+dg_corpus <- corpus_reshape(dg_corpus, to = "sentences")
+
+```
+
+```{r tokenise the dg corpus}
+tic("tokenise dg corpus")
+dg_tokens <- tokens(dg_corpus, remove_punct=TRUE, padding = FALSE, split_hyphens = TRUE)
+toc()
+```
+
+```{r remove stopwords from dg tokens}
+# tic("remove stopwords")
+# dg_tokens <- tokens_select(x=dg_tokens, pattern = stopwords("en"), selection = "remove", padding = FALSE)
+# toc()
+```
+
+```{r get context words surrounding gene names in dg}
+
+tic("get kwic for genes, dgs")
+kwic_genes_dg <- as.data.frame(kwic(dg_tokens, pattern =  unique(humanGenes$Aliases), window = 6, case_insensitive = FALSE))
+toc()
+#formattable(head(as.data.frame(kw_genes), 30))
+
+## concatenate pre, gene name and post tokens
+kwic_genes_dg <- dplyr::mutate(kwic_genes_dg, context = paste(pre,keyword, post, sep = " "))
+
+## select and rename columns
+kwic_genes_dg <- dplyr::select(kwic_genes_dg, "dg_id"="docname", context, "gene_synonym"=pattern)
+
+## trim off the sentence ID added to dg_id (if using sentence-level corpus)
+kwic_genes_dg$dg_id <- gsub(pattern = "\\..*" , replacement = "", x=kwic_genes_dg$dg_id)
+
+```
+
+```{r join Entrez Symbols to kwic_genes_dg}
+
+kwic_genes_dg <- merge(x=kwic_genes_dg, by.x="gene_synonym", y=dplyr::select(humanGenes, Symbol, Aliases), by.y = "Aliases")
+
+```
+
+```{r join dg title and nct_id}
+kwic_genes_dg <- merge(x=dplyr::select(design_groups, nct_id, dg_id, dg_title, dg_description), by.x="dg_id", y=kwic_genes_dg, by.y="dg_id")
+
+## rename and reorder columns
+kwic_genes_dg <- unique(dplyr::select(kwic_genes_dg, nct_id, dg_id, dg_title,dg_description, context, "match"="gene_synonym", "controlled_match"="Symbol"))
+
+```
+  
+```{r index dg on mutations}
+
+mutation_dg <- indexOnPattern(dataframe = kwic_genes_dg, pattern = mutant_pattern, featureLabel = "mutation")
+
+## select and reorder columns for consistency with trialMatchDataRefresh
+mutation_dg <- unique(dplyr::select(mutation_dg, match, nct_id, dg_title, context, feature, controlled_match ))
+```
+
+```{r index dg on rearrangements}
+
+rearrangement_dg <- indexOnPattern(dataframe = kwic_genes_dg, pattern = rearrangement_pattern, featureLabel = "rearrangement")
+
+## select and reorder columns for consistency 
+rearrangement_dg <- unique(dplyr::select(rearrangement_dg, match, nct_id, dg_title, context, feature, controlled_match ))
+
+```
+
+```{r index dg on amplifications}
+
+
+amplification_dg <- indexOnPattern(dataframe = kwic_genes_dg, pattern = amplification_pattern, featureLabel = "amplification")
+
+## select and reorder columns for consistency 
+amplification_dg <- unique(dplyr::select(amplification_dg, names(rearrangement_dg) ))
+
+```
+  
+```{r write indexed design groups to database}
+
+indexed_dg <- unique(rbind(mutation_dg, rearrangement_dg, amplification_dg))
+
+## create as a table in database
+dbWriteTable(conn = con,name = "indexedDesignGroups", value = indexed_dg, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+```  
+  
+  
+  
+#### **Index result groups**  
+
+In some cases, results are analysed according to features (e.g. genetic alterations) - this information is relevant to clinician's evaluation of potential studies.  
+  
+Therefore, we will index result groups (titles and descriptions) in same way as for eligibility criteria...   
+  
+
+```{r create corpus for result groups}
+tic("create design groups corpus")
+rg_corpus <-  quanteda::corpus(x=unique(dplyr::select(result_groups, nct_id, rg_id, rg_title_description)),
+                                          text_field = "rg_title_description", 
+                                          docid_field = "rg_id",
+                                          unique_docnames = FALSE)
+toc()
+
+
+```
+
+```{r change units of rg corpus to sentences}
+rg_corpus <- corpus_reshape(rg_corpus, to = "sentences")
+
+```
+
+```{r tokenise the rg corpus}
+tic("tokenise rg corpus")
+rg_tokens <- tokens(rg_corpus, remove_punct=TRUE, padding = FALSE, split_hyphens = TRUE)
+toc()
+```
+
+```{r remove stopwords from rg tokens}
+# tic("remove stopwords")
+# rg_tokens <- tokens_select(x=rg_tokens, pattern = stopwords("en"), selection = "remove", padding = FALSE)
+# toc()
+```
+
+```{r get context words surrounding gene names in rg}
+
+tic("get kwic for genes, rgs")
+kwic_genes_rg <- as.data.frame(kwic(rg_tokens, pattern =  unique(humanGenes$Aliases), window = 6, case_insensitive = FALSE))
+toc()
+
+## concatenate pre, gene name and post tokens
+kwic_genes_rg <- dplyr::mutate(kwic_genes_rg, context = paste(pre,keyword, post, sep = " "))
+
+## select and rename columns
+kwic_genes_rg <- dplyr::select(kwic_genes_rg, "rg_id"="docname", context, "gene_synonym"=pattern)
+
+## trim off the sentence ID added to dg_id (if using sentence-level corpus)
+kwic_genes_rg$rg_id <- gsub(pattern = "\\..*" , replacement = "", x=kwic_genes_rg$rg_id)
+
+```
+
+```{r join Entrez Symbols to kwic_genes_rg}
+
+kwic_genes_rg <- merge(x=kwic_genes_rg, by.x="gene_synonym", y=dplyr::select(humanGenes, Symbol, Aliases), by.y = "Aliases")
+
+```
+
+```{r join rg title and nct_id}
+kwic_genes_rg <- merge(x=dplyr::select(result_groups, nct_id, rg_id, rg_title, rg_description), by.x="rg_id", y=kwic_genes_rg, by.y="rg_id")
+
+## rename and reorder columns
+kwic_genes_rg <- unique(dplyr::select(kwic_genes_rg, nct_id, rg_id, rg_title,rg_description, context, "match"="gene_synonym", "controlled_match"="Symbol"))
+
+```
+  
+```{r index rg on mutations}
+
+mutation_rg <- indexOnPattern(dataframe = kwic_genes_rg, pattern = mutant_pattern, featureLabel = "mutation")
+
+## select and reorder columns for consistency with trialMatchDataRefresh
+mutation_rg <- unique(dplyr::select(mutation_rg, match, nct_id, rg_title, context, feature, controlled_match ))
+```
+
+```{r index rg on rearrangements}
+
+rearrangement_rg <- indexOnPattern(dataframe = kwic_genes_rg, pattern = rearrangement_pattern, featureLabel = "rearrangement")
+
+## select and reorder columns for consistency 
+rearrangement_rg <- unique(dplyr::select(rearrangement_rg, names(mutation_rg) ))
+
+```
+
+```{r index rg on amplifications}
+
+
+amplification_rg <- indexOnPattern(dataframe = kwic_genes_rg, pattern = amplification_pattern, featureLabel = "amplification")
+
+## select and reorder columns for consistency 
+amplification_rg <- unique(dplyr::select(amplification_rg, names(mutation_rg) ))
+
+```
+  
+```{r write indexed result groups to database}
+
+indexed_rg <- unique(rbind(mutation_rg, rearrangement_rg, amplification_rg))
+
+## create as a table in database
+dbWriteTable(conn = con,name = "indexedResultGroups", value = indexed_rg, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+```  
+    
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ```{r disconnect from  database}
