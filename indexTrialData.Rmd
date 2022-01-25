@@ -821,6 +821,7 @@ uk_facilities <- dbGetQuery(conn2,UKfacilitiesQ)
 
 ```
 
+
 ```{r map postcodes to lat and long}
 ## convert postcodes to lowercase for join
 uk_postcodes$postcode_lower <- tolower(uk_postcodes$postcode)
@@ -830,7 +831,7 @@ uk_facilities$zip_lower <- tolower(uk_facilities$zip)
 uk_facilities <- merge(x=uk_facilities, by.x = "zip_lower", all.x = TRUE, y=uk_postcodes, by.y="postcode_lower")
 
 ## select and reorder columns
-uk_facilities <- unique(dplyr::select(uk_facilities, nct_id, facility_name, status, city, latitude, longitude))
+uk_facilities <- unique(dplyr::select(uk_facilities, nct_id, facility_name, facility_status, city, latitude, longitude))
 
 ## delete uk_postcodes object from memory
 rm(uk_postcodes)
@@ -866,7 +867,7 @@ uk_facilities$latitude[is.na(uk_facilities$latitude)] <- uk_facilities$geo_lat[i
 uk_facilities$longitude[is.na(uk_facilities$longitude)] <- uk_facilities$geo_long[is.na(uk_facilities$longitude)]
 
 ## select and reorder columns
-uk_facilities <- unique(dplyr::select(uk_facilities, nct_id, facility_name, status, city, latitude, longitude))
+uk_facilities <- unique(dplyr::select(uk_facilities, nct_id, facility_name, facility_status, city, latitude, longitude))
 ```
   
 A table of study sites, their statuses and lat, long values for their location has been saved to the uk_facilities table:  
@@ -1644,11 +1645,6 @@ dbListTables(con)
 
 
 
-
-
-
-
-
 ### **Index trial populations**  
   
 See also https://tutorials.quanteda.io/basic-operations/corpus/corpus/ for workflow from quanteda...  
@@ -1994,23 +1990,49 @@ toc()
 kwic_prior_tx_populations <- dplyr::mutate(kwic_prior_tx_populations, context = paste(pre,keyword, sep = " "))
 
 ## select and rename columns
-# kwic_genes_populations <- dplyr::select(kwic_genes_populations, "id"="docname", context, "gene_synonym"=pattern)
-
-
-
+kwic_prior_tx_populations <- dplyr::select(kwic_prior_tx_populations, "id"="docname", context, "therapy_synonym"=pattern)
 
 ```
 
-  
+```{r join therapy kwic to NCIt}
+
+kwic_prior_tx_populations <- unique(merge(x=kwic_prior_tx_populations, by.x="therapy_synonym", y=dplyr::select(NCIt, "NCIt_id"="ID", Synonyms, PreferredTerm, Parent_synonym, Class ), by.y="Synonyms"))
+
+kwic_prior_tx_populations <- dplyr::filter(kwic_prior_tx_populations, Class == "Therapeutic or Preventive Procedure")
+
+```
+
+```{r join study metadata to therapy kwic}
+kwic_prior_tx_populations <- unique(merge(x=kwic_prior_tx_populations, 
+                                          by.x="id", 
+                                          y=dplyr::select(text_for_indexing, nct_id, id, id_type, text ), 
+                                          by.y="id"))
+
+## select and reorder columns
+kwic_prior_tx_populations <- dplyr::select(kwic_prior_tx_populations, nct_id, id_type, id, therapy_synonym, text, context, NCIt_id, PreferredTerm, Parent_synonym)
+```
+
 ```{r define pattern for prior tx}
-# prior_tx_pattern <- "previous therapy|prior therapy|previous treatment|prior treatment"
+prior_tx_pattern <- "previous|prior"
 # 
 # prior_tx_pattern <- c("previous", "prior", "previous therapy", "prior therapy", "previous treatment", "prior treatment")
 
 ```
-  
+
+```{r filter and retain only kwic_tx containing prior tx pattern}
+prior_tx_populations <- indexOnPattern(dataframe = kwic_prior_tx_populations, pattern = prior_tx_pattern, featureLabel = "prior therapy")
+
+
+## harmonise columns and names with other indexing outputs
+
+prior_tx_populations <- unique(dplyr::select(prior_tx_populations, "match"="therapy_synonym", nct_id, id, id_type, text, feature, "controlled_match"="PreferredTerm"))
+```
 
 ```{r index populations on prior therapies}
+
+# 
+# ## select and reorder columns for consistency with trialMatchDataRefresh
+# amplification_populations <- unique(dplyr::select(amplification_populations, match, nct_id, id, id_type, text, feature, controlled_match ))
 
 
 
@@ -2020,33 +2042,162 @@ kwic_prior_tx_populations <- dplyr::mutate(kwic_prior_tx_populations, context = 
 
 ```
 
+#### **Write indexed population data to database**  
+
+```{r row bind indexed features into single table}
+
+population_features <- rbind(mutation_populations, rearrangement_populations, amplification_populations, loss_populations, prior_tx_populations)
 
 
-```{r index populations on prior therapies 2}
 
-
-# therapy_eligibilities <- eligibilities[grep(pattern = prior_tx_pattern, x=eligibilities$criteria, ignore.case = TRUE), ]
-# 
-# therapy_eligibilities$feature <- "PRIOR_THERAPY"
-# 
-# ## drop redundant rows, if any
-# therapy_eligibilities <- unique(therapy_eligibilities)
-# 
-# ## since prior therapies tend to be a mixture of 2-word synonyms, 3-word synonyms etc, plus parent terms, best approach for now is to not try and match against a therapy
-# 
-# 
-# 
-# # add columns for row binding only
-# therapy_eligibilities$match <- NA
-# therapy_eligibilities$controlled_match <- NA
-# therapy_eligibilities <- unique(dplyr::select(therapy_eligibilities, names(mutation_eligibilities) ))
-# 
-# 
-# ## instead, in the UI, just show inclusion and exclusion criteria (separately) related to prior therapies
 ```
   
+Indexing results are saved to the population_features database:  
+  
+`r formattable(head(population_features))`  
+  
+
+```{r write population_features to database}
+## create as a table in database
+dbWriteTable(conn = con,name = "population_features", value = population_features, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+
+```
+  
+### **Download variant info from clinVar and civicDB**  
+    
+  
+```{r download and process variants from clinvar}
+## download variant summaries from clinvar
+download.file(url="https://ftp.ncbi.nlm.nih.gov/pub/clinvar/tab_delimited/variant_summary.txt.gz",destfile = "variant_summary.txt.gz")
+clinvar <- read.table(gzfile("variant_summary.txt.gz"), sep="\t", quote="", fill = TRUE, stringsAsFactors = FALSE) 
+# V1 contains values for Allele ID
+# V2 gives nature (e.g. fusion, single nucleotide variant etc)
+# V7 contains values for clinical significance (inc whether pathogenic or not)
+# V25 gives a measure of confidence in assertion
+clinvar <- unique(dplyr::select(clinvar, "allele.id" = "V1", "nature"="V2", "significance"="V7", "confidence"="V25"))
+
+## variation_allele contains mappings from clinvar variation ID (clinvar ID) and allele ID
+download.file(url="https://ftp.ncbi.nlm.nih.gov/pub/clinvar/tab_delimited/variation_allele.txt.gz",destfile = "variation_allele.txt.gz")
+variationAllele <- read.table(gzfile("variation_allele.txt.gz"), sep="\t", quote="", fill = TRUE, stringsAsFactors = FALSE) 
+# V1 contains values for clinvar ID
+# V3 contains values for Allele ID
+variationAllele <- unique(dplyr::select(variationAllele, "clinvar.id"="V1", "allele.id"="V3"))
+
+## join tables
+clinvar <- merge(x=clinvar, by.x="allele.id", y=variationAllele, by.y="allele.id")
 
 
+# variants contains mappings from variant_id to clinvar_ids
+variants <- read.csv(file = "https://civicdb.org/downloads/nightly/nightly-VariantSummaries.tsv", sep = "\t", quote = "", stringsAsFactors = FALSE)
+# variants$gene contains gene name (Entrez symbol)
+# variants$variant contains amino acid change
+# variants$summary contains a useful summary of evidence for each variant
+# variants$clinvar_ids contains (comma-separated) clinvar IDs that can be mapped to the clinvar table to get info whether pathogenic or not... 
+
+
+## drop unwanted columns
+variants <- unique(dplyr::select(variants, variant_id, gene, variant, summary, variant_groups,civic_variant_evidence_score,clinvar_ids ))
+
+## split and unnest the clinvar_ids column
+variants$clinvar_ids <- strsplit(as.character(variants$clinvar_ids), split = ",")
+variants <- unnest(data = variants, clinvar_ids)
+
+
+## join significance from clinvar
+variants <- unique(merge(x=variants, by.x="clinvar_ids", all.x=TRUE, y=clinvar, by.y="clinvar.id"))
+
+
+
+## drop unwanted columns 
+variants <- unique(dplyr::select(variants,variant_id, clinvar_ids,gene,variant,summary,variant_groups, significance,confidence))
+
+## split on the word "and"
+variants$variant <- strsplit(x=variants$variant, split = " and ") 
+variants <- unnest(data = variants, cols = variant, keep_empty = TRUE) ## unnest to multiply rows, keep any rows with no aliases
+variants <- as.data.frame(variants) ## convert to datack a frame
+
+
+## trim everything after first space in variants$variant
+variants$variant <- gsub(pattern = " .*", replacement = "", x=variants$variant)
+
+```
+  
+Variant data are saved to the variants table:  
+  
+`r formattable(head(variants))`  
+    
+ 
+```{r create table of variants}
+## preview
+# formattable(head(variants))
+
+## create as a table in database
+dbWriteTable(conn = con,name = "variants", value = variants, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+
+```
+      
+  
+  
+### **Download variant:drug evidence from clinVar**  
+    
+    
+```{r download and process evidence from civic DB}
+## download evidence from civicDB
+# evidence contains mappings from variant_id to gene (gene name) and variant (amino acid change) to drugs etc
+evidence <- read.csv(file = "https://civicdb.org/downloads/nightly/nightly-ClinicalEvidenceSummaries.tsv", sep = "\t", quote="", stringsAsFactors = FALSE)
+# evidence contains more detailed data re: drugs, sensitivity etc
+# evidence$evidence_level contains details of nature of evidence: 
+# A = validated
+# B = clinical
+# C = case study
+# D = preclinical
+
+
+## drop unwanted columns
+evidence <- unique(dplyr::select(evidence, variant_id, disease, drugs,  evidence_type, evidence_direction,evidence_level,clinical_significance,evidence_statement))
+
+evidence <- as.data.frame(evidence)
+
+## unnest the drugs column
+evidence$drugs <- strsplit(x=evidence$drugs, split=",")
+evidence <- unnest(data = evidence, cols = drugs, keep_empty = TRUE) 
+evidence <- as.data.frame(evidence) ## convert to data frame
+
+```
+
+Variant:drug evidence is saved to the evidence table:  
+  
+`r formattable(head(evidence))`  
+  
+  
+ 
+```{r create table of evidence}
+## preview
+# formattable(head(evidence))
+
+## create as a table in database
+dbWriteTable(conn = con,name = "evidence", value = evidence, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+
+
+## print a list of disease in evidence table, but not represented among condition synonyms
+# setdiff(x=unique(evidence$disease), y=unique(conditionSynonyms$condition.synonyms))
+```
+
+
+  
+  
+### **Create views for trial finder**  
+  
+  
 
 ```{r disconnect from  database}
 
