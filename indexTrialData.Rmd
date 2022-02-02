@@ -608,6 +608,9 @@ cancerStudies <- as.data.frame(unnest(data = cancerStudies, word))
 ## this function does insist on replacing whitespace with a character (here, underscore), so need to swap that back to whitespace
 cancerStudies$word <- gsub(pattern = "_", replacement = " ", x=cancerStudies$word)
 
+## convert to lowercase for joining
+cancerStudies$word <- tolower(cancerStudies$word)
+conditionSynonyms$condition_synonyms <- tolower(conditionSynonyms$condition_synonyms)
 
 ## join on word = conditionSynonyms$condition_synonyms
 cancerStudies <- unique(merge(x=cancerStudies, by.x = "word", y=conditionSynonyms, by.y="condition_synonyms"))
@@ -2169,6 +2172,13 @@ evidence$drugs <- strsplit(x=evidence$drugs, split=",")
 evidence <- unnest(data = evidence, cols = drugs, keep_empty = TRUE) 
 evidence <- as.data.frame(evidence) ## convert to data frame
 
+
+## join the gene and variant details from variants table
+evidence <- unique(merge(x=dplyr::select(variants, variant_id, gene, variant, significance), 
+                         by.x = "variant_id", 
+                         y=evidence, 
+                         by.y = "variant_id"))
+
 ```
 
 Variant:drug evidence is saved to the evidence table:  
@@ -2195,8 +2205,137 @@ dbListTables(con)
 
   
   
+
+### **Get pathway graph data from KEGG**  
+  
+  
+```{r get edge list}
+
+
+## download KGML file for Pathways In Cancer as KGML file
+pathwaysInCancer_KGML <- get_KGML("hsa05200")
+#class(pathwaysInCancer_KGML)
+
+## expand mappings
+pathwaysInCancer_mappings <- expand_KEGG_mappings(pathwaysInCancer_KGML, convert_KEGG_IDs = FALSE)
+pathwaysInCancer_mappings <- expand_KEGG_mappings(pathwaysInCancer_KGML)
+pathwaysInCancer_edges <- expand_KEGG_edges(pathwaysInCancer_KGML, pathwaysInCancer_mappings)
+
+## create a simple edgelist
+edges <- unique(dplyr::select(pathwaysInCancer_edges, "from"="entry1symbol", "to"="entry2symbol", specific_subtype, value))
+
+## note this includes nodes other than genes (e.g. estradiol)
+
+# #Modify existing data sets; specify as nodes and edges
+# pathwaysInCancer_node_mapping_info <- node_mapping_info(pathwaysInCancer_mappings)
+# 
+# pathwaysInCancer_edge_mapping_info <- edge_mapping_info(pathwaysInCancer_edges)
+# 
+# #Create an igraph object
+# pathwaysInCancer.igraph <- get_graph_object(pathwaysInCancer_node_mapping_info, pathwaysInCancer_edge_mapping_info)
+# 
+# ## get edgelist
+# edges <- as_data_frame(pathwaysInCancer.igraph, what = c("edges"))
+# 
+# ## retain only edges where "from" is a gene
+# edges <- unique(dplyr::filter(edges, entry1type=="gene"))
+# 
+# ## drop unnecessary columns
+# # keep edge IDs fur use in graph analysis 
+# edges <- unique(dplyr::select(edges, "from"="entry1symbol", "to"="entry2symbol",edgeID, specific_subtype, tooltip))
+# 
+# 
+# ## unnest the from and to columns
+# edges$from <- strsplit(edges$from, split = ",")
+# edges <- unnest(edges, cols = "from")
+# 
+# edges$to <- strsplit(edges$to, split = ",")
+# edges <- unnest(edges, cols = "to")
+# 
+# ## convert back to dataframe
+# edges <- as.data.frame(edges)
+
+
+```
+
+
+Pathways in cancer is saved as a simple edge list in the edges table:  
+  
+`r formattable(head(edges))`  
+  
+    
+
+```{r create table of edges}
+## preview
+formattable(head(edges))
+
+## create as a table in database
+dbWriteTable(conn = con,name = "edges", value = edges, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+
+```
+  
+  
+
+
 ### **Create views for trial finder**  
   
+#### **Studies view**  
+  
+  
+```{r create studies view }
+
+## for compatibility with TRIAL_MATCH_SHINY.Rmd
+## need to create a table with the following columns
+#  [1] "interventions"      "locations"          "postcode"           "nct_id"            
+#  [5] "brief_title"        "overall_status"     "condition"          "site_name"         
+#  [9] "site_status"        "investigators"      "contacts"           "central_contacts"  
+# [13] "Refresh.date"       "matching.condition" "TARGET.condition"   "Link"              
+# [17] "postcode.lat"       "postcode.long"      "lat"                "long"              
+# [21] "ParentTerm" 
+# no columns are aggregated
+
+## in order to restrict size of table, we will limit rows to studies with overall status of Recruiting
+
+
+## start with cancerStudies table
+open_cancerStudies_view <- unique(dplyr::select(cancerStudies, nct_id, brief_title, overall_status, condition, "Refresh.date" = "refresh_date","matching.condition" = "condition", "TARGET.condition" = "controlled_cancer_type"))
+
+open_cancerStudies_view <- dplyr::filter(open_cancerStudies_view, overall_status=="Recruiting")
+
+## join site info - at this point only sites in specified country will be retained
+open_cancerStudies_view <- unique(merge(x=open_cancerStudies_view, 
+                                   by.x = "nct_id", 
+                                   y = dplyr::select(uk_facilities, nct_id, "site_name"="facility_name", "site_status" = "facility_status", "locations"="city","postcode"="longitude", "postcode.lat"="latitude", "postcode.long"="longitude", "lat"="latitude", "long"="longitude"), 
+                                   by.y = "nct_id"))
+
+## add an empty postcode column (will get dropped anyway)
+open_cancerStudies_view$postcode <- NA
+
+
+## join interventions info
+open_cancerStudies_view <- unique(merge(x=open_cancerStudies_view, 
+                                   by.x = "nct_id", 
+                                   y = dplyr::select(interventions, nct_id, "interventions"="intervention_name", "ParentTerm" = "Mechanism"), 
+                                   by.y = "nct_id"))
+
+
+
+## select, rename and reorder for consistency with trialMatchDataRefresh.Rmd
+# open_cancerStudies_view <- unique(dplyr::select(open_cancerStudies_view, interventions, locations, postcode, nct_id, brief_title, overall_status,"condition"="matching.condition", site_name, site_status, ))
+```
+
+
+
+
+
+
+
+
+
+
   
 
 ```{r disconnect from  database}
