@@ -582,6 +582,8 @@ cancerStudies <- dbGetQuery(conn2,cancerStudiesQ)
 ## add a column to indicate refresh date
 cancerStudies$refresh_date <- today
 
+## add a column to hold link
+cancerStudies$Link <- paste0("https://clinicaltrials.gov/ct2/show/", cancerStudies$nct_id)
 ```
   
 As of `r today`, there are a total of `r length(unique(cancerStudies$nct_id))` cancer studies listed in clinicaltrials.gov and included in this analysis.  
@@ -708,7 +710,7 @@ kwic_interventions <- unique(dplyr::select(kwic_interventions, nct_id, intervent
 interventions <- kwic_interventions
 ```
 
-```{r process intervention names}
+```{r process intervention names NOT USED}
 # ## duplicate intervention name
 # interventions$intervention_name_processed <- interventions$intervention_name
 # ## convert to lowercase 
@@ -739,9 +741,8 @@ interventions <- kwic_interventions
 # # design_group_interventions$intervention_name[grep(pattern = "placebo|dummy", x=design_group_interventions$intervention_name, ignore.case = TRUE)] <- "Placebo"
 ```
   
-#### **Map study interventions to NCIt pharmacologics**  
-  
-```{r join interventions to NCIt pharmacologics}
+
+```{r join interventions to NCIt pharmacologics NOT USED}
 # ## create a temporary copy of NCIt pharmacologics
 # NCIt_Pharmacologics_temp <- unique(dplyr::select(NCIt_Pharmacologics, "NCIt_ID"="ID", Synonyms, PreferredTerm, "Mechanism"="Parent_synonym"))
 # ## convert synonyms to lower case for joining
@@ -764,7 +765,7 @@ interventions <- kwic_interventions
 
 
 
-```{r omit cancerstudies with unmapped interventions}
+```{r omit cancerstudies with unmapped interventions NOT USED}
 # cancerStudies <- unique(dplyr::filter(cancerStudies, nct_id %in% interventions$nct_id))
 
 
@@ -811,9 +812,18 @@ dbListTables(con)
   
 ```{r download facilities}
 
-UKfacilitiesQ <- paste0("select f.nct_id, f.status AS facility_status, f.name AS facility_name, f.city, f.zip 
-from facilities f
-where f.nct_id in (",
+# UKfacilitiesQ <- paste0("select f.nct_id, f.status AS facility_status, f.name AS facility_name, f.city, f.zip 
+# from facilities f
+# where f.nct_id in (",
+# "", studyIDsForSQL,
+# ") AND lower(f.country) = 'united kingdom'")
+
+UKfacilitiesQ <- paste0("SELECT f.nct_id, f.status AS facility_status, f.name AS facility_name, f.city, f.zip, fi.name AS investigators, cc.email AS central_contacts, fc.email 
+FROM facilities f
+LEFT JOIN facility_investigators fi ON f.id = fi.facility_id
+LEFT JOIN facility_contacts fc ON f.id = fc.facility_id
+LEFT JOIN central_contacts cc ON f.nct_id = cc.nct_id
+WHERE f.nct_id IN (",
 "", studyIDsForSQL,
 ") AND lower(f.country) = 'united kingdom'")
 
@@ -834,7 +844,7 @@ uk_facilities$zip_lower <- tolower(uk_facilities$zip)
 uk_facilities <- merge(x=uk_facilities, by.x = "zip_lower", all.x = TRUE, y=uk_postcodes, by.y="postcode_lower")
 
 ## select and reorder columns
-uk_facilities <- unique(dplyr::select(uk_facilities, nct_id, facility_name, facility_status, city, latitude, longitude))
+# uk_facilities <- unique(dplyr::select(uk_facilities, nct_id, facility_name, facility_status, city, latitude, longitude))
 
 ## delete uk_postcodes object from memory
 rm(uk_postcodes)
@@ -870,7 +880,7 @@ uk_facilities$latitude[is.na(uk_facilities$latitude)] <- uk_facilities$geo_lat[i
 uk_facilities$longitude[is.na(uk_facilities$longitude)] <- uk_facilities$geo_long[is.na(uk_facilities$longitude)]
 
 ## select and reorder columns
-uk_facilities <- unique(dplyr::select(uk_facilities, nct_id, facility_name, facility_status, city, latitude, longitude))
+# uk_facilities <- unique(dplyr::select(uk_facilities, nct_id, facility_name, facility_status, city, latitude, longitude))
 ```
   
 A table of study sites, their statuses and lat, long values for their location has been saved to the uk_facilities table:  
@@ -2301,14 +2311,14 @@ dbListTables(con)
 
 
 ## start with cancerStudies table
-open_cancerStudies_view <- unique(dplyr::select(cancerStudies, nct_id, brief_title, overall_status, condition, "Refresh.date" = "refresh_date","matching.condition" = "condition", "TARGET.condition" = "controlled_cancer_type"))
+open_cancerStudies_view <- unique(dplyr::select(cancerStudies, nct_id, Link, brief_title, overall_status, condition, "Refresh.date" = "refresh_date","matching.condition" = "condition", "TARGET.condition" = "controlled_cancer_type"))
 
 open_cancerStudies_view <- dplyr::filter(open_cancerStudies_view, overall_status=="Recruiting")
 
 ## join site info - at this point only sites in specified country will be retained
 open_cancerStudies_view <- unique(merge(x=open_cancerStudies_view, 
                                    by.x = "nct_id", 
-                                   y = dplyr::select(uk_facilities, nct_id, "site_name"="facility_name", "site_status" = "facility_status", "locations"="city","postcode"="longitude", "postcode.lat"="latitude", "postcode.long"="longitude", "lat"="latitude", "long"="longitude"), 
+                                   y = dplyr::select(uk_facilities, nct_id, "site_name"="facility_name", "site_status" = "facility_status", "contacts" = "email", central_contacts, investigators, "locations"="city","postcode"="longitude", "postcode.lat"="latitude", "postcode.long"="longitude", "lat"="latitude", "long"="longitude"), 
                                    by.y = "nct_id"))
 
 ## add an empty postcode column (will get dropped anyway)
@@ -2324,15 +2334,208 @@ open_cancerStudies_view <- unique(merge(x=open_cancerStudies_view,
 
 
 ## select, rename and reorder for consistency with trialMatchDataRefresh.Rmd
-# open_cancerStudies_view <- unique(dplyr::select(open_cancerStudies_view, interventions, locations, postcode, nct_id, brief_title, overall_status,"condition"="matching.condition", site_name, site_status, ))
+open_cancerStudies_view <- unique(dplyr::select(open_cancerStudies_view, interventions, locations, postcode, nct_id, brief_title, overall_status,"condition"="matching.condition", site_name, site_status, investigators, contacts, central_contacts, Refresh.date, matching.condition, TARGET.condition, Link, postcode.lat, postcode.long, lat, long, ParentTerm))
+```
+  
+Study data (open, UK studies) have been saved as a view in the open_cancerStudies_view:  
+
+
+```{r save open_cancerStudies_view to DB}
+## preview
+formattable(head(open_cancerStudies_view))
+
+## create as a table in database
+dbWriteTable(conn = con,name = "open_cancerStudies_view", open_cancerStudies_view, overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+
+```
+  
+#### **indexedEligibility view**  
+  
+```{r create indexedEligibility view}
+## start with population features
+open_cancerStudies_nct_ids <- unique(open_cancerStudies_view$nct_id)
+
+## exclude studies not in open_cancerStudies_view
+indexed_eligibilities_view <- unique(dplyr::filter(population_features, nct_id %in% open_cancerStudies_nct_ids))
+
+## get prior therapy exclusion criteria
+therapy_exclusions <- unique(dplyr::filter(indexed_eligibilities_view, id_type == "EXCLUSION" & feature == "prior therapy"))
+
+## get inclusion criteria
+indexed_eligibilities_view <- unique(dplyr::filter(indexed_eligibilities_view, id_type == "INCLUSION"))
+
+## row bind 
+indexed_eligibilities_view <- rbind(indexed_eligibilities_view, therapy_exclusions)
+
+## select and rename columns for consistency with trialMatchDataRefresh.Rmd
+indexed_eligibilities_view <- dplyr::select(indexed_eligibilities_view, nct_id, "criteria"="text", "criterion.type"="id_type", feature, match, "controlled.match"="controlled_match")
+
+```
+
+  
+Eligibility data (studies in open_cancerStudies_view only) have been saved as a view in the indexed_eligibilities_view:  
+
+
+```{r save indexed_eligibilities_view to DB}
+## preview
+formattable(head(indexed_eligibilities_view))
+
+## create as a table in database
+dbWriteTable(conn = con,name = "indexed_eligibilities_view", indexed_eligibilities_view , overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+
+```
+  
+#### **Scored matches view**  
+  
+Studies will be scored as follows:  
+  
+* Score +3 if enrolling patients with 1 or more specified alteration  
+* Score +2 if any intervention targets an altered gene directly  
+* Score +1 if any intervention targets a gene immediately downstream of an altered gene  
+
+```{r score population features}
+## get matching inclusion criteria
+scored_matches_study <- unique(dplyr::filter(indexed_eligibilities_view, criterion.type=="INCLUSION"))
+
+## drop rows without a gene match
+scored_matches_study <- dplyr::filter(scored_matches_study, !is.na(controlled.match))
+## drop rows based on prior therapy
+scored_matches_study <- dplyr::filter(scored_matches_study, feature != "prior therapy")
+
+
+## concatenate gene name and feature
+scored_matches_study$gene_variant_type <- paste(scored_matches_study$controlled.match, scored_matches_study$feature, sep = " ")
+
+## create a string to describe rationale
+scored_matches_study$eligibility_rationale <- paste0("Enrolling subjects with ", scored_matches_study$gene_variant_type)
+
+## select, rename and reorder columns for compatibility with trialMatchDataRefresh.Rmd
+scored_matches_study <- unique(dplyr::select(scored_matches_study, "symbol"="controlled.match", "variant_type"="feature", nct_id, eligibility_rationale, "matching_criteria"="criteria"))
+
+## where multiple criteria, aggregate
+scored_matches_study <- scored_matches_study %>%
+                                      group_by(nct_id, symbol, variant_type, eligibility_rationale) %>%
+                                      summarise(
+                                        matching_criteria = paste(unique(matching_criteria), collapse = "\n\n")
+                ) %>%
+  as.data.frame()
+  
+
+## add a score
+scored_matches_study$eligibility_score <- 3
 ```
 
 
+```{r score matches on intervention target}
+## start with interventions
+scored_matches_interventions <- unique(dplyr::select(interventions, nct_id, intervention_name, target_symbol))
+
+## exclude studies not in open_cancerStudies_view
+scored_matches_interventions <- unique(dplyr::filter(scored_matches_interventions, nct_id %in% open_cancerStudies_nct_ids))
+
+## exclude rows where target is NA
+scored_matches_interventions <- dplyr::filter(scored_matches_interventions, !is.na(target_symbol))
+
+## add rationale column
+scored_matches_interventions$intervention_rationale <- paste0("Study intervention (", scored_matches_interventions$intervention_name, ") targets ", scored_matches_interventions$target_symbol)
+
+## add a score
+scored_matches_interventions$intervention_score <- 2
+```
+
+
+```{r score matches on pathway neighbour targets}
+
+## start with interventions
+scored_matches_interventions_pathways <- unique(dplyr::select(interventions, nct_id, intervention_name, target_symbol))
+
+## exclude studies not in open_cancerStudies_view
+scored_matches_interventions_pathways <- unique(dplyr::filter(scored_matches_interventions_pathways, nct_id %in% open_cancerStudies_nct_ids))
+
+## exclude rows where target is NA
+scored_matches_interventions_pathways <- dplyr::filter(scored_matches_interventions_pathways, !is.na(target_symbol))
+
+## join to edges, where drugTargetSymbol == to
+## i.e. intervention targets the downstream node
+scored_matches_interventions_pathways <- merge(x=scored_matches_interventions_pathways, by.x="target_symbol", y=dplyr::select(edges, from, to), by.y="to")
+
+## drop any from values that are not genes
+scored_matches_interventions_pathways <- dplyr::filter(scored_matches_interventions_pathways, from %in% humanGenes$Symbol)
+
+## select and rename columns
+scored_matches_interventions_pathways <- unique(dplyr::select(scored_matches_interventions_pathways,nct_id, intervention_name, "downstream"="target_symbol","upstream"="from" ))
+
+## where an intervention targets >1 gene, aggregate
+scored_matches_interventions_pathways <- as.data.frame(scored_matches_interventions_pathways %>%
+                group_by(nct_id, intervention_name, upstream) %>%
+                summarise(
+                  downstream = paste(unique(downstream), collapse = ", ")
+                ))
+
+## add rationale column
+scored_matches_interventions_pathways$intervention_rationale <- paste0("Study drug (", scored_matches_interventions_pathways$intervention_name, ") targets downstream gene(s) (", scored_matches_interventions_pathways$downstream, ")")
+
+## drop downstream column
+scored_matches_interventions_pathways <- unique(dplyr::select(scored_matches_interventions_pathways, -c(downstream)))
+
+## rename upstream column to target_symbol to match scored_matches_interventions
+#pathwayMatches <- rename(pathwayMatches, "symbol"="upstream")
+scored_matches_interventions_pathways$target_symbol <- scored_matches_interventions_pathways$upstream
+scored_matches_interventions_pathways <- dplyr::select(scored_matches_interventions_pathways, -upstream)
+
+
+## add a score
+scored_matches_interventions_pathways$intervention_score <- 1
+
+## harmonise columns
+scored_matches_interventions_pathways <- unique(dplyr::select(scored_matches_interventions_pathways, names(scored_matches_interventions)))
+
+```
+
+
+```{r combine target and pathway matches}
+## combine matches on target and pathway
+scored_matches_interventions_combined <- rbind(scored_matches_interventions, scored_matches_interventions_pathways)
+
+nrow(scored_matches_interventions_combined)
+
+## where intervention had both direct and pathway matches, just take the highest score
+scored_matches_interventions_combined <- scored_matches_interventions_combined %>%
+  group_by(nct_id, intervention_name, target_symbol) %>%
+  arrange(desc(intervention_score)) %>%
+  summarise(
+    intervention_rationale = head(intervention_rationale, 1), 
+    intervention_score = head(intervention_score, 1)
+  )
+
+```
+
+```{r expand intervention matches to apply to all alteration types}
+## for genes that don't have a match in eligilityMatches, we want to be able to match on gene alone, regardless of variant_type... 
+scored_matches_interventions_combined$variant_type <- list(unique(scored_matches_study$variant_type))
+
+## unnest to multiply rows
+scored_matches_interventions_combined <- data.frame(unnest(scored_matches_interventions_combined, cols = "variant_type"))
+
+## select and reorder columns 
+scored_matches_interventions_combined <- dplyr::select(scored_matches_interventions_combined, nct_id, "symbol"="target_symbol", variant_type, intervention_rationale, intervention_score)
+
+```
+
+
+```{r calculate combined scores}
+## harmonise names for study and intervention scores
 
 
 
 
-
+```
 
 
 
