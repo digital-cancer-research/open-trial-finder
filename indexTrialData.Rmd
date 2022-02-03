@@ -2530,14 +2530,40 @@ scored_matches_interventions_combined <- dplyr::select(scored_matches_interventi
 
 
 ```{r calculate combined scores}
-## harmonise names for study and intervention scores
+## merge matches tables 
+scoredMatches_view <- merge(x=scored_matches_study, by.x=c("nct_id", "symbol", "variant_type"), all.x=TRUE, 
+      y=scored_matches_interventions_combined, by.y = c("nct_id", "symbol", "variant_type"), all.y=TRUE)
 
+## add a combined score
+scoredMatches_view$combined_score <- rowSums(scoredMatches_view[,c("intervention_score", "eligibility_score")], na.rm=TRUE)
 
+## concatenate symbol and variant_type columns to get <gene name> <variant_type>, e.g. "EGFR mutation"
+scoredMatches_view$gene_variant_type <- paste(scoredMatches_view$symbol, scoredMatches_view$variant_type, sep=" ")
+
+## select and reorder columns
+scoredMatches_view <- unique(dplyr::select(scoredMatches_view, symbol, variant_type,gene_variant_type, nct_id, intervention_rationale, eligibility_rationale, matching_criteria, combined_score))
+
+## order on combined_score descending
+scoredMatches_view <- scoredMatches_view[order(scoredMatches_view$combined_score, decreasing = TRUE), ]
 
 
 ```
 
+  
+Scored matches (studies in open_cancerStudies_view only) have been saved as a view in the scoredMatches_view table:  
 
+
+```{r save scoredMatches_view to DB}
+## preview
+formattable(head(scoredMatches_view))
+
+## create as a table in database
+dbWriteTable(conn = con,name = "scoredMatches_view", scoredMatches_view , overwrite=TRUE)
+
+## check it has saved
+dbListTables(con)
+
+```
 
   
 
