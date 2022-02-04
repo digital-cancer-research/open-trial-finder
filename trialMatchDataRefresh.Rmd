@@ -355,7 +355,7 @@ country,
 "')
   AND s.study_type LIKE ('Interventional')
   AND s.overall_status IN ('Recruiting')
-  AND f.status IN ('Recruiting')")
+  AND f.status IN ('Not yet recruiting','Recruiting')")
 
 ## OPTIONAL, could include sites with status of 'Not yet recruiting' and add a checkbox for users to choose whether to show/hide these sites
 
@@ -949,7 +949,7 @@ formattable(head(loss.eligibilities))
   
 ```{r index criteria on amplifications}
 
-amplification.eligibilities <- indexOnPattern(eligibilities = eligibilities, pattern = " amplification|overexpression", wordRange = 5, featureLabel = "amplification")
+amplification.eligibilities <- indexOnPattern(eligibilities = eligibilities, pattern = " amplifi|overexpress", wordRange = 5, featureLabel = "amplification")
 
 ## preview
 formattable(head(amplification.eligibilities))
