@@ -141,7 +141,8 @@ indexedEligibility <- dbGetQuery(con, "SELECT * FROM indexed_eligibilities_view"
 excludedTX <- filter(indexedEligibility, criterion.type=="EXCLUSION")
 
 ## filter for prior therapy
-excludedTX <- filter(excludedTX, feature=="PRIOR_THERAPY")
+# excludedTX <- filter(excludedTX, feature=="PRIOR_THERAPY")
+excludedTX <- filter(excludedTX, feature=="prior therapy")
 
 ## drop unnecessary columns
 excludedTX <- unique(dplyr::select(excludedTX, nct_id, "Exclusions"="criteria"))
