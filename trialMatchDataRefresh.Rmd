@@ -269,6 +269,7 @@ evidence <- as.data.frame(evidence)
 evidence$drugs <- strsplit(x=evidence$drugs, split=",")
 evidence <- unnest(data = evidence, cols = drugs, keep_empty = TRUE) 
 evidence <- as.data.frame(evidence) ## convert to data frame
+
 ```
 
  
@@ -551,6 +552,10 @@ NCIthesaurus$downloaded <- Sys.Date()
 NCIthesaurus <- unique(NCIthesaurus)
 
 toc()
+
+## create as a table in database
+dbWriteTable(conn = con,name = "NCIt", value = NCIthesaurus, overwrite=TRUE)
+
 
 ```
   
@@ -1001,7 +1006,7 @@ indexed.eligibilities <- unique(rbind(mutation.eligibilities, rearrangement.elig
 
 ```{r create table of indexed eligibility criteria}
 ## preview
-#formattable(head(indexed.eligibilities))
+formattable(head(indexed.eligibilities))
 
 ## create as a table in database
 dbWriteTable(conn = con,name = "indexedEligibility", value = indexed.eligibilities, overwrite=TRUE)
