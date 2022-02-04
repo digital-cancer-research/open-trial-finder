@@ -2331,10 +2331,14 @@ open_cancerStudies_view <- unique(merge(x=open_cancerStudies_view,
                                    y = dplyr::select(interventions, nct_id, "interventions"="intervention_name", "ParentTerm" = "Mechanism"), 
                                    by.y = "nct_id"))
 
-
+## add a duplicated matching condition column for consistency with shiny app
+open_cancerStudies_view$condition <- open_cancerStudies_view$matching.condition
 
 ## select, rename and reorder for consistency with trialMatchDataRefresh.Rmd
-open_cancerStudies_view <- unique(dplyr::select(open_cancerStudies_view, interventions, locations, postcode, nct_id, brief_title, overall_status,"condition"="matching.condition", site_name, site_status, investigators, contacts, central_contacts, Refresh.date, matching.condition, TARGET.condition, Link, postcode.lat, postcode.long, lat, long, ParentTerm))
+open_cancerStudies_view <- unique(dplyr::select(open_cancerStudies_view, interventions, locations, postcode, nct_id, brief_title, overall_status,condition, site_name, site_status, investigators, contacts, central_contacts, Refresh.date, matching.condition, TARGET.condition, Link, postcode.lat, postcode.long, lat, long, ParentTerm))
+
+
+
 ```
   
 Study data (open, UK studies) have been saved as a view in the open_cancerStudies_view:  
