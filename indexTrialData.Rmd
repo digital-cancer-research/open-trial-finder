@@ -1702,6 +1702,132 @@ rm(design_groups_for_indexing)
 rm(result_groups_for_indexing)
 ```
   
+* (before step 2, "expand" strings such as *BRCA1/2* to *BRCA1/BRCA2*)  
+  
+```{r expand contractions}
+# example_sentence <- "Module 2 Part B5 Study expansion: BRCA mutant or RAD51C/D mutant or HRD positive status ovarian cancer patient who are Platinum sensitive and have previously progressed on a licensed PARPi"
+# 
+# 
+# example_sentences <- c("Module 2 Part B5 Study expansion: BRCA mutant or RAD51C/D mutant", 
+#                        "Positive for the BRCA1/BRCA2 gene.", 
+#                        "Greater than 20% probability of carrying BRCA1/2 mutation", 
+#                        "Any patient with a known germline BRCA1 or 2 mutation", 
+#                        "prior adjuvant chemotherapy and/or hormonal therapy")
+# 
+# ## replace whole-word matches of "BRCA" with "BRCA1 or BRCA2"
+# example_sentences <- gsub(pattern = "\\bBRCA\\b", replacement = "BRCA1 BRCA2", x=example_sentences)
+# 
+# ## get bag of words around mention gene names
+# kwic_example_sentences <- as.data.frame(kwic(x = tokens(example_sentences, remove_punct=FALSE, padding = FALSE, split_hyphens = TRUE), pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE))
+# 
+# ## now trim slashes/"or" and get a second bag of words
+# ## trim the preceding character from word before slash and replace with character after slash
+# kwic_example_sentences_2 <- as.data.frame(kwic(x = tokens(gsub(pattern='./', replacement = '', x=example_sentences), remove_punct=FALSE, padding = FALSE, split_hyphens = TRUE), pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE))
+# ## combine the two bags of words
+# kwic_example_sentences <- unique(rbind(kwic_example_sentences, kwic_example_sentences_2))
+# 
+# ## concatenate
+# kwic_example_sentences <- dplyr::mutate(kwic_example_sentences, context = paste(pre,keyword, post, sep = " "))
+#   
+# ## select and rename columns
+# kwic_example_sentences <- dplyr::select(kwic_example_sentences, "id"="docname", context, "gene_synonym"=pattern)
+# 
+# 
+# 
+# kwic_example_sentences <- merge(x=kwic_example_sentences, by.x="gene_synonym", y=dplyr::select(humanGenes, Symbol, Aliases), by.y = "Aliases")
+
+## ... UNUSED CODE TO FOLLOW IN THIS CHUNK... 
+
+## replace /(char) with "or <keyword>(char)" 
+## get stems of keywords
+# kwic_example_sentences$keyword_stem <- str_extract(string = kwic_example_sentences$keyword, pattern = "[^\\s]*(?=.)")
+## trim "/" or "or" from start of post column
+# kwic_example_sentences$post <- gsub(pattern = "^/ |^or ", replacement = "", x=kwic_example_sentences$post)
+## add "or "
+
+
+# ## get indices where "post" starts with either slash or "or"
+# indices_alternatives <- grep(pattern = "^/ |^or ", x=kwic_example_sentences$post)
+# ## create a copy of post column that will be processed
+# kwic_example_sentences$post_processed <- kwic_example_sentences$post 
+# ## trim off the leading characters at those indices
+# kwic_example_sentences$post_processed[indices_alternatives] <- gsub(pattern = "^/ |^or ", replacement = "", x=kwic_example_sentences$post_processed[indices_alternatives] )
+# ## prefix with the stem at those indices
+# kwic_example_sentences$post_processed[indices_alternatives] <- paste0(kwic_example_sentences$keyword_stem[indices_alternatives], kwic_example_sentences$post_processed[indices_alternatives])
+
+# ## concatenate
+# kwic_example_sentences$text_processed <- paste(kwic_example_sentences$pre, kwic_example_sentences$keyword, kwic_example_sentences$post_processed, sep = " ")
+
+## recreate bag of words on processed text
+# kwic_example_sentences <- as.data.frame(kwic(tokens_example_sentences, pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE))
+
+## concatenate
+#kwic_example_sentences$processed <- paste(kwic_example_sentences$pre, kwic_example_sentences$keyword, kwic_example_sentences$post, sep = " ")
+
+# 
+# gsub(pattern = " / | or ", replacement = kwic_example_sentences$keyword_stem, x=kwic_example_sentences$post)
+# 
+# str_dup("word ", 2)
+
+# # tic("create eligibility bigrams")
+# eligibilities_bigrams <- dplyr::select(eligibilities, criterion_sentence_index, sentences) %>%
+#   # head() %>%
+#   tidytext::unnest_tokens(bigram, sentences, token="ngrams", n=2, to_lower=FALSE) %>%
+#   separate(bigram, c("from", "to"), sep = " ", remove=FALSE)
+# # toc()
+
+
+
+
+# ## extract the substring containing the slash
+# # str_extract(pattern='[^\\s]*/.', string = example_sentence) 
+# str_extract(pattern='[^\\s]*/[^\\s]*', string = example_sentence) # [^\\s] is a regex pattern for "anything but whitespace"
+
+ 
+# ## extract the word before the slash
+# str_extract(string = example_sentence, pattern = "[^\\s]*(?=/)")
+# 
+# ## extract the stem of the word before the slash (minus last character)
+# str_extract(string = example_sentences, pattern = "[^\\s]*(?=./)")
+# 
+# ## extract the slash and the word after it
+# str_extract(string = example_sentences, pattern = "(?=/)[^\\s]*")
+
+# ## trim the preceding character from word before slash and replace with character after slash
+# gsub(pattern='./', replacement = '', x=example_sentences)
+
+
+# paste0(gsub(pattern='/.*', replacement = '', x=example_sentences),    " or ",      str_extract(string = example_sentences, pattern = "[^\\s]*(?=./)"),         gsub(pattern='.*/', replacement = '', x=example_sentences))
+
+
+
+
+
+
+## this works
+# tic("expand forward slashes in text")
+# text_for_indexing$text_processed <- paste0(gsub(pattern='/.*', replacement = '', x=text_for_indexing$text),    " or ",      str_extract(string = text_for_indexing$text, pattern = "[^\\s]*(?=./)"),         gsub(pattern='.*/', replacement = '', x=text_for_indexing$text))
+# toc()
+
+
+## BUT if use this as input... 
+# "Positive for the BRCA1/BRCA2 gene."
+## get this output... 
+# "Positive for the BRCA1 or BRCABRCA2 gene."
+
+```
+
+* (also, replace any occurrences of " *BRCA* " with *BRCA1 or BRCA2*)  
+  
+```{r replace instances of BRCA}
+
+## replace whole-word matches of "BRCA" with "BRCA1 or BRCA2"
+text_for_indexing$text <- gsub(pattern = "\\bBRCA\\b", replacement = "BRCA1 BRCA2", x=text_for_indexing$text )
+
+
+```
+
+  
 * Second, create a corpus from the tidy table...  
   
 
@@ -1740,7 +1866,9 @@ toc()
 ```{r tokenise populations_corpus}
 
 tic("tokenise populations_corpus")
-populations_tokens <- tokens(populations_corpus, remove_punct=TRUE, padding = FALSE, split_hyphens = TRUE)
+# populations_tokens <- tokens(populations_corpus, remove_punct=TRUE, padding = FALSE, split_hyphens = TRUE)
+## keep punctuation so can expand forward slashes later... 
+populations_tokens <- tokens(populations_corpus, remove_punct=FALSE, padding = FALSE, split_hyphens = TRUE)
 toc()
 
 ```
@@ -1783,9 +1911,28 @@ We will get a "bag of words" (excluding stopwords) surrounding human gene names 
 
 ```{r get context words surrounding gene names in populations_tokens}
 
-tic("get context words surrounding gene names in populations_tokens")
-kwic_genes_populations <- as.data.frame(kwic(populations_tokens, pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE))
+# tic("get context words surrounding gene names in populations_tokens")
+# kwic_genes_populations <- as.data.frame(kwic(populations_tokens, pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE))
+# toc()
+
+## we will tokenise within the call to kwic, as we need to modify the corpus... 
+## first pass using unmodified tokens... 
+tic("get context words surrounding gene names in text for indexing, first pass")
+## get bag of words around mention gene names
+kwic_genes_populations_1 <- as.data.frame(kwic(x = tokens(populations_corpus, remove_punct=FALSE, padding = FALSE, split_hyphens = TRUE), pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE))
 toc()
+
+## second pass sing modified tokens, get stems of words before slash and join to first character after slash 
+tic("get context words surrounding gene names in text for indexing, second pass")
+kwic_genes_populations_2 <- as.data.frame(kwic(x = tokens(gsub(pattern='./', replacement = '', x=populations_corpus), remove_punct=FALSE, padding = FALSE, split_hyphens = TRUE), pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE))
+toc()  
+  
+## combine the two bags of words
+kwic_genes_populations <- unique(rbind(kwic_genes_populations_1, kwic_genes_populations_2))
+## delete originals
+rm(kwic_genes_populations_1)
+rm(kwic_genes_populations_2)
+
 
 # tic("get context words surrounding gene names in populations_tokens")
 # kwic_genes_populations <- kwic(populations_tokens, pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE)
