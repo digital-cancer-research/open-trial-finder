@@ -1,3 +1,5 @@
+[![License](https://img.shields.io/badge/License-GPL%203.0-green)](https://opensource.org/licenses/GPL-3.0)
+
 # cancer-trial-match
 These files derive data for cancer clinical trials, plus web viewer to visualise results.  
 
