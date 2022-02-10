@@ -181,10 +181,12 @@ unzip(zipfile = paste0(getwd(),"/",destFlatFilename))
 
 NCIt <- read.table("Thesaurus.txt",header = FALSE, sep = "\t", comment.char = "", fill = TRUE, stringsAsFactors = FALSE, quote = "")
 names(NCIt) <- c("ID","URL","ParentID","Synonyms","Description","PreferredTerm","Type","Class")
-
+## clean up, remove files
+file.remove("NCIt_FLAT.zip")
+file.remove("Thesaurus.txt")
 
 ## save a copy for use later if needed
-NCIt_raw <- NCIt
+# NCIt_raw <- NCIt
 
 ## an entity may have more than one class, so need to multiply rows
 ## split and unnest the Class column of NCIt
@@ -2083,6 +2085,10 @@ dbWriteTable(conn = con,name = "population_features", value = population_feature
 ## download variant summaries from clinvar
 download.file(url="https://ftp.ncbi.nlm.nih.gov/pub/clinvar/tab_delimited/variant_summary.txt.gz",destfile = "variant_summary.txt.gz")
 clinvar <- read.table(gzfile("variant_summary.txt.gz"), sep="\t", quote="", fill = TRUE, stringsAsFactors = FALSE) 
+
+## clean up, remove files
+file.remove("variant_summary.txt.gz")
+
 # V1 contains values for Allele ID
 # V2 gives nature (e.g. fusion, single nucleotide variant etc)
 # V7 contains values for clinical significance (inc whether pathogenic or not)
@@ -2092,6 +2098,10 @@ clinvar <- unique(dplyr::select(clinvar, "allele.id" = "V1", "nature"="V2", "sig
 ## variation_allele contains mappings from clinvar variation ID (clinvar ID) and allele ID
 download.file(url="https://ftp.ncbi.nlm.nih.gov/pub/clinvar/tab_delimited/variation_allele.txt.gz",destfile = "variation_allele.txt.gz")
 variationAllele <- read.table(gzfile("variation_allele.txt.gz"), sep="\t", quote="", fill = TRUE, stringsAsFactors = FALSE) 
+
+## clean up, remove files
+file.remove("variation_allele.txt.gz")
+
 # V1 contains values for clinvar ID
 # V3 contains values for Allele ID
 variationAllele <- unique(dplyr::select(variationAllele, "clinvar.id"="V1", "allele.id"="V3"))
@@ -2329,6 +2339,10 @@ download.file(url=postcodesURL, destfile = destPostcodesFilename)
 unzip(zipfile = paste0(getwd(),"/",destPostcodesFilename))
 
 uk_postcodes <- read.csv("ukpostcodes.csv", header = TRUE, stringsAsFactors = FALSE)
+
+## clean up, delete files
+file.remove("uk_postcodes.zip")
+file.remove("ukpostcodes.csv")
 
 ## create as a table in database
 dbWriteTable(conn = con,name = "uk_postcodes", value = uk_postcodes, overwrite=TRUE)
@@ -2615,8 +2629,6 @@ scored_matches_interventions_pathways <- unique(dplyr::select(scored_matches_int
 ```{r combine target and pathway matches}
 ## combine matches on target and pathway
 scored_matches_interventions_combined <- rbind(scored_matches_interventions, scored_matches_interventions_pathways)
-
-nrow(scored_matches_interventions_combined)
 
 ## where intervention had both direct and pathway matches, just take the highest score
 scored_matches_interventions_combined <- scored_matches_interventions_combined %>%
