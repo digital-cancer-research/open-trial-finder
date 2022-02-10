@@ -1,15 +1,21 @@
 [![License](https://img.shields.io/badge/License-GPL%203.0-green)](https://opensource.org/licenses/GPL-3.0)
 
-# cancer-trial-match
-These files derive data for cancer clinical trials, plus web viewer to visualise results.  
-
-Mappings between synonyms (cancer types specified in clinicaltrials.gov condition.name field) and controlled cancer types are specified by the file conditionSynonyms4.csv.  
-
-List of human genes and their synonyms is downloaded from https://www.ncbi.nlm.nih.gov/gene  
-
-The script trialMatchDataRefresh.Rmd generates data - it is recommended to run this script daily to ensure data remain as current as possible.  
-
-Data are ingested and visualised using the script TRIAL_MATCH_SHINY.Rmd.  
-
-The file trialMatchConfiguration.json includes configuration details - a username and password for a Clinical Trials Transformation Initiative account, and a contact email for web viewer will need to be added to this file before running.  
+# cancer-trial-match  
+  
+## Contents
+  
+This repository contains R files to derive data for cancer clinical trials, plus web viewer to visualise results.  
+  
+The following files are required to derive data and deploy web viewer:  
+* trialMatchConfiguration.json	configuration file, defines values for country, contact information, "about us" description and privacy policy  
+* conditionSynonyms5.csv  	defines mappings between cancer types of interest and condition names (as used by clinicaltrials.gov)  
+* digitalECMTlogo48px.PNG	icon for digital Experimental Cancer Medicine Team (creators of this tool)  
+* humanGenes.tsv		tab-separated table of human gene names and synonyms  
+	* downloaded from https://www.ncbi.nlm.nih.gov/gene  
+* indexTrialData.Rmd		R script to download and store data required by user interface  
+	* a username and password for a Clinical Trials Transformation Initiative account
+	* see https://aact.ctti-clinicaltrials.org/ for how to create an account  
+	* it is recommended to run this script daily to ensure all data remain as current as possible  
+	* configurable by country according to the country specified in configuration file  
+* TRIAL_MATCH_SHINY.Rmd		R Shiny app, provides an interface to query and display trial data  
 
