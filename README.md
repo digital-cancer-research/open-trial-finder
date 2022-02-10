@@ -18,4 +18,6 @@ The following files are required to derive data and deploy web viewer:
 	* it is recommended to run this script daily to ensure all data remain as current as possible  
 	* configurable by country according to the country specified in configuration file  
 * **TRIAL_MATCH_SHINY.Rmd:**		R Shiny app, provides an interface to query and display trial data  
+	* parameters may be passed via URL, for example if linking out from a patient electronic health record  
+
 
