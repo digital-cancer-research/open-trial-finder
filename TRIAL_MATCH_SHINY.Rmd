@@ -1079,31 +1079,31 @@ Potential matching trials are ranked according to the following order:
   
 #### Data sources  
   
-Trial data are sourced exclusively from clinicaltrials.gov via the Clinical Trials Transformation Initiative (https://www.ctti-clinicaltrials.org/ ).   
+* Trial data are sourced exclusively from clinicaltrials.gov via the Clinical Trials Transformation Initiative (https://www.ctti-clinicaltrials.org/ ).   
 
-Data regarding mechanisms of trial interventions are sourced from the NCI Thesaurus: https://ncithesaurus.nci.nih.gov/ncitbrowser/  
+* Data regarding mechanisms of trial interventions are sourced from the NCI Thesaurus: https://ncithesaurus.nci.nih.gov/ncitbrowser/  
 
-Data regarding biological pathways are sourced from KEGG (https://www.kegg.jp/kegg/) using the R BioConductor package: https://www.bioconductor.org/  
+* Data regarding biological pathways are sourced from KEGG (https://www.kegg.jp/kegg/) using the R BioConductor package: https://www.bioconductor.org/  
   
-Contains Ordnance Survey data © Crown copyright and database right 2021  
+* Contains Ordnance Survey data © Crown copyright and database right 2021  
   
-Contains Royal Mail data © Royal Mail copyright and database right 2021  
+* Contains Royal Mail data © Royal Mail copyright and database right 2021  
   
-Source: Office for National Statistics licensed under the Open Government Licence v.3.0  
+* Source: Office for National Statistics licensed under the Open Government Licence v.3.0  
   
 #### Limitations  
   
-**Please note that it is not a comprehensive source of information about clinical trials, and its utility not been validated for use in clinical decision making.**  
+* **Please note that it is not a comprehensive source of information about clinical trials, and its utility not been validated for use in clinical decision making.**  
 
-Trials that are not included in clinicaltrials.gov will not be included in the search.  
+* Trials that are not included in clinicaltrials.gov will not be included in the search.  
   
   
-Only studies with at least one site in `r configuration$country` are included. If you are interested in hosting a site for other countries, please contact `r configuration$contact.email`.  
+* Only studies with at least one site in `r configuration$country` are included. If you are interested in hosting a site for other countries, please contact `r configuration$contact.email`.  
   
 
-Data are refreshed daily, but clinicians are advised to contact the relevant investigators to confirm recruitment status.  
+* Data are refreshed daily, but clinicians are advised to contact the relevant investigators to confirm recruitment status.  
 
-Study eligibility criteria are tagged with the relevant genetic alterations based on natural language processing – some criteria may be incorrectly tagged, and some relevant criteria may be missed.  
+* Study eligibility criteria are tagged with the relevant genetic alterations based on natural language processing – some criteria may be incorrectly tagged, and some relevant criteria may be missed.  
   
   
 ### Legal  
