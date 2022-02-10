@@ -1085,6 +1085,12 @@ Data regarding mechanisms of trial interventions are sourced from the NCI Thesau
 
 Data regarding biological pathways are sourced from KEGG (https://www.kegg.jp/kegg/) using the R BioConductor package: https://www.bioconductor.org/  
   
+Contains Ordnance Survey data © Crown copyright and database right 2021  
+  
+Contains Royal Mail data © Royal Mail copyright and database right 2021  
+  
+Source: Office for National Statistics licensed under the Open Government Licence v.3.0  
+  
 #### Limitations  
   
 **Please note that it is not a comprehensive source of information about clinical trials, and its utility not been validated for use in clinical decision making.**  
