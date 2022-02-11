@@ -77,6 +77,7 @@ require(rpart.plot)       ## GPL-3
 ## require(textstem)         ## GPL-2
 require(quanteda)         ## GPL-3
 require(corpus)           ## 	Apache License (== 2.0) 
+require(tidytext)         ## MIT
 
 ## clean up first
 rm(list=ls())
