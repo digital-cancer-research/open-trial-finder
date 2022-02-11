@@ -66,7 +66,7 @@ require(kableExtra)       ## MIT
 require(stringr)          ## MIT
 require(splitstackshape)  ## GPL-3
 require(reshape2)         ## MIT
-require(tictoc)           ## Apache License (== 2.0
+require(tictoc)           ## Apache License (== 2.0)
 require(leaflet)          ## GPL-3
 require(PostcodesioR)     ## GPL-3
 require(igraph)           ## GPL-2 | GPL-3
@@ -76,6 +76,7 @@ require(rpart)            ## GPL-2 | GPL-3
 require(rpart.plot)       ## GPL-3
 ## require(textstem)         ## GPL-2
 require(quanteda)         ## GPL-3
+require(corpus)           ## 	Apache License (== 2.0) 
 
 ## clean up first
 rm(list=ls())
