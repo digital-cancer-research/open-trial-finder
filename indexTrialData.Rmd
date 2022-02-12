@@ -604,13 +604,16 @@ toc()
   
   
 `r formattable(head(cancerStudies))`  
-    
   
-### **Get study interventions**  
+### **Get relevant data from clinicaltrials.gov**  
   
-```{r get study interventions}
+```{r format list of study IDs for SQL}
 ## format study IDs for SQL query
 studyIDsForSQL <- paste0("\'",paste(unique(cancerStudies$nct_id), collapse = "\',\'"), "\'")
+
+```
+  
+```{r get study interventions}
 
 getInterventionsQ <- paste0("select i.nct_id, i.id AS intervention_id, i.name AS intervention_name 
 from interventions i
@@ -622,6 +625,110 @@ where i.nct_id in (",
 interventions <- dbGetQuery(conn2,getInterventionsQ)
 
 ```
+  
+```{r get eligibility criteria from ct}
+getEligibilities <- paste0("select * 
+from eligibilities 
+where nct_id in (",
+"", studyIDsForSQL,
+")")
+
+## get criteria from clinicaltrials.gov
+eligibilities <- dbGetQuery(conn2,getEligibilities)
+```
+
+```{r get design groups from ct}
+getDesignGroupsQ <- paste0("select dg.nct_id, dg.id as dg_id, dg.title as dg_title, dg.description as dg_description, dg.group_type as dg_group_type, dgi.intervention_id
+from design_groups dg
+left join design_group_interventions dgi on dg.id = dgi.design_group_id 
+where dg.nct_id in (",
+"", studyIDsForSQL,
+")")
+
+## get criteria from clinicaltrials.gov
+design_groups <- dbGetQuery(conn2,getDesignGroupsQ)
+
+## NOTE, SOME STUDIES HAVE NO DESIGN GROUPS SPECIFIED, BUT MAY HAVE RESULT GROUPS SPECIFIED
+```
+
+```{r get result groups}
+getResultGroupsQ <- paste0("select rg.nct_id, rg.id as rg_id, ctgov_group_code, result_type, rg.title as rg_title, rg.description as rg_description
+from result_groups rg 
+where rg.nct_id in (",
+"", studyIDsForSQL,
+")")
+
+## get criteria from clinicaltrials.gov
+result_groups <- dbGetQuery(conn2,getResultGroupsQ)
+
+```
+ 
+```{r get outcome measurements table}
+
+getOutcome_measurements <- paste0("select *
+from outcome_measurements 
+where nct_id in (",
+"", studyIDsForSQL,
+")")
+# 
+## get data from clinicaltrials.gov
+outcome_measurements <- dbGetQuery(conn2, getOutcome_measurements)
+ 
+
+
+```
+  
+```{r get reported event counts}
+
+getAEcounts <- paste0("select *
+from reported_events 
+where nct_id in (",
+"", studyIDsForSQL,
+")")
+# 
+## get criteria from clinicaltrials.gov
+AE_counts <- dbGetQuery(conn2, getAEcounts)
+
+## order on subjects_affected descending
+AE_counts <- AE_counts[order(AE_counts$subjects_affected, decreasing = TRUE), ]
+
+# kbl(head(AE_counts), format = "html",escape = FALSE) %>%
+#   kable_styling(fixed_thead = T, bootstrap_options = c("striped", "hover", "condensed")) %>%
+#   scroll_box(width = "125%", height = "200px")
+```
+ 
+```{r get event totals}
+
+getAEtotals <- paste0("select *
+from reported_event_totals 
+where nct_id in (",
+"", studyIDsForSQL,
+")")
+# 
+## get criteria from clinicaltrials.gov
+AE_totals <- dbGetQuery(conn2, getAEtotals)
+
+```
+
+```{r get studies open in specified country}
+
+local_open_studiesQ <- paste0("select f.nct_id, f.status AS facility_status, f.name AS facility_name, f.city, f.zip, fi.name as investigators, cc.email as central_contacts, fc.email 
+from facilities f
+left join facility_investigators fi on f.id = fi.facility_id
+left join facility_contacts fc on f.id = fc.facility_id
+left join central_contacts cc on f.nct_id = cc.nct_id
+where f.nct_id in (", studyIDsForSQL, ")
+AND lower(f.country) = '", tolower(configuration$country), "' 
+AND f.status IN ('Recruiting', 'Not yet recruiting')")
+
+
+## get data from clinicaltrials.gov
+local_open_studies <- dbGetQuery(conn2, local_open_studiesQ)
+
+```
+
+        
+### **Get study interventions**  
 
 * Interventions are stored as follows in clinicaltrials.gov 
   * each intervention_id value is unique, i.e. same intervention in different studies is given different *intervention_id* values:  
@@ -795,18 +902,6 @@ dbListTables(con)
 
 
 #### **Get eligibility criteria**  
-  
-```{r get eligibility criteria from ct}
-getEligibilities <- paste0("select * 
-from eligibilities 
-where nct_id in (",
-"", studyIDsForSQL,
-")")
-
-## get criteria from clinicaltrials.gov
-eligibilities <- dbGetQuery(conn2,getEligibilities)
-
-```
 
 ```{r split into individual eligibility criteria}
 ## start timer
@@ -926,20 +1021,6 @@ Individual eligibility criteria for all cancer studies have been written to the 
 ### **Get design group information**  
   
 #### **Get design groups (study arms)**  
-  
-```{r get design groups from ct}
-getDesignGroupsQ <- paste0("select dg.nct_id, dg.id as dg_id, dg.title as dg_title, dg.description as dg_description, dg.group_type as dg_group_type, dgi.intervention_id
-from design_groups dg
-left join design_group_interventions dgi on dg.id = dgi.design_group_id 
-where dg.nct_id in (",
-"", studyIDsForSQL,
-")")
-
-## get criteria from clinicaltrials.gov
-design_groups <- dbGetQuery(conn2,getDesignGroupsQ)
-
-## NOTE, SOME STUDIES HAVE NO DESIGN GROUPS SPECIFIED, BUT MAY HAVE RESULT GROUPS SPECIFIED
-```
 
 ```{r concatenate titles and descriptions for design groups}
 
@@ -953,19 +1034,7 @@ design_groups$dg_title_description <- gsub(pattern = "\U00B5|\U03BC", replacemen
 ### **Get result groups**  
   
 #### **Get result groups**  
-  
-```{r get result groups}
-getResultGroupsQ <- paste0("select rg.nct_id, rg.id as rg_id, ctgov_group_code, result_type, rg.title as rg_title, rg.description as rg_description
-from result_groups rg 
-where rg.nct_id in (",
-"", studyIDsForSQL,
-")")
-
-## get criteria from clinicaltrials.gov
-result_groups <- dbGetQuery(conn2,getResultGroupsQ)
-
-```
-    
+   
 ```{r concatenate titles and descriptions for result groups}
 
 result_groups$rg_title_description <- paste(result_groups$rg_title, result_groups$rg_description, sep = ": ")
@@ -1273,22 +1342,7 @@ rm(unmapped_study_ids)
 
 ### **Get outcome data**  
   
-  
-```{r get outcome measurements table}
 
-getOutcome_measurements <- paste0("select *
-from outcome_measurements 
-where nct_id in (",
-"", studyIDsForSQL,
-")")
-# 
-## get data from clinicaltrials.gov
-outcome_measurements <- dbGetQuery(conn2, getOutcome_measurements)
- 
-
-
-```
-  
 #### **Overall survival**  
   
 * First, filter the outcome measurements table and retain rows where the outcome measurement title contains the pattern "*\\bOS\\b|\\boverall survival\\b*"  
@@ -1460,25 +1514,6 @@ dbWriteTable(conn = con,name = "PFS", value = PFS, overwrite=TRUE)
 * Data for specific adverse events are stored in the *reported_events* table.  
   
 
-```{r get reported event counts}
-
-getAEcounts <- paste0("select *
-from reported_events 
-where nct_id in (",
-"", studyIDsForSQL,
-")")
-# 
-## get criteria from clinicaltrials.gov
-AE_counts <- dbGetQuery(conn2, getAEcounts)
-
-## order on subjects_affected descending
-AE_counts <- AE_counts[order(AE_counts$subjects_affected, decreasing = TRUE), ]
-
-# kbl(head(AE_counts), format = "html",escape = FALSE) %>%
-#   kable_styling(fixed_thead = T, bootstrap_options = c("striped", "hover", "condensed")) %>%
-#   scroll_box(width = "125%", height = "200px")
-```
-  
   
 * Details include number of subjects affected and number of subjects at risk.  
   
@@ -1512,19 +1547,6 @@ dbWriteTable(conn = con,name = "AE_counts", value = AE_counts, overwrite=TRUE)
 * These data include summary counts such as *Total, serious adverse events*, *Total, other adverse events* etc.  
   
 
-```{r get event totals}
-
-getAEtotals <- paste0("select *
-from reported_event_totals 
-where nct_id in (",
-"", studyIDsForSQL,
-")")
-# 
-## get criteria from clinicaltrials.gov
-AE_totals <- dbGetQuery(conn2, getAEtotals)
-
-```
-  
 * Number of subjects at risk and affected are also included, so we can derive *percent_affected*.  
   
 ```{r derive percent affected}
@@ -2305,23 +2327,6 @@ For compatibility with existing code for trial finder interface (and to maximise
 #### **Studies view**  
   
 * For trial finder, we will retain only those studies with at least one site that is open (status = *Recruiting* or *Not yet recruiting*) in the country specified in config file...  
-  
-```{r get studies open in specified country}
-
-local_open_studiesQ <- paste0("select f.nct_id, f.status AS facility_status, f.name AS facility_name, f.city, f.zip, fi.name as investigators, cc.email as central_contacts, fc.email 
-from facilities f
-left join facility_investigators fi on f.id = fi.facility_id
-left join facility_contacts fc on f.id = fc.facility_id
-left join central_contacts cc on f.nct_id = cc.nct_id
-where f.nct_id in (", studyIDsForSQL, ")
-AND lower(f.country) = '", tolower(configuration$country), "' 
-AND f.status IN ('Recruiting', 'Not yet recruiting')")
-
-
-## get data from clinicaltrials.gov
-local_open_studies <- dbGetQuery(conn2, local_open_studiesQ)
-
-```
 
 ##### **Map local open facilities to latitude and longitude values**  
   
