@@ -543,7 +543,8 @@ WHERE s.study_type LIKE ('Interventional')
 AND (c.downcase_name LIKE '%cancer%'
 OR c.downcase_name LIKE '%neoplasm%'
 OR c.downcase_name LIKE '%carcinoma%'
-OR c.downcase_name LIKE '%tumo%')"
+OR c.downcase_name LIKE '%tumo%'
+OR c.downcase_name LIKE '%sarcoma%')"
 
 ## get data from clinicaltrials.gov
 cancerStudies <- dbGetQuery(conn2,cancerStudiesQ)
