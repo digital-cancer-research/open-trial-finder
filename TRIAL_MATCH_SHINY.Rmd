@@ -48,7 +48,7 @@ require(jsonlite)           ## MIT
 require(RSQLite)            ## LGPL-2.1 | LGPL-3
 require(DT)                 ## GPL-3
 require(DBI)                ## LGPL-2.1 | LGPL-3
-
+require(stringr)            ## MIT
 
 
 ## load configuration data from JSON file
@@ -94,6 +94,8 @@ cancerStudies <- unique(dplyr::select(cancerStudies, -c("postcode.lat", "postcod
 
 ## rename parentTerm column as "Mechanism"
 cancerStudies <- dplyr::rename(cancerStudies, "Mechanism"="ParentTerm")
+
+cancerStudies$TARGET.condition <- str_squish(cancerStudies$TARGET.condition)
 
 ## read conditions and synonyms into memory
 conditionSynonyms <- dbGetQuery(con, "SELECT * FROM conditionSynonyms")
