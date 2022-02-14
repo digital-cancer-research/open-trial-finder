@@ -83,43 +83,6 @@ outcomes <- arrange(outcomes, nct_id)
   
 * PFS and/or OS data are available for `r length(unique(outcomes$result_group_id))` result groups across `r length(unique(outcomes$nct_id))` studies  
   
-
-```{r exploratory outcome plots}
-ggplot(data=outcomes, aes(x=factor(result_group_id), y=param_value_num, colour=outcome_controlled)) +
-    geom_point(alpha=0.5) +
-    # geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.2) +
-    coord_flip(ylim = c(0, 100)) +
-    labs(title = "Survival data, all studies", x="result group", y="survival, months", colour = "outcome") +
-    theme(axis.text.y = element_blank())
-
-```
-
-### **Outcomes, breast cancer studies**  
-  
-```{r load study data}
-cancerStudies <- dbGetQuery(con, "SELECT * FROM cancerStudies")
-
-## get IDs for all studies that include breast cancer
-breast_cancer_nct_ids <- unique(cancerStudies$nct_id[cancerStudies$controlled_cancer_type == "Breast"])
-
-```
-
-* Of these, `r length(breast_cancer_nct_ids)` studies include breast cancer  
-  * Note that some of these will be "pure" breast cancer populations, whilst some will include a mixture of cancer types  
-  
-  
-```{r outcome plots for breast cancer studies}
-
-ggplot(data=filter(outcomes, nct_id %in% breast_cancer_nct_ids), aes(x=factor(result_group_id), y=param_value_num, colour=outcome_controlled)) +
-    geom_point(alpha=0.5) +
-    # geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.2) +
-    coord_flip(ylim = c(0, 100)) +
-    labs(title = "Survival data, breast cancer studies", x="result group", y="survival, months", colour = "outcome") +
-    theme(axis.text.y = element_blank())
-
-```
-
-### **Outcomes, breast cancer studies grouped by intervention mechanism**  
   
 
 ```{r get interventions}
@@ -171,6 +134,200 @@ outcomes_interventions <- unique(merge(x=outcomes_interventions, by.x = c("nct_i
 
 ```
 
+  
+```{r aggregate interventions by result group}
+interventions_agg <- interventions %>%
+  group_by(nct_id, design_group_id ) %>%
+  summarise(
+    interventions = paste(sort(unique(intervention_name)), collapse = " + "), 
+    preferred_terms = paste(sort(unique(PreferredTerm)), collapse = " + "), 
+    mechanisms = paste(sort(unique(Mechanism)), collapse = " + "), 
+    targets = paste(sort(unique(target_symbol)), collapse = " + ")
+  ) %>%
+  as.data.frame()
+
+## join to outcomes
+interventions_agg <- unique(merge(x=interventions_agg, by.x=c("nct_id", "design_group_id"), y=predictions, by.y = c("nct_id", "dg_id")))
+
+interventions_agg <- unique(merge(x=interventions_agg, by.x = c("nct_id", "rg_id"), y=outcomes, by.y = c("nct_id", "result_group_id")))
+
+```
+
+
+
+
+
+
+
+
+
+
+
+```{r exploratory outcome plots}
+ggplot(data=outcomes, aes(x=factor(result_group_id), y=param_value_num, colour=outcome_controlled)) +
+    geom_point(alpha=0.5) +
+    # geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.2) +
+    coord_flip(ylim = c(0, 100)) +
+    labs(title = "Survival data, all studies", x="result group", y="survival, months", colour = "outcome") +
+    theme(axis.text.y = element_blank())
+
+```
+
+
+
+
+### **Outcomes, soft tissue sarcoma**  
+  
+```{r load study data}
+cancerStudies <- dbGetQuery(con, "SELECT * FROM cancerStudies")
+
+## squish any extra whitespace in controlled cancer type values
+cancerStudies$controlled_cancer_type <- str_squish(cancerStudies$controlled_cancer_type)
+
+```
+  
+* There are a total of `r length(unique(cancerStudies$nct_id[cancerStudies$controlled_cancer_type == "Sarcoma: Soft Tissue"]))` studies that have recruited patients with soft tissue sarcoma.    
+
+
+```{r get IDs for studies recruiting on solid tumour}
+
+solid_nct_ids <- unique(cancerStudies$nct_id[cancerStudies$controlled_cancer_type == "Solid"])
+
+```
+
+```{r get IDs for sarcoma studies}
+## get IDs for all studies that include soft tissue sarcoma
+sarcoma_nct_ids <- unique(cancerStudies$nct_id[cancerStudies$controlled_cancer_type == "Sarcoma: Soft Tissue"])
+
+## include matches on solid tumour
+sarcoma_nct_ids <- unique(c(sarcoma_nct_ids, solid_nct_ids))
+
+```
+  
+* If we include matches on solid tumour, this number increases to `r length(sarcoma_nct_ids)` studies.  
+```{r filter and retain outcome data for sarcoma studies}
+sarcoma_outcomes <- filter(outcomes, nct_id %in% sarcoma_nct_ids)
+
+sarcoma_outcomes_interventions <- filter(outcomes_interventions, nct_id %in% sarcoma_nct_ids)
+
+```
+  
+* `r length(unique(sarcoma_outcomes$nct_id))` of these sarcoma/solid tumour studies have survival data available.  
+  
+```{r outcome plots for sarcoma studies}
+
+ggplot(data=sarcoma_outcomes, aes(x=factor(result_group_id), y=param_value_num, colour=outcome_controlled)) +
+    geom_point(alpha=0.5) +
+    # geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.2) +
+    coord_flip(ylim = c(0, 100)) +
+    labs(title = "Survival data, sarcoma studies (inc solid tumour)", x="result group", y="survival, months", colour = "outcome") +
+    theme(axis.text.y = element_blank())
+
+```  
+
+
+```{r outcome plots for sarcoma cancer studies by intervention}
+
+ggplot(data=sarcoma_outcomes_interventions, aes(x=reorder(PreferredTerm, -param_value_num), y=param_value_num, colour=outcome_controlled)) +
+    geom_point(alpha=0.5) +
+    # geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.2) +
+    coord_flip(ylim = c(0, 100)) +
+    labs(title = "Survival data, sarcoma studies (inc solid tumour)", x="Intervention", y="survival, months", colour = "outcome") 
+
+ggplot(data=sarcoma_outcomes_interventions, aes(x=reorder(Mechanism, -param_value_num), y=param_value_num, colour=outcome_controlled)) +
+    geom_point(alpha=0.5) +
+    # geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.2) +
+    coord_flip(ylim = c(0, 100)) +
+    labs(title = "Survival data, sarcoma studies (inc solid tumour)", x="Intervention mechanism", y="survival, months", colour = "outcome") 
+
+ggplot(data=sarcoma_outcomes_interventions, aes(x=reorder(target_symbol, -param_value_num), y=param_value_num, colour=outcome_controlled)) +
+    geom_point(alpha=0.5) +
+    # geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.2) +
+    coord_flip(ylim = c(0, 100)) +
+    labs(title = "Survival data, sarcoma studies (inc solid tumour)", x="Intervention target", y="survival, months", colour = "outcome") 
+
+```
+  
+* Note that, in many cases, patients received >1 intervention...  
+  
+
+```{r outcome plots for sarcoma studies by intervention aggregated}
+
+ggplot(data=filter(interventions_agg, nct_id %in% sarcoma_nct_ids), aes(x=factor(interventions), y=param_value_num, colour=outcome_controlled)) +
+    geom_point(alpha=0.5) +
+    # geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.2) +
+    coord_flip(ylim = c(0, 100)) +
+    labs(title = "Survival data, sarcoma studies (inc solid tumour)", x="Interventions", y="survival, months", colour = "outcome") 
+
+ggplot(data=filter(interventions_agg, nct_id %in% sarcoma_nct_ids), aes(x=factor(mechanisms), y=param_value_num, colour=outcome_controlled)) +
+    geom_point(alpha=0.5) +
+    # geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.2) +
+    coord_flip(ylim = c(0, 100)) +
+    labs(title = "Survival data, sarcoma studies (inc solid tumour)", x="Intervention mechanisms", y="survival, months", colour = "outcome") 
+
+ggplot(data=filter(interventions_agg, nct_id %in% sarcoma_nct_ids), aes(x=factor(targets), y=param_value_num, colour=outcome_controlled)) +
+    geom_point(alpha=0.5) +
+    # geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.2) +
+    coord_flip(ylim = c(0, 100)) +
+    labs(title = "Survival data, sarcoma studies (inc solid tumour)", x="Intervention targets", y="survival, months", colour = "outcome") 
+```
+  
+
+`r knitr::knit_exit()`  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+* Of these, `r length(breast_cancer_nct_ids)` studies include breast cancer  
+  * Note that some of these will be "pure" breast cancer populations, whilst some will include a mixture of cancer types  
+  
+```{r filter and retain outcome data for breast cancer studies}
+
+## get IDs for all studies that include breast cancer
+breast_cancer_nct_ids <- unique(cancerStudies$nct_id[cancerStudies$controlled_cancer_type == "Breast"])
+
+breast_cancer_outcomes <- filter(outcomes, nct_id %in% breast_cancer_nct_ids)
+
+# breast_cancer_outcomes_interventions <- filter(outcomes_interventions, nct_id %in% breast_cancer_nct_ids)
+
+
+```
+
+
+  
+```{r outcome plots for breast cancer studies}
+
+ggplot(data=filter(outcomes, nct_id %in% breast_cancer_nct_ids), aes(x=factor(result_group_id), y=param_value_num, colour=outcome_controlled)) +
+    geom_point(alpha=0.5) +
+    # geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.2) +
+    coord_flip(ylim = c(0, 100)) +
+    labs(title = "Survival data, breast cancer studies", x="result group", y="survival, months", colour = "outcome") +
+    theme(axis.text.y = element_blank())
+
+```
+
+### **Outcomes, breast cancer studies grouped by intervention mechanism**  
+
 ```{r outcome plots for breast cancer studies by intervention}
 
 ggplot(data=filter(outcomes_interventions, nct_id %in% breast_cancer_nct_ids), aes(x=factor(PreferredTerm), y=param_value_num, colour=outcome_controlled)) +
@@ -194,25 +351,6 @@ ggplot(data=filter(outcomes_interventions, nct_id %in% breast_cancer_nct_ids), a
 ```
   
 * Note that, in many cases, patients received >1 intervention...  
-  
-```{r aggregate interventions by result group}
-interventions_agg <- interventions %>%
-  group_by(nct_id, design_group_id ) %>%
-  summarise(
-    interventions = paste(sort(unique(intervention_name)), collapse = " + "), 
-    preferred_terms = paste(sort(unique(PreferredTerm)), collapse = " + "), 
-    mechanisms = paste(sort(unique(Mechanism)), collapse = " + "), 
-    targets = paste(sort(unique(target_symbol)), collapse = " + ")
-  ) %>%
-  as.data.frame()
-
-## join to outcomes
-interventions_agg <- unique(merge(x=interventions_agg, by.x=c("nct_id", "design_group_id"), y=predictions, by.y = c("nct_id", "dg_id")))
-
-interventions_agg <- unique(merge(x=interventions_agg, by.x = c("nct_id", "rg_id"), y=outcomes, by.y = c("nct_id", "result_group_id")))
-
-```
-
 
 ```{r outcome plots for breast cancer studies by intervention aggregated}
 

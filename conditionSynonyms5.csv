@@ -492,13 +492,13 @@ Sarcoma: Bone,Sarcoma of bone
 Sarcoma: Bone,Osteogenic sarcoma
 Sarcoma: Bone,osteoid sarcoma
 Sarcoma: Bone,Osseous Sarcoma
-Sarcoma: Soft Tissue              ,sarcoma
-Sarcoma: Soft Tissue              ,Malignant tumor of soft tissue
-Sarcoma: Soft Tissue              ,Malignant soft tissue neoplasm
-Sarcoma: Soft Tissue              ,Malignant mesenchymal tumor
-Sarcoma: Soft Tissue              ,Malignant Soft Tissue Tumor
-Sarcoma: Soft Tissue              ,Soft tissue cancer
-Sarcoma: Soft Tissue              ,soft tissue sarcoma
+Sarcoma: Soft Tissue,sarcoma
+Sarcoma: Soft Tissue,Malignant tumor of soft tissue
+Sarcoma: Soft Tissue,Malignant soft tissue neoplasm
+Sarcoma: Soft Tissue,Malignant mesenchymal tumor
+Sarcoma: Soft Tissue,Malignant Soft Tissue Tumor
+Sarcoma: Soft Tissue,Soft tissue cancer
+Sarcoma: Soft Tissue,soft tissue sarcoma
 SCCHN,squamous cell carcinoma of head and neck
 SCCHN,"Squamous cell carcinoma of the head and neck	"
 SCLC,SCLC

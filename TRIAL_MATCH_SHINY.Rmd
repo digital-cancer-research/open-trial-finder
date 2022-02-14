@@ -48,7 +48,7 @@ require(jsonlite)           ## MIT
 require(RSQLite)            ## LGPL-2.1 | LGPL-3
 require(DT)                 ## GPL-3
 require(DBI)                ## LGPL-2.1 | LGPL-3
-
+require(stringr)            ## MIT
 
 
 ## load configuration data from JSON file
@@ -95,6 +95,9 @@ cancerStudies <- unique(dplyr::select(cancerStudies, -c("postcode.lat", "postcod
 ## rename parentTerm column as "Mechanism"
 cancerStudies <- dplyr::rename(cancerStudies, "Mechanism"="ParentTerm")
 
+## squish any extra whitespace in controlled cancer type values
+#cancerStudies$controlled_cancer_type <- str_squish(cancerStudies$controlled_cancer_type)
+
 ## read conditions and synonyms into memory
 conditionSynonyms <- dbGetQuery(con, "SELECT * FROM conditionSynonyms")
 ```
@@ -110,8 +113,6 @@ cancer.study.locations <- cancer.study.locations[complete.cases(cancer.study.loc
 
 ```{r add flag for sites not yet recruiting}
 cancerStudies$locations[cancerStudies$site_status=="Not yet recruiting"] <- paste0(cancerStudies$locations[cancerStudies$site_status=="Not yet recruiting"], " (in setup)")
-
-
 
 ```
 
@@ -196,7 +197,9 @@ observe({
 ```
 
 ```{r display cancer type dropdown}
-available.cancer.types <- sort(unique(cancerStudies$TARGET.condition))
+# available.cancer.types <- sort(unique(cancerStudies$TARGET.condition))
+
+available.cancer.types <- sort(unique(cancerStudies$controlled_cancer_type))
 
 output$reactiveCancerFilter <- renderUI({
   ## multiple = TRUE allows user to start typing 
