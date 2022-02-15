@@ -26,10 +26,8 @@ output: html_document
 
 ```
 
-
-
 ```{r setup, include=FALSE}
-
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, fig.width=48, fig.height=48)
 require(flexdashboard)      ## MIT
 require(dplyr)              ## MIT
 require(tidyr)              ## MIT
@@ -42,16 +40,14 @@ require(RSQLite)            ## LGPL-2.1 | LGPL-3
 require(DT)                 ## GPL-3
 require(DBI)                ## LGPL-2.1 | LGPL-3
 require(ggplot2)
-
+require(stringr)
+require(formattable)
 
 ## load configuration data from JSON file
 configuration <- jsonlite::fromJSON(txt = "trialMatchConfiguration.json")
 # configuration <- rjson::fromJSON(file = "trialMatchConfiguration.json")
 
-knitr::opts_chunk$set(fig.width=18, fig.height=24) 
 ```
-  
-  
   
 ```{r connect to SQLite DB}
 # Create an RSQLite database
@@ -61,14 +57,27 @@ knitr::opts_chunk$set(fig.width=18, fig.height=24)
 con <- dbConnect(RSQLite::SQLite(), "indexedTrialData.sqlite")
 ```
   
-### **Outcomes, all studies**  
+```{r load study data}
+cancerStudies <- dbGetQuery(con, "SELECT * FROM cancerStudies")
+
+## squish any extra whitespace in controlled cancer type values
+cancerStudies$controlled_cancer_type <- str_squish(cancerStudies$controlled_cancer_type)
+
+## drop unnecessary columns
+cancerStudies <- unique(dplyr::select(cancerStudies, nct_id, brief_title, controlled_cancer_type))
+```
   
+* There are a total of `r length(unique(cancerStudies$nct_id))` cancer studies stored in the database:  
+
+`r formattable(head(cancerStudies))`  
+  
+  
+    
 
 ```{r get outcomes}
 PFS <- dbGetQuery(con, "SELECT * FROM PFS")
 ## select columns
-PFS <- unique(dplyr::select(PFS, nct_id, result_group_id, title, outcome_controlled, param_type, param_value_num, units, dispersion_type, dispersion_lower_limit, dispersion_upper_limit))
-
+PFS <- unique(dplyr::select(PFS, nct_id, result_group_id, ctgov_group_code, title, outcome_controlled, param_type, param_value_num, units, dispersion_type, dispersion_lower_limit, dispersion_upper_limit))
 
 overall_survival <- dbGetQuery(con, "SELECT * FROM overall_survival")
 ## select same columns as for PFS
@@ -76,14 +85,40 @@ overall_survival <- unique(dplyr::select(overall_survival, names(PFS)))
 
 ## rowbind into tall format
 outcomes <- unique(rbind(PFS, overall_survival))
-
+## sort on nct id
 outcomes <- arrange(outcomes, nct_id)
+## specify factor order for outcomes (so faceted plots render nicely)
+outcomes$outcome_controlled <- factor(x=outcomes$outcome_controlled, levels = c("Progression free survival", "Overall survival"))
+```
+  
+  
+  
+* `r length(intersect(outcomes$nct_id, cancerStudies$nct_id))` of these studies have PFS and/or OS data available  
+
+  * Outcomes are reported for *result groups* (N=`r length(unique(outcomes$result_group_id))` total):   
+
+  
+`r formattable(head(outcomes))`    
+      
+
+```{r join cancer types to outcomes}
+
+cancerStudies_outcomes <- merge(x=cancerStudies, by.x = "nct_id", y=outcomes, by.y = "nct_id")
+
 
 ```
   
-* PFS and/or OS data are available for `r length(unique(outcomes$result_group_id))` result groups across `r length(unique(outcomes$nct_id))` studies  
+* A total of `r length(unique(cancerStudies_outcomes$controlled_cancer_type))` cancer types are represented among the studies with outcomes:  
   
   
+```{r plot distribution of cancer types with results}
+ggplot(data=cancerStudies_outcomes, aes(x=controlled_cancer_type, y=param_value_num, colour = outcome_controlled)) +
+  geom_point(alpha=0.5) +
+    coord_flip(ylim = c(0, 100)) +
+    labs(title = "Survival according to cancer type", x="result group", y="survival, months", colour = "outcome") +
+  facet_grid(.~outcome_controlled)
+
+```
 
 ```{r get interventions}
 interventions <- dbGetQuery(con, "SELECT * FROM interventions")
@@ -121,20 +156,13 @@ interventions <- unique(merge(x=dplyr::select(dgi, nct_id, design_group_id, inte
 
 ```
 
-```{r load mappings from result groups to design groups}
-
-predictions <- dbGetQuery(con, "SELECT * FROM predictions")
-predictions <- unique(dplyr::select(predictions, nct_id, "dg_id"="predicted_design_group", rg_id))
-```
-
-```{r join interventions to result groups}
-outcomes_interventions <- unique(merge(x=interventions, by.x=c("nct_id", "design_group_id"), y=predictions, by.y = c("nct_id", "dg_id")))
-
-outcomes_interventions <- unique(merge(x=outcomes_interventions, by.x = c("nct_id", "rg_id"), y=outcomes, by.y = c("nct_id", "result_group_id")))
-
-```
-
+* There are a total of `r length(unique(interventions$intervention_name))` unique intervention names  
+  * After mapping to preferred terms in NCI thesaurus, these represent `r length(unique(interventions$PreferredTerm))` distinct interventions across `r length(unique(interventions$Mechanism))` mechanisms  
   
+    
+`r formattable(head(interventions))`  
+  
+
 ```{r aggregate interventions by result group}
 interventions_agg <- interventions %>%
   group_by(nct_id, design_group_id ) %>%
@@ -146,14 +174,138 @@ interventions_agg <- interventions %>%
   ) %>%
   as.data.frame()
 
-## join to outcomes
-interventions_agg <- unique(merge(x=interventions_agg, by.x=c("nct_id", "design_group_id"), y=predictions, by.y = c("nct_id", "dg_id")))
+```
+  
+* Some study arms include >1 intervention:  
+  
+`r formattable(head(interventions_agg))`  
+  
+  
+```{r load mappings from result groups to design groups}
 
-interventions_agg <- unique(merge(x=interventions_agg, by.x = c("nct_id", "rg_id"), y=outcomes, by.y = c("nct_id", "result_group_id")))
-
+predictions <- dbGetQuery(con, "SELECT * FROM predictions")
+predictions <- unique(dplyr::select(predictions, nct_id, "dg_id"="predicted_design_group", rg_id))
 ```
 
 
+```{r join interventions to result groups}
+outcomes_interventions <- unique(merge(x=interventions, by.x=c("nct_id", "design_group_id"), y=predictions, by.y = c("nct_id", "dg_id")))
+
+outcomes_interventions <- unique(merge(x=outcomes_interventions, by.x = c("nct_id", "rg_id"), y=outcomes, by.y = c("nct_id", "result_group_id")))
+
+```
+  
+`r formattable(head(outcomes_interventions))`  
+  
+
+  
+```{r join interventions agg to results}
+## join to outcomes
+outcomes_interventions_agg <- unique(merge(x=interventions_agg, by.x=c("nct_id", "design_group_id"), y=predictions, by.y = c("nct_id", "dg_id")))
+
+outcomes_interventions_agg <- unique(merge(x=outcomes_interventions_agg, by.x = c("nct_id", "rg_id"), y=outcomes, by.y = c("nct_id", "result_group_id")))
+
+
+
+```
+  
+  
+`r formattable(head(outcomes_interventions_agg))`  
+    
+   
+
+```{r load population_features}
+population_features <- dbGetQuery(con, "SELECT * FROM population_features")
+
+population_features <- dplyr::filter(population_features, id_type != "EXCLUSION")
+population_features <- dplyr::filter(population_features, feature != "prior therapy")
+
+
+# population_features$matching_feature <- paste(population_features$controlled_match, population_features$feature, sep = "_")
+
+population_features <- unique(dplyr::select(population_features, nct_id, id_type, id, match, controlled_match, feature))
+
+```
+
+```{r join features to result groups}
+## where features are derived from inclusion criteria, assign those features to all result groups for that study
+study_features <- unique(merge(x=predictions, by.x = "nct_id", y=dplyr::select(population_features, nct_id, match, controlled_match, feature), by.y = "nct_id"))
+
+## where features are derived from design group description, assign those features to all result groups mapped to those design groups
+dg_features <- unique(merge(x=predictions, by.x = "dg_id", y=dplyr::select(population_features, id, match, controlled_match, feature), by.y = "id"))
+
+## finally, where features are derived from result group descriptions, assign those features only to those result groups
+rg_features <- unique(merge(x=predictions, by.x = "rg_id", y=dplyr::select(population_features, id, match, controlled_match, feature), by.y = "id"))
+
+## rowbind into a single table
+## select only unique rows
+features <- unique(rbind(study_features, dg_features, rg_features))
+
+
+```
+  
+* Features have been indexed for `r length(unique(features$rg_id))` result groups  
+
+
+```{r join features to outcomes}
+features_outcomes <- unique(merge(x=dplyr::select(features, nct_id, rg_id, controlled_match, feature), by.x=c("nct_id", "rg_id"), all.x=FALSE, y=outcomes, by.y = c("nct_id", "result_group_id"), all.y = TRUE))
+
+features_outcomes$controlled_match_feature <- paste(features_outcomes$controlled_match, features_outcomes$feature, sep = "_")
+
+features_outcomes <- arrange(features_outcomes, desc(param_value_num))
+```
+  
+* Features have been indexed for `r length(unique(features_outcomes$rg_id[!is.na(features_outcomes$controlled_match)]))` result groups across `r length(unique(features_outcomes$nct_id[!is.na(features_outcomes$controlled_match)]))` studies  
+  
+  
+`r formattable(head(features_outcomes))`  
+  
+* 3 studies have reported results in populations including PTEN loss:  
+  
+`r formattable(filter(features_outcomes, nct_id %in% c("NCT01802320", "NCT00894504", "NCT01575522") ))`  
+  
+  
+    
+```{r exploratory plots features vs outcomes}
+## exploratory plots
+ggplot(data=filter(features_outcomes, controlled_match == "PTEN" & feature == "loss"), aes(x=factor(rg_id), y=param_value_num, colour=outcome_controlled)) +
+    geom_point(alpha=0.5) +
+    geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.2) +
+    coord_flip(ylim = c(0, 100)) +
+    labs(title = "Outcomes in populations with PTEN loss", x="result group", y="survival, months", colour = "outcome")
+
+## select example studies
+ggplot(data=filter(features_outcomes, nct_id %in% c("NCT01802320", "NCT00894504", "NCT01575522") ), aes(x=controlled_match_feature, y=param_value_num, colour=outcome_controlled)) +
+    geom_point(alpha=0.5) +
+    geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.05, alpha=0.3) +
+    coord_flip(ylim = c(0, 50)) +
+    labs(title = "Outcomes in studies with PTEN loss", x="feature", y="survival, months", colour = "outcome")
+```
+
+
+
+
+
+
+
+
+
+```{r disconnect from SQLite DB}
+dbDisconnect(con)
+```
+
+`r knitr::knit_exit()`  
+
+
+
+
+
+
+
+
+
+
+ 
 
 
 
@@ -164,12 +316,12 @@ interventions_agg <- unique(merge(x=interventions_agg, by.x = c("nct_id", "rg_id
 
 
 ```{r exploratory outcome plots}
-ggplot(data=outcomes, aes(x=factor(result_group_id), y=param_value_num, colour=outcome_controlled)) +
-    geom_point(alpha=0.5) +
-    # geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.2) +
-    coord_flip(ylim = c(0, 100)) +
-    labs(title = "Survival data, all studies", x="result group", y="survival, months", colour = "outcome") +
-    theme(axis.text.y = element_blank())
+# ggplot(data=outcomes, aes(x=factor(result_group_id), y=param_value_num, colour=outcome_controlled)) +
+#     geom_point(alpha=0.5) +
+#     # geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.2) +
+#     coord_flip(ylim = c(0, 100)) +
+#     labs(title = "Survival data, all studies", x="result group", y="survival, months", colour = "outcome") +
+#     theme(axis.text.y = element_blank())
 
 ```
 
@@ -177,15 +329,7 @@ ggplot(data=outcomes, aes(x=factor(result_group_id), y=param_value_num, colour=o
 
 
 ### **Outcomes, soft tissue sarcoma**  
-  
-```{r load study data}
-cancerStudies <- dbGetQuery(con, "SELECT * FROM cancerStudies")
 
-## squish any extra whitespace in controlled cancer type values
-cancerStudies$controlled_cancer_type <- str_squish(cancerStudies$controlled_cancer_type)
-
-```
-  
 * There are a total of `r length(unique(cancerStudies$nct_id[cancerStudies$controlled_cancer_type == "Sarcoma: Soft Tissue"]))` studies that have recruited patients with soft tissue sarcoma.    
 
 
@@ -200,7 +344,7 @@ solid_nct_ids <- unique(cancerStudies$nct_id[cancerStudies$controlled_cancer_typ
 sarcoma_nct_ids <- unique(cancerStudies$nct_id[cancerStudies$controlled_cancer_type == "Sarcoma: Soft Tissue"])
 
 ## include matches on solid tumour
-sarcoma_nct_ids <- unique(c(sarcoma_nct_ids, solid_nct_ids))
+# sarcoma_nct_ids <- unique(c(sarcoma_nct_ids, solid_nct_ids))
 
 ```
   
@@ -218,7 +362,7 @@ sarcoma_outcomes_interventions <- filter(outcomes_interventions, nct_id %in% sar
 
 ggplot(data=sarcoma_outcomes, aes(x=factor(result_group_id), y=param_value_num, colour=outcome_controlled)) +
     geom_point(alpha=0.5) +
-    # geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.2) +
+    geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.2) +
     coord_flip(ylim = c(0, 100)) +
     labs(title = "Survival data, sarcoma studies (inc solid tumour)", x="result group", y="survival, months", colour = "outcome") +
     theme(axis.text.y = element_blank())
@@ -230,21 +374,26 @@ ggplot(data=sarcoma_outcomes, aes(x=factor(result_group_id), y=param_value_num, 
 
 ggplot(data=sarcoma_outcomes_interventions, aes(x=reorder(PreferredTerm, -param_value_num), y=param_value_num, colour=outcome_controlled)) +
     geom_point(alpha=0.5) +
-    # geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.2) +
-    coord_flip(ylim = c(0, 100)) +
-    labs(title = "Survival data, sarcoma studies (inc solid tumour)", x="Intervention", y="survival, months", colour = "outcome") 
+    geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.2) +
+    coord_flip(ylim = c(0, 60)) +
+    labs(title = "Survival data, sarcoma studies (excluding solid tumour)", x="Intervention", y="survival, months", colour = "outcome") +
+    facet_grid(.~outcome_controlled)
+
 
 ggplot(data=sarcoma_outcomes_interventions, aes(x=reorder(Mechanism, -param_value_num), y=param_value_num, colour=outcome_controlled)) +
     geom_point(alpha=0.5) +
     # geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.2) +
-    coord_flip(ylim = c(0, 100)) +
-    labs(title = "Survival data, sarcoma studies (inc solid tumour)", x="Intervention mechanism", y="survival, months", colour = "outcome") 
+    coord_flip(ylim = c(0, 60)) +
+    labs(title = "Survival data, sarcoma studies (excluding solid tumour)", x="Intervention mechanism", y="survival, months", colour = "outcome")+
+    facet_grid(.~outcome_controlled) 
+
 
 ggplot(data=sarcoma_outcomes_interventions, aes(x=reorder(target_symbol, -param_value_num), y=param_value_num, colour=outcome_controlled)) +
     geom_point(alpha=0.5) +
     # geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.2) +
-    coord_flip(ylim = c(0, 100)) +
-    labs(title = "Survival data, sarcoma studies (inc solid tumour)", x="Intervention target", y="survival, months", colour = "outcome") 
+    coord_flip(ylim = c(0, 60)) +
+    labs(title = "Survival data, sarcoma studies (excluding solid tumour)", x="Intervention target", y="survival, months", colour = "outcome")+
+    facet_grid(.~outcome_controlled)
 
 ```
   
@@ -252,26 +401,105 @@ ggplot(data=sarcoma_outcomes_interventions, aes(x=reorder(target_symbol, -param_
   
 
 ```{r outcome plots for sarcoma studies by intervention aggregated}
-
 ggplot(data=filter(interventions_agg, nct_id %in% sarcoma_nct_ids), aes(x=factor(interventions), y=param_value_num, colour=outcome_controlled)) +
     geom_point(alpha=0.5) +
     # geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.2) +
-    coord_flip(ylim = c(0, 100)) +
-    labs(title = "Survival data, sarcoma studies (inc solid tumour)", x="Interventions", y="survival, months", colour = "outcome") 
+    coord_flip(ylim = c(0, 60)) +
+    labs(title = "Survival data, sarcoma studies (excluding solid tumour)", x="Interventions", y="survival, months", colour = "outcome") 
 
-ggplot(data=filter(interventions_agg, nct_id %in% sarcoma_nct_ids), aes(x=factor(mechanisms), y=param_value_num, colour=outcome_controlled)) +
+ggplot(data=filter(interventions_agg, nct_id %in% sarcoma_nct_ids), aes(x=mechanisms, y=param_value_num, colour=outcome_controlled)) +
     geom_point(alpha=0.5) +
     # geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.2) +
-    coord_flip(ylim = c(0, 100)) +
-    labs(title = "Survival data, sarcoma studies (inc solid tumour)", x="Intervention mechanisms", y="survival, months", colour = "outcome") 
+    coord_flip(ylim = c(0, 60)) +
+    labs(title = "Survival data, sarcoma studies (excluding solid tumour)", x="Interventions", y="survival, months", colour = "outcome") 
 
-ggplot(data=filter(interventions_agg, nct_id %in% sarcoma_nct_ids), aes(x=factor(targets), y=param_value_num, colour=outcome_controlled)) +
+ggplot(data=filter(interventions_agg, nct_id %in% sarcoma_nct_ids), aes(x=targets, y=param_value_num, colour=outcome_controlled)) +
     geom_point(alpha=0.5) +
     # geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.2) +
-    coord_flip(ylim = c(0, 100)) +
-    labs(title = "Survival data, sarcoma studies (inc solid tumour)", x="Intervention targets", y="survival, months", colour = "outcome") 
+    coord_flip(ylim = c(0, 60)) +
+    labs(title = "Survival data, sarcoma studies (excluding solid tumour)", x="Interventions", y="survival, months", colour = "outcome") +
+    # theme_bw() +
+    facet_grid(.~outcome_controlled)
+
+
+ggplot(data=filter(interventions_agg, nct_id %in% sarcoma_nct_ids), aes(x=preferred_terms, y=param_value_num, colour=outcome_controlled)) +
+    geom_point(alpha=0.5) +
+    # geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.2) +
+    coord_flip(ylim = c(0, 60)) +
+    labs(title = "Survival data, sarcoma studies (excluding solid tumour)", x="Intervention PTs", y="survival, months", colour = "outcome") +
+    # theme_bw() +
+    facet_grid(.~outcome_controlled)
+
 ```
   
+
+
+
+
+
+```{r get AE totals}
+AE_totals <- dbGetQuery(con, "SELECT * FROM AE_totals")
+```  
+  
+```{r get AE counts}
+AE_counts <- dbGetQuery(con, "SELECT * FROM AE_counts")
+
+## join predicted design groups
+AE_counts <- unique(merge(x=AE_counts, by.x = c("nct_id", "result_group_id"), y=predictions, by.y = c("nct_id","rg_id")))
+
+## just get serious AE_counts
+serious_AE_counts <- dplyr::filter(AE_counts, event_type == "serious")
+
+## filter and retain only sarcoma studies with outcomes
+serious_AE_counts <- filter(serious_AE_counts, nct_id %in% unique(sarcoma_outcomes$nct_id))
+
+## filter and retain only most common SAE per result group
+most_serious_AEs <- serious_AE_counts %>%
+         group_by(nct_id, result_group_id, dg_id) %>%
+         arrange(desc(percent_affected)) %>%
+         summarise(
+             most_common_SAE = head(adverse_event_term, 1), 
+             percent_affected = head(percent_affected, 1)
+         ) %>%
+         as.data.frame()
+
+```
+
+```{r join most serious SAEs to interventions agg}
+interventions_agg <- unique(merge(x=interventions_agg, by.x = c("nct_id", "design_group_id"), y=most_serious_AEs, by.y = c("nct_id", "dg_id")))
+
+ggplot(data=filter(interventions_agg, nct_id %in% sarcoma_nct_ids), aes(x=preferred_terms, y=percent_affected, colour=most_common_SAE)) +
+    geom_point(alpha=0.5) +
+    # geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.2) +
+    coord_flip(ylim = c(0, 60)) +
+    labs(title = "Most common SAE, sarcoma studies (excluding solid tumour)", x="Intervention PTs", y="most common SAE, percent") +
+    guides(colour = FALSE)
+
+```
+
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+
+```{r disconnect from  databases}
+
+# disconnect from clinicaltrials.gov
+dbDisconnect(conn2)
+
+# Disconnect from SQLite database
+dbDisconnect(con)
+
+```
+    
 
 `r knitr::knit_exit()`  
 
@@ -298,8 +526,6 @@ ggplot(data=filter(interventions_agg, nct_id %in% sarcoma_nct_ids), aes(x=factor
 
   
 
-* Of these, `r length(breast_cancer_nct_ids)` studies include breast cancer  
-  * Note that some of these will be "pure" breast cancer populations, whilst some will include a mixture of cancer types  
   
 ```{r filter and retain outcome data for breast cancer studies}
 
@@ -407,71 +633,6 @@ ggplot(data=filter(interventions_agg, nct_id %in% breast_cancer_nct_ids_her2), a
     labs(title = "Survival data, HER2-directed breast cancer studies", x="Intervention targets", y="survival, months", colour = "outcome") 
 ```
    
-
-
-
-```{r load population_features}
-population_features <- dbGetQuery(con, "SELECT * FROM population_features")
-
-population_features <- dplyr::filter(population_features, id_type != "EXCLUSION")
-population_features <- dplyr::filter(population_features, feature != "prior therapy")
-
-
-# population_features$matching_feature <- paste(population_features$controlled_match, population_features$feature, sep = "_")
-
-population_features <- unique(dplyr::select(population_features, nct_id, id_type, id, match, controlled_match, feature))
-
-```
-
-
-
-```{r join features to result groups}
-## where features are derived from inclusion criteria, assign those features to all result groups for that study
-study_features <- unique(merge(x=predictions, by.x = "nct_id", y=dplyr::select(population_features, nct_id, match, controlled_match, feature), by.y = "nct_id"))
-
-## where features are derived from design group description, assign those features to all result groups mapped to those design groups
-dg_features <- unique(merge(x=predictions, by.x = "dg_id", y=dplyr::select(population_features, id, match, controlled_match, feature), by.y = "id"))
-
-## finally, where features are derived from result group descriptions, assign those features only to those result groups
-rg_features <- unique(merge(x=predictions, by.x = "rg_id", y=dplyr::select(population_features, id, match, controlled_match, feature), by.y = "id"))
-
-## rowbind into a single table
-## select only unique rows
-features <- unique(rbind(study_features, dg_features, rg_features))
-
-## aggregate per result group (?)
-
-## join interventions (and targets and mechanisms)
-
-
-```
-
-```{r join features to outcomes}
-features_outcomes <- unique(merge(x=dplyr::select(features, nct_id, rg_id, controlled_match, feature), by.x=c("nct_id", "rg_id"), all.x=FALSE, y=outcomes, by.y = c("nct_id", "result_group_id"), all.y = TRUE))
-
-features_outcomes <- arrange(features_outcomes, desc(param_value_num))
-
-## exploratory plots
-ggplot(data=filter(features_outcomes, controlled_match == "EGFR" & feature == "mutation"), aes(x=factor(rg_id), y=param_value_num, colour=outcome_controlled)) +
-    geom_point(alpha=0.5) +
-    geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.2) +
-    coord_flip(ylim = c(0, 100)) +
-    labs(title = "Outcomes in EGFR-mutated populations", x="result group", y="survival, months", colour = "outcome")
-
-
-
-
-
-## select an example study
-ggplot(data=filter(features_outcomes, nct_id == "NCT00137839"), aes(x=factor(title), y=param_value_num, colour=outcome_controlled)) +
-    geom_point(alpha=0.5) +
-    geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.05, alpha=0.3) +
-    coord_flip(ylim = c(0, 50)) +
-    labs(title = "Outcomes in study NCT00137839", x="outcome title", y="survival, months", colour = "outcome") +
-    theme_classic()
-
-
-```
 
 
 
