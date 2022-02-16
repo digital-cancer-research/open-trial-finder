@@ -118,6 +118,14 @@ ggplot(data=cancerStudies_outcomes, aes(x=controlled_cancer_type, y=param_value_
     labs(title = "Survival according to cancer type", x="result group", y="survival, months", colour = "outcome") +
   facet_grid(.~outcome_controlled)
 
+
+# ggplot(data=filter(cancerStudies_outcomes, controlled_cancer_type %in% c("Sarcoma: Soft Tissue", "Solid")), aes(x=controlled_cancer_type, y=param_value_num, colour = outcome_controlled)) +
+#   geom_point(alpha=0.5) +
+#     coord_flip(ylim = c(0, 100)) +
+#     labs(title = "Survival according to cancer type", x="result group", y="survival, months", colour = "outcome") +
+#   facet_grid(.~outcome_controlled)
+
+
 ```
 
 ```{r get interventions}
@@ -197,6 +205,33 @@ outcomes_interventions <- unique(merge(x=outcomes_interventions, by.x = c("nct_i
   
 `r formattable(head(outcomes_interventions))`  
   
+  
+```{r plot distribution of interventions with results}
+ggplot(data=outcomes_interventions, aes(x=controlled_cancer_type, y=param_value_num, colour = outcome_controlled)) +
+  geom_point(alpha=0.5) +
+    coord_flip(ylim = c(0, 100)) +
+    labs(title = "Survival according to cancer type", x="result group", y="survival, months", colour = "outcome") +
+  facet_grid(.~outcome_controlled)
+```
+
+
+
+
+```{r join interventions to cancer types}
+
+
+outcomes_interventions <- unique(merge(x=outcomes_interventions, by.x = "nct_id", y=cancerStudies, by.y = "nct_id"))
+
+ggplot(data=filter(outcomes_interventions, controlled_cancer_type %in% c("Sarcoma: Soft Tissue", "Solid")), aes(x=PreferredTerm, y=param_value_num, colour = outcome_controlled)) +
+  geom_point(alpha=0.5) +
+    coord_flip(ylim = c(0, 100)) +
+    labs(title = "Survival according to cancer type", x="result group", y="survival, months", colour = "outcome") +
+  facet_grid(.~controlled_cancer_type)
+
+
+
+
+```
 
   
 ```{r join interventions agg to results}
@@ -205,7 +240,13 @@ outcomes_interventions_agg <- unique(merge(x=interventions_agg, by.x=c("nct_id",
 
 outcomes_interventions_agg <- unique(merge(x=outcomes_interventions_agg, by.x = c("nct_id", "rg_id"), y=outcomes, by.y = c("nct_id", "result_group_id")))
 
+outcomes_interventions_agg <- unique(merge(x=outcomes_interventions_agg, by.x = "nct_id", y=cancerStudies, by.y = "nct_id"))
 
+ggplot(data=filter(outcomes_interventions_agg, controlled_cancer_type %in% c("Sarcoma: Soft Tissue", "Solid")), aes(x=PreferredTerm, y=param_value_num, colour = outcome_controlled)) +
+  geom_point(alpha=0.5) +
+    coord_flip(ylim = c(0, 100)) +
+    labs(title = "Survival according to cancer type", x="result group", y="survival, months", colour = "outcome") +
+  facet_grid(.~outcome_controlled)
 
 ```
   
@@ -284,10 +325,35 @@ ggplot(data=filter(features_outcomes, nct_id %in% c("NCT01802320", "NCT00894504"
 
 
 
+### **CIViC database**  
+  
+  
+```{r load evidence}
+evidence <- dbGetQuery(con, "SELECT * FROM evidence")
+
+formattable(head(evidence))
 
 
 
+# formattable(head(filter(evidence, disease == "Cancer")))
+# "Solid Tumor"
+# "Sarcoma"
+# "Liposarcoma" 
+# "Synovial Sarcoma"
 
+formattable(filter(evidence, gene %in% c("PTEN", "ARID1A", "AR", "BCOR") & evidence_type == "Predictive"))
+```
+    
+
+
+### **KEGG**  
+  
+  
+```{r load edges}
+edges <- dbGetQuery(con, "SELECT * FROM edges")
+
+```
+    
 
 
 ```{r disconnect from SQLite DB}
