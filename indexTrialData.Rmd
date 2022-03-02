@@ -281,7 +281,6 @@ dbWriteTable(conn = con,name = "NCIt", value = NCIt, overwrite=TRUE)
 
 ```{r subset NCIt for Pharmacologic Substance}
 
-
 NCIt_Pharmacologics <- unique(dplyr::filter(NCIt, Class=="Pharmacologic Substance"))
 
 ## delete NCIt and NCItParents objects to save memory
@@ -379,6 +378,60 @@ kegg_drugs <- unique(dplyr::select(kegg_drugs, NCIt_drug_id, drug_name, target_s
 toc() 
 ```
   
+
+```{r get cancer drugs from db}
+
+## a database of licensed cancer drugs is maintained at https://www.anticancerfund.org/en/cancerdrugs-db 
+## machine-readable version can be downloaded from... 
+# https://acfdata.coworks.be/cancerdrugsdb.txt
+
+cancer_drugs <- read.delim(file="https://acfdata.coworks.be/cancerdrugsdb.txt", header = TRUE, sep = "\t", quote = "\"", dec = ".", fill = TRUE, comment.char = "", stringsAsFactors = FALSE)
+## as of 01/11/2021, there are 282 drugs in this database
+
+
+## however, drugs such as Inavolisib don't appear in this list, but do have entries in KEGG... 
+
+
+cancer_drugs <- unique(dplyr::select(cancer_drugs, "drug_name"="Product", "EMA_approved"="EMA", "FDA_approved"="FDA", "DrugBank_link"="DrugBank.ID", Indications, Targets))
+
+## Note, drugs such as Inavolisib don't appear in this list, but do have entries in KEGG... 
+
+## map to NCIt IDs
+cancer_drugs$drug_name_lower <- tolower(cancer_drugs$drug_name)
+NCIt$Synonyms_lower <- tolower(NCIt$Synonyms)
+
+## for combinations, drug names are comma-separated - we will need to split and unnest in order to map to NCIt... 
+
+cancer_drugs$drug_name_lower <- strsplit(x=cancer_drugs$drug_name_lower, split = ", ")
+cancer_drugs <- unnest(data = cancer_drugs, cols = drug_name_lower, keep_empty = TRUE) 
+cancer_drugs <- as.data.frame(cancer_drugs) ## convert to data frame
+## join to NCIt ID
+cancer_drugs <- unique(merge(x=cancer_drugs, by.x="drug_name_lower", all.x = TRUE, y=unique(dplyr::select(NCIt, "NCIt_ID" = "ID", Synonyms_lower)), by.y="Synonyms_lower"))
+
+cancer_drugs <- dplyr::select(cancer_drugs, -drug_name_lower)
+
+## unnest the Targets column
+cancer_drugs$Targets <- strsplit(x=cancer_drugs$Targets, split = "; ")
+cancer_drugs <- unnest(data = cancer_drugs, cols = Targets, keep_empty = TRUE) 
+cancer_drugs <- as.data.frame(cancer_drugs) ## convert to data frame
+
+```
+  
+
+
+```{r bind the approved cancer drugs to kegg_drugs NOT USED}
+## select, rename and reorder columns to match kegg_drugs
+more_drugs <- unique(dplyr::select(cancer_drugs, "NCIt_drug_id"="NCIt_ID", "drug_name"="drug_name", "target_symbol"="Targets"))
+
+## row bind
+# kegg_drugs <- unique(rbind(kegg_drugs, more_drugs))
+## do not row bind... 
+## some of the drug:target relationships in this dataset are extremely tentative, e.g. pembrolizumab targets MDM2
+
+```
+
+  
+  
 * Where possible, these drugs are mapped to entities in the NCI thesaurus  
   
 * These data are saved in the *kegg_drugs* table:  
@@ -392,19 +445,6 @@ dbWriteTable(conn = con,name = "kegg_drugs", value = kegg_drugs, overwrite=TRUE)
 
 # dbListTables(con)
 
-```
-
-```{r get cancer drugs from db NOT USED}
-
-## a database of licensed cancer drugs is maintained at https://www.anticancerfund.org/en/cancerdrugs-db 
-## machine-readable version can be downloaded from... 
-# https://acfdata.coworks.be/cancerdrugsdb.txt
-
-# cancer_drugs <- read.delim(file="https://acfdata.coworks.be/cancerdrugsdb.txt", header = TRUE, sep = "\t", quote = "\"", dec = ".", fill = TRUE, comment.char = "", stringsAsFactors = FALSE)
-## as of 01/11/2021, there are 282 drugs in this database
-
-
-## however, drugs such as Inavolisib don't appear in this list, but do have entries in KEGG... 
 ```
   
 ```{r download NCIt in OWL format NOT USED}
@@ -488,6 +528,36 @@ dbWriteTable(conn = con,name = "kegg_drugs", value = kegg_drugs, overwrite=TRUE)
 
 ```
   
+### **Store table licensed drugs and their indications**  
+  
+```{r create indications table}
+
+indications <- unique(dplyr::select(cancer_drugs, "NCIt_drug_id" = "NCIt_ID", "drug_name"="drug_name", Indications, EMA_approved,FDA_approved, DrugBank_link))
+
+## unnest the indications column
+## unnest the Targets column
+indications$Indications <- strsplit(x=indications$Indications, split = "; ")
+indications <- unnest(data = indications, cols = Indications, keep_empty = TRUE) 
+indications <- as.data.frame(indications) ## convert to data frame
+
+
+```
+  
+* These data are sourced from the Cancer Drugs Database at https://www.anticancerfund.org/en/cancerdrugs-db  
+* These data are saved in the *indications* table:  
+  
+`r formattable(head(indications))`  
+  
+```{r write indications table to database}
+
+## create as a table in database
+dbWriteTable(conn = con,name = "indications", value = indications, overwrite=TRUE)
+
+# dbListTables(con)
+```
+
+    
+
 
 ### **Define controlled terms and synonyms for cancer types**  
   
@@ -627,6 +697,21 @@ interventions <- dbGetQuery(conn2,getInterventionsQ)
 
 ```
   
+
+```{r get design group inteventions}
+
+## get design group interventions
+get_dgi <- paste0("select *
+from design_group_interventions
+where nct_id in (",
+"", studyIDsForSQL,
+")")
+
+## get data from clinicaltrials.gov
+dgi <- dbGetQuery(conn2,get_dgi)
+
+```
+
 ```{r get eligibility criteria from ct}
 getEligibilities <- paste0("select * 
 from eligibilities 
@@ -839,6 +924,17 @@ rm(kwic_interventions)
 # 
 # # design_group_interventions$intervention_name[grep(pattern = "placebo|dummy", x=design_group_interventions$intervention_name, ignore.case = TRUE)] <- "Placebo"
 ```
+  
+
+```{r join interventions to design groups}
+## join to design groups
+interventions <- unique(merge(x=dplyr::select(dgi, nct_id, design_group_id, intervention_id), by.x = c("nct_id", "intervention_id"), y= interventions, by.y = c("nct_id", "intervention_id"), all.y = TRUE))
+
+```
+  
+  
+  
+    
   
 ```{r join interventions to NCIt pharmacologics NOT USED}
 # ## create a temporary copy of NCIt pharmacologics
