@@ -45,6 +45,7 @@ require(formattable)
 configuration <- jsonlite::fromJSON(txt = "trialMatchConfiguration.json")
 # configuration <- rjson::fromJSON(file = "trialMatchConfiguration.json")
 
+rm(list=ls())
 ```
   
   
@@ -52,80 +53,87 @@ configuration <- jsonlite::fromJSON(txt = "trialMatchConfiguration.json")
 showKable <- function(dataframe) {
   kbl(dataframe, format = "html",escape = FALSE) %>%
 kable_styling(fixed_thead = T, bootstrap_options = c("striped", "hover", "condensed")) %>%
-scroll_box(width = "125%", height = "200px")
+scroll_box(width = "125%", height = "600px")
 }
 
 
 ```
-
-    
-## **Objectives**   
   
+<!-- add custom CSS to display plots with scroll bars when needed    -->
+<style>
+  .superbigimage{
+      overflow-x:scroll;
+      overflow-y:scroll;
+      white-space: nowrap;
+  }
+
+  .superbigimage img{
+     max-width: none;
+     max-height: none;
+  }
+
+
+</style>  
+    
+## **Objectives**  
+<br>
+
 * Describe limitations of current version of trial finder  
 * List potential ways to address limitations  
 * Evaluate potential data sources  
   * Utility  
   * Limitations  
   * Presentation options  
-  
-  
+<br>
+<br>
+ 
 ## **Example scenario**  
   
 * Soft tissue sarcoma  
 * PTEN loss; ARID1A mutation, AR mutation, BCOR mutation  
-  
+<br>
+<br>
 
 `r knitr::include_graphics("sarcoma_mapview.PNG")`  
-  
-  
+<br>
+<br>
+ 
 * **There are many trials recruiting sarcoma patients (inc solid tumour trials)**  
+<br>
+
 * **Which trial is the best option and why?**  
-  
+<br>
+
 ## **Current solution**  
-  
-  
-  
+
+<br>
+
 * These trials are pushed to top of results  
 * Why?  
   * Study recruiting patients with one or more of these genetic alterations *implies confidence in rationale for study intervention*  
   * One or more study drug targets one of the altered genes  
-  
-    
-  
-      
 
+<br>
+<br>
 `r knitr::include_graphics("sarcoma_tableview.PNG")`  
-  
-  
+<br>
+<br>
+
 * Currently, tool does not offer any support with:  
   * **Which of these options is best?**     
   * **What about BCOR?**  
   * **Would one of the other ~100 studies be a better match?**  
   * **Would a licensed treatment be a better option?**  
-    
-    
-## **Possible approaches to answer these questions**  
-  
-  
-### **Empirical**  
-  
-  
+<br>
+<br>
+
+## **A: Empirical approaches**  
+
 * *based on, concerned with, or verifiable by observation or experience rather than pure logic*  
-* clinicaltrials.gov results  
-* [CIVIC database](https://civicdb.org/home): *an open access, open source, community-driven web resource for Clinical Interpretation of Variants in Cancer.*  
-* PubMed  
+
   
-  
-### **Deduction**  
-  
-* *derived from the application of logic to other known facts*  
-* **Reasoning over biological pathways**, e.g. [KEGG Pathways in Cancer](https://www.genome.jp/pathway/hsa05200)  
-  
-  
-  
-### **Clinicaltrials.gov results**  
-  
-  
+### **A1. Clinicaltrials.gov results**  
+
 ```{r connect to SQLite DB}
 # Create an RSQLite database
 #con <- dbConnect(RSQLite::SQLite(), "trialMatchData.sqlite")
@@ -142,13 +150,32 @@ cancerStudies$controlled_cancer_type <- str_squish(cancerStudies$controlled_canc
 
 ## drop unnecessary columns
 cancerStudies <- unique(dplyr::select(cancerStudies, nct_id, brief_title, controlled_cancer_type))
+
+number_cancer_studies <- length(unique(cancerStudies$nct_id))
+```
+
+```{r specify cancer type of interest}
+cancer_type <- "Sarcoma: Soft Tissue"
+# cancer_type <- "Breast"
+
+cancer_type_study_IDs <- unique(cancerStudies$nct_id[cancerStudies$controlled_cancer_type==cancer_type])  
 ```
   
-* We have indexed a total of `r length(unique(cancerStudies$nct_id))` cancer studies and stored them in the database:  
+```{r specify alterations of interest}
+alterations <- c("PTEN_loss", "BCOR_mutation", "ARID1A_mutation", "AR_mutation")
 
-`r showKable(head(cancerStudies))`  
-  
- 
+
+# alterations <- c("BRCA2_mutation", "ERBB2_amplification")
+
+
+## just get the gene names
+gene_names <- gsub(pattern = "_.*", replacement = "", x=alterations)
+```
+
+* Considering all cancer studies globally, data are available for **`r length(unique(cancerStudies$nct_id))` studies**:  
+  * **`r length(cancer_type_study_IDs)` studies included patients with `r cancer_type`**  
+
+<!-- `r showKable(head(cancerStudies))`   -->
 
 ```{r get outcomes}
 PFS <- dbGetQuery(con, "SELECT * FROM PFS")
@@ -165,28 +192,18 @@ outcomes <- unique(rbind(PFS, overall_survival))
 outcomes <- arrange(outcomes, nct_id)
 ## specify factor order for outcomes (so faceted plots render nicely)
 outcomes$outcome_controlled <- factor(x=outcomes$outcome_controlled, levels = c("Progression free survival", "Overall survival"))
+
+
+number_studies_with_survival_data <- length(intersect(outcomes$nct_id, cancerStudies$nct_id))
+percent_studies_with_survival_data <- 100*number_studies_with_survival_data/number_cancer_studies
+
+
 ```
-  
-  
-  
-* `r length(intersect(outcomes$nct_id, cancerStudies$nct_id))` of these studies have PFS and/or OS data available  
 
-  * Outcomes are reported for *result groups* (N=`r length(unique(outcomes$result_group_id))` total):   
+* **Only `r length(intersect(outcomes$nct_id, cancerStudies$nct_id))` (`r round(percent_studies_with_survival_data, digits = 0)`%) of these studies have PFS and/or OS data available**  
+<br>
 
-  
-`r showKable(head(outcomes))`    
-      
-  
-      
-  
-  
-  
-`r knitr::knit_exit()`  
-
-  
-  
-  
-  
+<!-- `r showKable(head(outcomes))`        -->
 
 ```{r join cancer types to outcomes}
 
@@ -195,15 +212,12 @@ cancerStudies_outcomes <- merge(x=cancerStudies, by.x = "nct_id", y=outcomes, by
 
 ```
   
-* A total of `r length(unique(cancerStudies_outcomes$controlled_cancer_type))` cancer types are represented among the studies with outcomes:  
-  
-  
 ```{r plot distribution of cancer types with results}
-ggplot(data=cancerStudies_outcomes, aes(x=controlled_cancer_type, y=param_value_num, colour = outcome_controlled)) +
-  geom_point(alpha=0.5) +
-    coord_flip(ylim = c(0, 100)) +
-    labs(title = "Survival according to cancer type", x="result group", y="survival, months", colour = "outcome") +
-  facet_grid(.~outcome_controlled)
+# ggplot(data=cancerStudies_outcomes, aes(x=controlled_cancer_type, y=param_value_num, colour = outcome_controlled)) +
+#   geom_point(alpha=0.5) +
+#     coord_flip(ylim = c(0, 100)) +
+#     labs(title = "Survival according to cancer type", x="result group", y="survival, months", colour = "outcome") +
+#   facet_grid(.~outcome_controlled)
 
 
 # ggplot(data=filter(cancerStudies_outcomes, controlled_cancer_type %in% c("Sarcoma: Soft Tissue", "Solid")), aes(x=controlled_cancer_type, y=param_value_num, colour = outcome_controlled)) +
@@ -214,6 +228,171 @@ ggplot(data=cancerStudies_outcomes, aes(x=controlled_cancer_type, y=param_value_
 
 
 ```
+
+  
+#### **Outcomes in studies including `r cancer_type` patients**  
+
+
+* **`r length(intersect(outcomes$nct_id, cancer_type_study_IDs))` studies with survival data included patients with `r cancer_type`**  
+* **Note that these studies may have included other cancer types as well**  
+<br>
+<div class="superbigimage">
+```{r plot_it , echo = FALSE, fig.width=24,fig.height=12}
+ggplot(data=filter(cancerStudies_outcomes, controlled_cancer_type %in% c(cancer_type)), aes(x=brief_title, y=param_value_num, colour = outcome_controlled)) +
+  geom_point(alpha=0.5) +
+    coord_flip() +
+    labs(title = paste0("Outcomes for ", cancer_type), x="result group", y="survival, months", colour = "outcome") 
+```
+</div>
+<br>
+
+#### **Outcomes in patients with relevant alterations (all cancer types)** <br>
+
+```{r load mappings from result groups to design groups}
+
+predictions <- dbGetQuery(con, "SELECT * FROM predictions")
+predictions <- unique(dplyr::select(predictions, nct_id, "dg_id"="predicted_design_group", rg_id))
+```
+
+```{r load population_features}
+population_features <- dbGetQuery(con, "SELECT * FROM population_features")
+
+population_features <- dplyr::filter(population_features, id_type != "EXCLUSION")
+population_features <- dplyr::filter(population_features, feature != "prior therapy")
+
+
+population_features$controlled_match_feature <- paste(population_features$controlled_match, population_features$feature, sep = "_")
+
+population_features <- unique(dplyr::select(population_features, nct_id, id_type, id, match, controlled_match, feature, controlled_match_feature))
+
+```
+
+* Considering the alterations `r paste(alterations, collapse = ", ")`, the number of relevant studies that have evaluated these alterations (all cancer types, with or without outcome data) is as follows:  
+<br>
+```{r summary table studies by feature}
+# population_features %>%
+#   filter(controlled_match_feature %in% alterations) %>%
+#   group_by(controlled_match_feature) %>%
+#   summarise(
+#     count_of_studies = length(unique(nct_id))
+#   ) %>%
+#   as.data.frame() %>%
+#   showKable()
+
+
+population_features %>%
+  filter(controlled_match_feature %in% alterations) %>%
+  group_by(controlled_match_feature) %>%
+  summarise(
+    count_of_studies = length(unique(nct_id)), 
+    count_studies_outcomes = length(unique(nct_id[nct_id %in% outcomes$nct_id]))
+  ) %>%
+  as.data.frame() %>%
+  showKable()
+```
+<br>
+
+```{r join features to result groups}
+## where features are derived from inclusion criteria, assign those features to all result groups for that study
+study_features <- unique(merge(x=predictions, by.x = "nct_id", y=dplyr::select(population_features, nct_id, match, controlled_match, feature), by.y = "nct_id"))
+
+## where features are derived from design group description, assign those features to all result groups mapped to those design groups
+dg_features <- unique(merge(x=predictions, by.x = "dg_id", y=dplyr::select(population_features, id, match, controlled_match, feature), by.y = "id"))
+
+## finally, where features are derived from result group descriptions, assign those features only to those result groups
+rg_features <- unique(merge(x=predictions, by.x = "rg_id", y=dplyr::select(population_features, id, match, controlled_match, feature), by.y = "id"))
+
+## rowbind into a single table
+## select only unique rows
+features <- unique(rbind(study_features, dg_features, rg_features))
+
+```
+
+* Note that the results may include patients with other mutations in addition to / instead of those specified.  
+<br>  
+```{r join features to outcomes}
+features_outcomes <- unique(merge(x=dplyr::select(features, nct_id, rg_id, controlled_match, feature), by.x=c("nct_id", "rg_id"), all.x=FALSE, y=outcomes, by.y = c("nct_id", "result_group_id"), all.y = FALSE))
+
+features_outcomes$controlled_match_feature <- paste(features_outcomes$controlled_match, features_outcomes$feature, sep = "_")
+
+## join brief titles
+features_outcomes <- merge(x=unique(dplyr::select(cancerStudies, nct_id, brief_title)), by.x="nct_id", y=features_outcomes, by.y="nct_id")
+
+features_outcomes <- arrange(features_outcomes, desc(param_value_num))
+
+## get IDs for studies with those features and outcomes
+study_IDs_features_outcomes <- unique(features_outcomes$nct_id[features_outcomes$controlled_match_feature %in% alterations])
+# showKable(head(features_outcomes,20))
+# 
+features_outcomes %>%
+  filter(nct_id %in% study_IDs_features_outcomes) %>%
+  arrange(desc(param_value_num)) %>%
+  dplyr::select(nct_id, "study title"="brief_title", "gene"="controlled_match", "alteration"="feature", "outcome"="title", param_type, param_value_num, units, dispersion_type, dispersion_lower_limit, dispersion_upper_limit) %>%
+  showKable()
+```
+
+```{r exploratory plots features vs outcomes}
+## exploratory plots
+# ggplot(data=filter(features_outcomes, controlled_match == "PTEN" & feature == "loss"), aes(x=factor(rg_id), y=param_value_num, colour=outcome_controlled)) +
+#     geom_point(alpha=0.5) +
+#     geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.2) +
+#     coord_flip(ylim = c(0, 100)) +
+#     labs(title = "Outcomes in populations with PTEN loss", x="result group", y="survival, months", colour = "outcome")
+# 
+# ## select example studies
+# ggplot(data=filter(features_outcomes, nct_id %in% c("NCT01802320", "NCT00894504", "NCT01575522") ), aes(x=controlled_match_feature, y=param_value_num, colour=outcome_controlled)) +
+#     geom_point(alpha=0.5) +
+#     geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.05, alpha=0.3) +
+#     coord_flip(ylim = c(0, 50)) +
+#     labs(title = "Outcomes in studies with PTEN loss", x="feature", y="survival, months", colour = "outcome")
+```
+
+
+
+### **A2. [CIVIC database](https://civicdb.org/home)**  
+
+* *an open access, open source, community-driven web resource for Clinical Interpretation of Variants in Cancer.*  
+* Considering only alterations in the specified genes (any cancer type), CIViC database includes the following evidence:  
+<br>
+```{r load evidence table}
+evidence <- dbGetQuery(con, "SELECT * FROM evidence")
+
+evidence %>%
+  filter(gene %in% gene_names) %>%
+  filter(evidence_type == "Predictive") %>%
+  filter(evidence_direction == "Supports") %>%
+  arrange(gene) %>%
+  showKable()
+
+
+```
+
+  
+### **A3. PubMed**  
+  
+<br>
+  
+## **B: Deductive approaches**  
+  
+* *derived from the application of logic to other known facts*  
+<br>
+
+  
+### **B1. Reasoning over biological pathways**  
+
+* e.g. [KEGG Pathways in Cancer](https://www.genome.jp/pathway/hsa05200)  
+<br>
+  
+        
+  
+  
+  
+`r knitr::knit_exit()`  
+
+  
+  
+  
+  
 
 ```{r get interventions}
 interventions <- dbGetQuery(con, "SELECT * FROM interventions")
@@ -275,12 +454,6 @@ interventions_agg <- interventions %>%
   
 `r formattable(head(interventions_agg))`  
   
-  
-```{r load mappings from result groups to design groups}
-
-predictions <- dbGetQuery(con, "SELECT * FROM predictions")
-predictions <- unique(dplyr::select(predictions, nct_id, "dg_id"="predicted_design_group", rg_id))
-```
 
 
 ```{r join interventions to result groups}
@@ -341,76 +514,6 @@ ggplot(data=filter(outcomes_interventions_agg, controlled_cancer_type %in% c("Sa
 `r formattable(head(outcomes_interventions_agg))`  
     
    
-
-```{r load population_features}
-population_features <- dbGetQuery(con, "SELECT * FROM population_features")
-
-population_features <- dplyr::filter(population_features, id_type != "EXCLUSION")
-population_features <- dplyr::filter(population_features, feature != "prior therapy")
-
-
-# population_features$matching_feature <- paste(population_features$controlled_match, population_features$feature, sep = "_")
-
-population_features <- unique(dplyr::select(population_features, nct_id, id_type, id, match, controlled_match, feature))
-
-```
-
-```{r join features to result groups}
-## where features are derived from inclusion criteria, assign those features to all result groups for that study
-study_features <- unique(merge(x=predictions, by.x = "nct_id", y=dplyr::select(population_features, nct_id, match, controlled_match, feature), by.y = "nct_id"))
-
-## where features are derived from design group description, assign those features to all result groups mapped to those design groups
-dg_features <- unique(merge(x=predictions, by.x = "dg_id", y=dplyr::select(population_features, id, match, controlled_match, feature), by.y = "id"))
-
-## finally, where features are derived from result group descriptions, assign those features only to those result groups
-rg_features <- unique(merge(x=predictions, by.x = "rg_id", y=dplyr::select(population_features, id, match, controlled_match, feature), by.y = "id"))
-
-## rowbind into a single table
-## select only unique rows
-features <- unique(rbind(study_features, dg_features, rg_features))
-
-
-```
-  
-* Features have been indexed for `r length(unique(features$rg_id))` result groups  
-
-
-```{r join features to outcomes}
-features_outcomes <- unique(merge(x=dplyr::select(features, nct_id, rg_id, controlled_match, feature), by.x=c("nct_id", "rg_id"), all.x=FALSE, y=outcomes, by.y = c("nct_id", "result_group_id"), all.y = TRUE))
-
-features_outcomes$controlled_match_feature <- paste(features_outcomes$controlled_match, features_outcomes$feature, sep = "_")
-
-features_outcomes <- arrange(features_outcomes, desc(param_value_num))
-```
-  
-* Features have been indexed for `r length(unique(features_outcomes$rg_id[!is.na(features_outcomes$controlled_match)]))` result groups across `r length(unique(features_outcomes$nct_id[!is.na(features_outcomes$controlled_match)]))` studies  
-  
-  
-`r formattable(head(features_outcomes))`  
-  
-* 3 studies have reported results in populations including PTEN loss:  
-  
-`r formattable(filter(features_outcomes, nct_id %in% c("NCT01802320", "NCT00894504", "NCT01575522") ))`  
-  
-  
-    
-```{r exploratory plots features vs outcomes}
-## exploratory plots
-ggplot(data=filter(features_outcomes, controlled_match == "PTEN" & feature == "loss"), aes(x=factor(rg_id), y=param_value_num, colour=outcome_controlled)) +
-    geom_point(alpha=0.5) +
-    geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.2) +
-    coord_flip(ylim = c(0, 100)) +
-    labs(title = "Outcomes in populations with PTEN loss", x="result group", y="survival, months", colour = "outcome")
-
-## select example studies
-ggplot(data=filter(features_outcomes, nct_id %in% c("NCT01802320", "NCT00894504", "NCT01575522") ), aes(x=controlled_match_feature, y=param_value_num, colour=outcome_controlled)) +
-    geom_point(alpha=0.5) +
-    geom_errorbar(aes(ymin=dispersion_lower_limit, ymax=dispersion_upper_limit), width=.05, alpha=0.3) +
-    coord_flip(ylim = c(0, 50)) +
-    labs(title = "Outcomes in studies with PTEN loss", x="feature", y="survival, months", colour = "outcome")
-```
-
-
 
 ### **CIViC database**  
   
