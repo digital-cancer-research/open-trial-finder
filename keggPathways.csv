@@ -1,0 +1,67 @@
+pathwayId,pathwayName
+3030,DNA replication
+3410,Base excision repair
+3420,Nucleotide excision repair
+3430,Mismatch repair
+3440,Homologous recombination
+3450,Non-homologous end-joining
+3460,Fanconi anemia pathway
+2020,Two-component system
+4010,MAPK signaling pathway
+4012,ErbB signaling pathway
+4014,Ras signaling pathway
+4015,Rap1 signaling pathway
+4310,Wnt signaling pathway
+4330,Notch signaling pathway
+4340,Hedgehog signaling pathway
+4350,TGF-beta signaling pathway
+4390,Hippo signaling pathway
+4370,VEGF signaling pathway
+4371,Apelin signaling pathway
+4630,JAK-STAT signaling pathway
+4064,NF-kappa B signaling pathway
+4668,TNF signaling pathway
+4066,HIF-1 signaling pathway
+4068,FoxO signaling pathway
+4020,Calcium signaling pathway
+4070,Phosphatidylinositol signaling system
+4072,Phospholipase D signaling pathway
+4071,Sphingolipid signaling pathway
+4024,cAMP signaling pathway
+4022,cGMP-PKG signaling pathway
+4151,PI3K-Akt signaling pathway
+4152,AMPK signaling pathway
+4150,mTOR signaling pathway
+4110,Cell cycle
+4210,Apoptosis
+4217,Necroptosis
+4115,p53 signaling pathway
+4218,Cellular senescence
+5200,Pathways in cancer
+5202,Transcriptional misregulation in cancer
+5206,MicroRNAs in cancer
+5205,Proteoglycans in cancer
+5204,Chemical carcinogenesis - DNA adducts
+5207,Chemical carcinogenesis - receptor activation
+5208,Chemical carcinogenesis - reactive oxygen species
+5203,Viral carcinogenesis
+5230,Central carbon metabolism in cancer
+5231,Choline metabolism in cancer
+5235,PD-L1 expression and PD-1 checkpoint pathway in cancer
+5210,Colorectal cancer
+5212,Pancreatic cancer
+5225,Hepatocellular carcinoma
+5226,Gastric cancer
+5214,Glioma
+5216,Thyroid cancer
+5221,Acute myeloid leukemia
+5220,Chronic myeloid leukemia
+5217,Basal cell carcinoma
+5218,Melanoma
+5211,Renal cell carcinoma
+5219,Bladder cancer
+5215,Prostate cancer
+5213,Endometrial cancer
+5224,Breast cancer
+5222,Small cell lung cancer
+5223,Non-small cell lung cancer
