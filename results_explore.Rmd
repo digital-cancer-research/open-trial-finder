@@ -361,7 +361,7 @@ evidence %>%
   filter(gene %in% gene_names) %>%
   filter(evidence_type == "Predictive") %>%
   filter(evidence_direction == "Supports") %>%
-  arrange(gene) %>%
+  arrange(gene, drugs) %>%
   showKable()
 
 
@@ -382,9 +382,110 @@ evidence %>%
 
 * e.g. [KEGG Pathways in Cancer](https://www.genome.jp/pathway/hsa05200)  
 <br>
-  
+<br>
+
+`r knitr::include_graphics("pathwaysInCancer.png")`  
+<br>
+<br>
         
+* Full pathway is complex, and hard to interpret  
+  * If we connect drugs to gene nodes, complexity further increased  
+  * If we then connect studies to drug nodes, further still  
+* Some kind of reasoning over pathway is required  
+  * Show only the most relevant nodes, linkages  
+* **How should an algorithm reason over a network?**  
+<br>
+1. **Drug directly reverses effect of genetic alteration**  
+  * EGFR T790M -> activation of EGFR  
+  * Osimertinib -> inhibition of EGFR  
+2. **Drug counteracts downstream effect of genetic alteration**  
+  * PTEN inhibits PIP3  
+  * PI3K (PIK3CA/B/D) activates PIP3  
+  * PTEN loss -> loss of PIP3 inhibition  
+  * Alpelisib -> inhibition of PI3K -> reduce activity of PIP3  
+3. **Synthetic lethality**  
+  * BRCA1/2 -> DNA DSB repair  
+  * BRCA1/2 loss of function -> loss of DNA DSB repair  
+  * PARP -> DNA SSB repair  
+  * Olaparib -> inhibition of PARP -> DNA DSB accumulation  
+  * DNA DSB accumulation -> cell death  
+4. **???** 
+  * ARID1A mutation -> -> sensitivity to p300/CBP inhibition  
+  * SETD2 mutation -> -> sensitivity to ATR inhibition  
+<br>
+
+
   
+```{r load a list of pathway ids}
+pathways <- read.csv("keggPathways.csv", stringsAsFactors = FALSE, colClasses = "character")
+## add prefix to pathway ids
+pathways$pathwayId <- paste0("hsa0", pathways$pathwayId)
+```
+
+  
+```{r get tables from database}
+
+
+humanGenes <- dbGetQuery(con, "SELECT * FROM humanGenes")
+NCIt <- dbGetQuery(con, "SELECT * FROM NCIt")
+```
+
+  
+  
+```{r get pathways as node and edge lists, message=FALSE}
+## create empty dataframes that will hold nodes and edges
+edgelist <- data.frame("from"=character(0), 
+                       "to"=character(0), 
+                       "label"=character(0), 
+                       "title" = character(0), 
+                       "pathway" = character(0))
+
+nodelist <- data.frame("id"=character(0), 
+                       "Symbol"=character(0))
+
+for(i in 1:nrow(pathways)) {
+  id <- pathways$pathwayId[i]
+  name <- pathways$pathwayName[i]
+  # print(id)
+  # print(name)
+  tryCatch({kgml <- KEGGlincs::get_KGML(id)},
+             error=function(cond) {return(NA)})
+  if(is.na(kgml)) next
+  #print(name)
+  
+  mappings <- expand_KEGG_mappings(kgml, convert_KEGG_IDs = FALSE)
+  edges <- expand_KEGG_edges(kgml, mappings)
+
+  ## create edges based on individual members of nodes
+  edges <- unique(dplyr::select(edges, "from"="entry1accession", "to"="entry2accession", "title"="subtype1"))
+  ## add pathway name to edge list
+  edges$pathway <- name
+  ## bind to edgelist
+  edgelist <- rbind(edgelist, edges)
+  ## get nodes from mappings table
+  nodes <- data.frame("id" = unique(dplyr::select(mappings, "id" = entryACCESSION )))
+  # nodes <- unique(dplyr::select(mappings, "id" = "entryACCESSION"))
+  ## unnest nodes
+  nodes <- unique(as.data.frame(unnest(data=nodes, cols = c("id"))))
+  
+  ## join Entrez Symbols
+  nodes <- unique(merge(x=nodes, by.x="id", all.x=TRUE, y=unique(dplyr::select(humanGenes, GeneID, Symbol)), by.y="GeneID"))
+  ## drop any nodes without an id
+  nodes <- nodes[!is.na(nodes$id), ]
+  
+  ## test it works
+  #igraph::graph_from_data_frame(d=edges,vertices=nodes, directed=T)
+  ## bind to nodelist
+  nodelist <- rbind(nodelist, nodes)
+}
+
+nodelist <- unique(nodelist)
+edgelist <- unique(edgelist)
+
+nodelist$label <- nodelist$Symbol
+```
+
+
   
   
 `r knitr::knit_exit()`  
