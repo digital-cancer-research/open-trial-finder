@@ -40,6 +40,13 @@ require(DBI)                ## LGPL-2.1 | LGPL-3
 require(ggplot2)
 require(stringr)
 require(formattable)
+require(KEGGlincs)        ## GPL-3
+require(KEGGgraph)        ## GPL >= 2
+require(org.Hs.eg.db)     ## Artistic-2.0
+require(KEGGREST)         ## Artistic 2.0
+require(igraph)
+require(visNetwork)
+
 
 ## load configuration data from JSON file
 configuration <- jsonlite::fromJSON(txt = "trialMatchConfiguration.json")
@@ -200,7 +207,7 @@ percent_studies_with_survival_data <- 100*number_studies_with_survival_data/numb
 
 ```
 
-* **Only `r length(intersect(outcomes$nct_id, cancerStudies$nct_id))` (`r round(percent_studies_with_survival_data, digits = 0)`%) of these studies have PFS and/or OS data available**  
+* **Only `r length(intersect(outcomes$nct_id, cancerStudies$nct_id))` (`r round(percent_studies_with_survival_data, digits = 0)`%) of cancer studies have PFS and/or OS data available**  
 <br>
 
 <!-- `r showKable(head(outcomes))`        -->
@@ -395,20 +402,33 @@ evidence %>%
   * Show only the most relevant nodes, linkages  
 * **How should an algorithm reason over a network?**  
 <br>
+
 1. **Drug directly reverses effect of genetic alteration**  
   * EGFR T790M -> activation of EGFR  
   * Osimertinib -> inhibition of EGFR  
+<br>
+`r knitr::include_graphics("mutantEGFR.png")`
+<br>
+
 2. **Drug counteracts downstream effect of genetic alteration**  
   * PTEN inhibits PIP3  
   * PI3K (PIK3CA/B/D) activates PIP3  
   * PTEN loss -> loss of PIP3 inhibition  
   * Alpelisib -> inhibition of PI3K -> reduce activity of PIP3  
+<br>
+`r knitr::include_graphics("PTENloss.png")`
+<br>
+
 3. **Synthetic lethality**  
   * BRCA1/2 -> DNA DSB repair  
   * BRCA1/2 loss of function -> loss of DNA DSB repair  
   * PARP -> DNA SSB repair  
   * Olaparib -> inhibition of PARP -> DNA DSB accumulation  
   * DNA DSB accumulation -> cell death  
+<br>
+`r knitr::include_graphics("BRCAPARP.PNG")`
+<br>
+
 4. **???** 
   * ARID1A mutation -> -> sensitivity to p300/CBP inhibition  
   * SETD2 mutation -> -> sensitivity to ATR inhibition  
@@ -486,7 +506,39 @@ nodelist$label <- nodelist$Symbol
 ```
 
 
-  
+```{r get pathways involving selected genes}
+gene_nodes <- nodelist$id[nodelist$Symbol %in% gene_names]
+
+edgelist %>%
+    filter(from %in% gene_nodes) %>%
+    igraph::graph_from_data_frame(vertices=nodelist, directed=T) %>%
+    igraph::delete.vertices( which(degree(.)==0)) %>%
+    visIgraph(idToLabel = FALSE) %>%
+    visOptions(highlightNearest = list(enabled = TRUE, degree = list(from = 1, to = 1)), selectedBy = "Symbol") %>%
+    visIgraphLayout(layout = "layout_nicely")
+
+
+## alternative layouts
+# edgelist %>%
+#     filter(from %in% gene_nodes) %>%
+#     igraph::graph_from_data_frame(vertices=nodelist, directed=T) %>%
+#     igraph::delete.vertices( which(degree(.)==0)) %>%
+#     visIgraph(idToLabel = FALSE) %>%
+#     visOptions(highlightNearest = list(enabled = TRUE, degree = list(from = 1, to = 1)), selectedBy = "Symbol") %>%
+#     visHierarchicalLayout()
+# 
+# edgelist %>%
+#     filter(from %in% gene_nodes) %>%
+#     igraph::graph_from_data_frame(vertices=nodelist, directed=T) %>%
+#     igraph::delete.vertices( which(degree(.)==0)) %>%
+#     visIgraph(idToLabel = FALSE) %>%
+#     visOptions(highlightNearest = list(enabled = TRUE, degree = list(from = 1, to = 1)), selectedBy = "Symbol") %>%
+#     visHierarchicalLayout(direction = "LR")
+
+
+
+```
+
   
 `r knitr::knit_exit()`  
 
