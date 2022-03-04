@@ -476,7 +476,7 @@ for(i in 1:nrow(pathways)) {
   tryCatch({kgml <- KEGGlincs::get_KGML(id)},
              error=function(cond) {return(NA)})
   if(is.na(kgml)) next
-  #print(name)
+  # print(name)
   
   mappings <- expand_KEGG_mappings(kgml, convert_KEGG_IDs = FALSE)
   edges <- expand_KEGG_edges(kgml, mappings)
@@ -489,7 +489,7 @@ for(i in 1:nrow(pathways)) {
   edgelist <- rbind(edgelist, edges)
   ## get nodes from mappings table
   nodes <- data.frame("id" = unique(dplyr::select(mappings, "id" = entryACCESSION )))
-  # nodes <- unique(dplyr::select(mappings, "id" = "entryACCESSION"))
+  # nodes <- unique(dplyr::select(mappings, "id" = "entryACCESSION", entryTYPE))
   ## unnest nodes
   nodes <- unique(as.data.frame(unnest(data=nodes, cols = c("id"))))
   
@@ -508,14 +508,22 @@ nodelist <- unique(nodelist)
 edgelist <- unique(edgelist)
 
 nodelist$label <- nodelist$Symbol
+nodelist$shape <- "circle"
+nodelist$color.highlight.background <- "orange"
+nodelist$color.background <- "gold"
+
+edgelist$color <- "blue"
+edgelist$color[edgelist$title %in% c("inhibition", "repression")] <- "red"
+edgelist$color[edgelist$title %in% c("activation", "expression")] <- "green"
+
 ```
 * We can extract these data as nodes and edges:  
 <br>
 
-`r showKable(head(edgelist))`  
+`r showKable(head(edgelist,20))`  
 <br>
 
-`r showKable(head(nodelist))`  
+`r showKable(head(nodelist,20))`  
 <br>
 
 * For example, we can extract genes immediately downstream of the genes of interest and present them as a "network"...  
@@ -532,7 +540,6 @@ edgelist %>%
     visOptions(highlightNearest = list(enabled = TRUE, degree = list(from = 1, to = 1)), selectedBy = "Symbol") %>%
     visIgraphLayout(layout = "layout_nicely")
 
-
 ## alternative layouts
 # edgelist %>%
 #     filter(from %in% gene_nodes) %>%
@@ -541,7 +548,8 @@ edgelist %>%
 #     visIgraph(idToLabel = FALSE) %>%
 #     visOptions(highlightNearest = list(enabled = TRUE, degree = list(from = 1, to = 1)), selectedBy = "Symbol") %>%
 #     visHierarchicalLayout()
-# 
+
+
 # edgelist %>%
 #     filter(from %in% gene_nodes) %>%
 #     igraph::graph_from_data_frame(vertices=nodelist, directed=T) %>%
@@ -550,8 +558,73 @@ edgelist %>%
 #     visOptions(highlightNearest = list(enabled = TRUE, degree = list(from = 1, to = 1)), selectedBy = "Symbol") %>%
 #     visHierarchicalLayout(direction = "LR")
 
+```
 
 
+
+
+
+
+
+
+```{r join drugs on targets}
+## get drug data
+kegg_drugs <- dbGetQuery(con, "SELECT * FROM kegg_drugs")
+
+## join Entrez IDs for genes
+kegg_drugs <- unique(merge(x=kegg_drugs, by.x = "target_symbol", y = unique(dplyr::select(humanGenes, Symbol, GeneID)), by.y = "Symbol"))
+
+## get NCIt data
+NCIt <- dbGetQuery(con, "SELECT * FROM NCIt")
+
+## join parent terms
+kegg_drugs <- merge(x=kegg_drugs, by.x = "NCIt_drug_id", y=unique(dplyr::select(NCIt, ID, Parent_synonym)), by.y="ID")
+
+## add a column that will hold mechanism in title (displays on hover)
+kegg_drugs$mechanism <- NA
+## where parent term contains pattern "inhibitor", indicate this in mechanism column
+
+kegg_drugs$mechanism[grep(pattern = "inhibitor", x=kegg_drugs$Parent_synonym, ignore.case = TRUE)] <- "inhibition"
+
+## drop the parent term column
+kegg_drugs <- unique(dplyr::select(kegg_drugs, -Parent_synonym))
+
+## check no collisions between gene (Entrez) IDs and drug (NCIt) IDs
+intersect(kegg_drugs$NCIt_drug_id, nodelist$id)
+
+
+```
+
+```{r add drugs to node list}
+
+drug_nodes <- unique(dplyr::select(kegg_drugs, "id"="NCIt_drug_id", "Symbol"="drug_name", "label"="drug_name"))
+drug_nodes$entryTYPE <- "drug"
+drug_nodes$shape <- "square"
+drug_nodes$color.highlight.background <- "orange"
+drug_nodes$color.background <- "gainsboro"
+
+## harmonise column names and order
+drug_nodes <- dplyr::select(drug_nodes, names(nodelist))
+
+## row-bind
+nodelist <- unique(rbind(nodelist, drug_nodes))
+```
+
+```{r add drug target interactions to edge list}
+
+drug_edges <- unique(dplyr::select(kegg_drugs, "from"="GeneID", "to"="NCIt_drug_id", "title"="mechanism"))
+
+drug_edges$label <- NA
+drug_edges$color <- "blue"
+drug_edges$color[drug_edges$title=="inhibition"] <- "red"
+drug_edges$width <- 4
+drug_edges$pathway <- NA
+
+## harmonise columns
+drug_edges <- unique(dplyr::select(drug_edges, names(edgelist)))
+
+## row bind
+edgelist <- unique(rbind(edgelist, drug_edges))
 ```
 
   
