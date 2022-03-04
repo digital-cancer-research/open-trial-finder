@@ -433,25 +433,30 @@ evidence %>%
   * ARID1A mutation -> -> sensitivity to p300/CBP inhibition  
   * SETD2 mutation -> -> sensitivity to ATR inhibition  
 <br>
+<br>
 
-
+#### **Biological pathways involving selected genes**  
   
 ```{r load a list of pathway ids}
 pathways <- read.csv("keggPathways.csv", stringsAsFactors = FALSE, colClasses = "character")
 ## add prefix to pathway ids
 pathways$pathwayId <- paste0("hsa0", pathways$pathwayId)
 ```
+<br>
 
-  
+* Considering the following pathways:  
+<br>
+
+`r unique(pathways$pathwayName)`  
+<br>
+
+
 ```{r get tables from database}
-
 
 humanGenes <- dbGetQuery(con, "SELECT * FROM humanGenes")
 NCIt <- dbGetQuery(con, "SELECT * FROM NCIt")
 ```
 
-  
-  
 ```{r get pathways as node and edge lists, message=FALSE}
 ## create empty dataframes that will hold nodes and edges
 edgelist <- data.frame("from"=character(0), 
@@ -504,7 +509,17 @@ edgelist <- unique(edgelist)
 
 nodelist$label <- nodelist$Symbol
 ```
+* We can extract these data as nodes and edges:  
+<br>
 
+`r showKable(head(edgelist))`  
+<br>
+
+`r showKable(head(nodelist))`  
+<br>
+
+* For example, we can extract genes immediately downstream of the genes of interest and present them as a "network"...  
+<br>
 
 ```{r get pathways involving selected genes}
 gene_nodes <- nodelist$id[nodelist$Symbol %in% gene_names]
