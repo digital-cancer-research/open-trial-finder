@@ -614,7 +614,10 @@ AND (c.downcase_name LIKE '%cancer%'
 OR c.downcase_name LIKE '%neoplasm%'
 OR c.downcase_name LIKE '%carcinoma%'
 OR c.downcase_name LIKE '%tumo%'
-OR c.downcase_name LIKE '%sarcoma%')"
+OR c.downcase_name LIKE '%sarcoma%'
+OR c.downcase_name LIKE '%melanoma%')
+OR c.downcase_name LIKE '%mesothelioma%'
+OR c.downcase_name LIKE '%chordoma%'"
 
 ## get data from clinicaltrials.gov
 cancerStudies <- dbGetQuery(conn2,cancerStudiesQ)
