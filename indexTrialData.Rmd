@@ -2439,13 +2439,22 @@ For compatibility with existing code for trial finder interface (and to maximise
 tic("download ordnance survey data")
 
 ## specify URL for download 
+
+## https://www.freemaptools.com/download/full-uk-postcodes/ukpostcodes.zip
 postcodesURL <- "https://www.freemaptools.com/download/full-uk-postcodes/ukpostcodes.zip"
 
 destPostcodesFilename <- "uk_postcodes.zip"
 download.file(url=postcodesURL, destfile = destPostcodesFilename)
 unzip(zipfile = paste0(getwd(),"/",destPostcodesFilename))
 
-uk_postcodes <- read.csv("ukpostcodes.csv", header = TRUE, stringsAsFactors = FALSE)
+## tested on 16 March 2022, header row missing.... 
+## uk_postcodes <- read.csv("ukpostcodes.csv", header = TRUE, stringsAsFactors = FALSE)
+
+## assume no header row
+uk_postcodes <- read.csv("ukpostcodes.csv", header = FALSE, stringsAsFactors = FALSE)
+## manually assign column names
+names(uk_postcodes) <- c( "id","postcode","latitude","longitude")
+
 
 ## clean up, delete files
 file.remove("uk_postcodes.zip")
