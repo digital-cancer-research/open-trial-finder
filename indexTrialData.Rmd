@@ -688,6 +688,7 @@ toc()
 studyIDsForSQL <- paste0("\'",paste(unique(cancerStudies$nct_id), collapse = "\',\'"), "\'")
 
 ```
+
   
 ```{r get study interventions}
 
@@ -700,6 +701,8 @@ where i.nct_id in (",
 ## get interventions from clinicaltrials.gov
 interventions <- dbGetQuery(conn2,getInterventionsQ)
 
+## delete query to save memory
+rm(getInterventionsQ)
 ```
   
 
@@ -715,6 +718,8 @@ where nct_id in (",
 ## get data from clinicaltrials.gov
 dgi <- dbGetQuery(conn2,get_dgi)
 
+## delete query to save memory
+rm(get_dgi)
 ```
 
 ```{r get eligibility criteria from ct}
@@ -726,6 +731,9 @@ where nct_id in (",
 
 ## get criteria from clinicaltrials.gov
 eligibilities <- dbGetQuery(conn2,getEligibilities)
+
+## delete query to save memory
+rm(getEligibilities)
 ```
 
 ```{r get design groups from ct}
@@ -738,6 +746,9 @@ where dg.nct_id in (",
 
 ## get criteria from clinicaltrials.gov
 design_groups <- dbGetQuery(conn2,getDesignGroupsQ)
+
+## delete query to save memory
+rm(getDesignGroupsQ)
 
 ## NOTE, SOME STUDIES HAVE NO DESIGN GROUPS SPECIFIED, BUT MAY HAVE RESULT GROUPS SPECIFIED
 ```
@@ -752,6 +763,8 @@ where rg.nct_id in (",
 ## get criteria from clinicaltrials.gov
 result_groups <- dbGetQuery(conn2,getResultGroupsQ)
 
+## delete query to save memory
+rm(getResultGroupsQ)
 ```
  
 ```{r get outcome measurements table}
@@ -765,7 +778,8 @@ where nct_id in (",
 ## get data from clinicaltrials.gov
 outcome_measurements <- dbGetQuery(conn2, getOutcome_measurements)
  
-
+## delete query to save memory
+rm(getOutcome_measurements)
 
 ```
   
@@ -779,6 +793,9 @@ where nct_id in (",
 # 
 ## get criteria from clinicaltrials.gov
 AE_counts <- dbGetQuery(conn2, getAEcounts)
+
+## delete query to save memory
+rm(getAEcounts)
 
 ## order on subjects_affected descending
 AE_counts <- AE_counts[order(AE_counts$subjects_affected, decreasing = TRUE), ]
@@ -799,6 +816,8 @@ where nct_id in (",
 ## get criteria from clinicaltrials.gov
 AE_totals <- dbGetQuery(conn2, getAEtotals)
 
+## delete query to save memory
+rm(getAEtotals)
 ```
 
 ```{r get studies open in specified country}
@@ -816,6 +835,12 @@ AND f.status IN ('Recruiting', 'Not yet recruiting')")
 ## get data from clinicaltrials.gov
 local_open_studies <- dbGetQuery(conn2, local_open_studiesQ)
 
+## delete query to save memory
+rm(local_open_studiesQ)
+```
+
+```{r delete studyIDsForSQL to save memory}
+rm(studyIDsForSQL)
 ```
 
         
@@ -1109,7 +1134,8 @@ dbWriteTable(conn = con,name = "eligibilities", value = eligibilities, overwrite
 ## check it has saved
 # dbListTables(con)
 
-## delete indices
+## delete data to save memory
+rm(eligibilities)
 rm(min_age_year_indices)
 rm(min_age_month_indices)
 
@@ -1639,6 +1665,9 @@ dbWriteTable(conn = con,name = "AE_counts", value = AE_counts, overwrite=TRUE)
 ## check it has saved
 # dbListTables(con)
 
+
+## delete to save memory
+rm(AE_counts)
 ```
 
 #### **General adverse event counts (e.g. total, any adverse event)**  
@@ -2098,7 +2127,10 @@ loss_populations <- indexOnPattern(dataframe = kwic_genes_populations, pattern =
 ```
 
   * In order to avoid spurious hits against "loss of function" (which should be indexed as a mutation), we will filter again and exclude those rows where the context contains "loss of function" (or variants thereof)...  
-  
+```{r delete kwic_genes_populations object to save memory}
+rm(kwic_genes_populations)
+```
+
 
 ```{r exclude loss of function pattern}
 loss_populations <- loss_populations[grep(pattern = "loss of function|loss-of-function|loss function", x=loss_populations$context, ignore.case = TRUE, invert = TRUE), ]
@@ -2137,6 +2169,11 @@ kwic_prior_tx_populations <- dplyr::mutate(kwic_prior_tx_populations, context = 
 kwic_prior_tx_populations <- dplyr::select(kwic_prior_tx_populations, "id"="docname", context, "therapy_synonym"=pattern)
 
 ```
+
+```{r delete populations_tokens to save memory}
+rm(populations_tokens)
+```
+
 
 ```{r join therapy kwic to NCIt}
 
@@ -2200,6 +2237,9 @@ dbWriteTable(conn = con,name = "population_features", value = population_feature
 ## check it has saved
 # dbListTables(con)
 
+## delete large tables to save memory
+rm(kwic_prior_tx_populations)
+rm(text_for_indexing)
 ```
   
 ### **Download variant info from clinVar and civicDB**  
@@ -2269,6 +2309,8 @@ variants <- as.data.frame(variants) ## convert to datack a frame
 ## trim everything after first space in variants$variant
 variants$variant <- gsub(pattern = " .*", replacement = "", x=variants$variant)
 
+
+
 ```
   
 * These data are saved to the *variants* table:  
@@ -2286,6 +2328,8 @@ dbWriteTable(conn = con,name = "variants", value = variants, overwrite=TRUE)
 ## check it has saved
 # dbListTables(con)
 
+## delete large tables to save memory
+rm(variationAllele)
 ```
       
 
@@ -2462,6 +2506,11 @@ edges <- unique(dplyr::select(pathwaysInCancer_edges, "from"="entry1symbol", "to
 # edges <- as.data.frame(edges)
 
 ```
+
+```{r delete pathwaysInCancer_KGML to save memory}
+rm(pathwaysInCancer_KGML)
+```
+
   
 * These data are saved as a simple edge list in the *edges* table  
  * "-->" denotes *Activation*  
@@ -2708,6 +2757,11 @@ dbWriteTable(conn = con,name = "indexed_eligibilities_view", indexed_eligibiliti
 # dbListTables(con)
 
 ```
+  
+```{r delete population_features to save memory}
+rm(population_features)
+```
+
   
 #### **Scored matches view**  
   
