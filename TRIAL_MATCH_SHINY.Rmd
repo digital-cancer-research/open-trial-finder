@@ -540,6 +540,9 @@ Row {.tabset}
 output$studiesmap <- renderLeaflet({
    studies <- unique(dplyr::select(mergedStudyTable(), nct_id, brief_title))
    locations <- merge(x=studies,by.x="nct_id", y=cancer.study.locations, by.y="nct_id")
+   ## ensure lat and long values are numeric
+   locations$lat <- as.numeric(locations$lat)
+   locations$long <- as.numeric(locations$long)
    locations$uniqueId <- paste(locations$nct_id, locations$lat, locations$long, sep = "_")
    if(nrow(locations)>0) {
      leaflet() %>%

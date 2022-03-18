@@ -2517,11 +2517,11 @@ download.file(url=postcodesURL, destfile = destPostcodesFilename)
 unzip(zipfile = paste0(getwd(),"/",destPostcodesFilename))
 
 ## tested on 16 March 2022, header row missing.... 
-## uk_postcodes <- read.csv("ukpostcodes.csv", header = TRUE, stringsAsFactors = FALSE)
+uk_postcodes <- read.csv("ukpostcodes.csv", header = TRUE, stringsAsFactors = FALSE)
 
 ## assume no header row
-uk_postcodes <- read.csv("ukpostcodes.csv", header = FALSE, stringsAsFactors = FALSE)
-## manually assign column names
+# uk_postcodes <- read.csv("ukpostcodes.csv", header = FALSE, stringsAsFactors = FALSE)
+## manually assign column names - if no header was present, first line of data will be lost...
 names(uk_postcodes) <- c( "id","postcode","latitude","longitude")
 
 
@@ -2585,6 +2585,7 @@ local_open_studies$longitude[is.na(local_open_studies$longitude)] <- local_open_
 ## select and reorder columns
 # local_open_studies <- unique(dplyr::select(local_open_studies, nct_id, facility_name, facility_status, city, latitude, longitude))
 
+
 toc()
 ```
   
@@ -2645,6 +2646,11 @@ open_cancerStudies_view$condition <- open_cancerStudies_view$matching.condition
 
 ## select, rename and reorder for consistency with trialMatchDataRefresh.Rmd
 open_cancerStudies_view <- unique(dplyr::select(open_cancerStudies_view, interventions, locations, postcode, nct_id, brief_title, overall_status,condition, site_name, site_status, investigators, contacts, central_contacts, Refresh.date, matching.condition, TARGET.condition, Link, postcode.lat, postcode.long, lat, long, ParentTerm))
+
+
+## cast variables to correct format
+open_cancerStudies_view$long <- as.character(open_cancerStudies_view$long)
+open_cancerStudies_view$lat <- as.numeric(open_cancerStudies_view$lat)
 
 ```
   
