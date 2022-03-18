@@ -281,7 +281,9 @@ dbWriteTable(conn = con,name = "NCIt", value = NCIt, overwrite=TRUE)
 
 ```{r subset NCIt for Pharmacologic Substance}
 
-NCIt_Pharmacologics <- unique(dplyr::filter(NCIt, Class=="Pharmacologic Substance"))
+# NCIt_Pharmacologics <- unique(dplyr::filter(NCIt, Class=="Pharmacologic Substance"))
+
+NCIt_Pharmacologics <- unique(dplyr::filter(NCIt, Class %in% c("Immunologic Factor", "Pharmacologic Substance")))
 
 ## delete NCIt and NCItParents objects to save memory
 # rm(NCIt)
@@ -2305,7 +2307,7 @@ evidence <- read.csv(file = "https://civicdb.org/downloads/nightly/nightly-Clini
 
 
 ## drop unwanted columns
-evidence <- unique(dplyr::select(evidence, variant_id, disease, drugs,  evidence_type, evidence_direction,evidence_level,clinical_significance,evidence_statement))
+evidence <- unique(dplyr::select(evidence, variant_id, disease, drugs,  evidence_type, evidence_direction,evidence_level,clinical_significance,evidence_statement, gene_civic_url, variant_civic_url, evidence_civic_url))
 
 evidence <- as.data.frame(evidence)
 
@@ -2321,6 +2323,13 @@ evidence <- unique(merge(x=dplyr::select(variants, variant_id, gene, variant, si
                          y=evidence, 
                          by.y = "variant_id"))
 
+
+## add an indicator of what each evidence level means
+evidence_levels <- data.frame("evidence_level"=c("A", "B", "C", "D", "E"), 
+                              "evidence_level_type"=c("Validated association", "Clinical evidence", "Case study", "Preclinical evidence", "Inferential association"))
+
+## merge with evidence table
+evidence <- unique(merge(x=evidence, by.x="evidence_level", y=evidence_levels, by.y="evidence_level"))
 ```
 
 * Information about drug-variant relationships (e.g. variant predicts sensitivity to drug) is saved to the evidence table:  
@@ -2341,6 +2350,66 @@ dbWriteTable(conn = con,name = "evidence", value = evidence, overwrite=TRUE)
 ## print a list of disease in evidence table, but not represented among condition synonyms
 # setdiff(x=unique(evidence$disease), y=unique(conditionSynonyms$condition.synonyms))
 ```
+  
+  
+```{r create a table of evidence related to drugs}
+
+drug_evidence <- unique(dplyr::select(evidence, gene, variant, drugs, evidence_type, evidence_direction, evidence_level, evidence_level_type, clinical_significance, evidence_statement, gene_civic_url, variant_civic_url, evidence_civic_url))
+
+## filter and retain only predictive evidence
+drug_evidence <- unique(dplyr::filter(drug_evidence, evidence_type %in% c("Predictive")))
+
+```
+
+
+
+```{r map drugs from evidence table to NCIt entities}
+## The elements of setdiff(x,y) are those elements in x but not in y.
+# setdiff(x=tolower(drug_evidence$drugs), y=NCIt_Pharmacologics$Synonyms_lower)
+
+drug_evidence$drugs_lower <- tolower(drug_evidence$drugs)
+
+## some of the "drugs" cited in the evidence table are actually mechanisms (e.g. "aromatase inhibitor")
+drug_evidence <- unique(merge(x=drug_evidence, by.x = "drugs_lower", y=unique(dplyr::select(NCIt, "NCIt_ID" = "ID", Synonyms_lower)), by.y="Synonyms_lower"))
+
+## drop unnecessary columns
+drug_evidence <- dplyr::select(drug_evidence, -c(drugs_lower, evidence_type))
+```
+
+
+```{r summarise evidence per gene and drug}
+## we need to deal with conflicting evidence
+
+## first, take the highest level of evidence for each gene-variant-drug association and summarise the evidence direction and clinical significance
+# drug_evidence_summary <- drug_evidence %>%
+#     group_by(gene,variant, drugs, variant_civic_url, NCIt_ID) %>%
+#     filter(evidence_level == min(evidence_level)) %>%
+#     summarise(
+#         evidence_level_type = paste(unique(evidence_level_type), collapse = ", "),
+#         evidence_direction_summary = paste(sort(unique(evidence_direction)), collapse = "/"), 
+#         clinical_significance_summary = paste(sort(unique(clinical_significance)), collapse = "/")
+#     ) %>%
+#     as.data.frame()
+
+
+
+## add a column that will summarise the rationale
+# drug_evidence_summary$rationale <- paste0(drug_evidence_summary$evidence_level_type,
+#                                           " linking ",
+#                                           drug_evidence_summary$gene, 
+#                                           " ", 
+#                                           drug_evidence_summary$variant, 
+#                                           " with ", 
+#                                           drug_evidence_summary$clinical_significance_summary, 
+#                                           " to ", 
+#                                           drug_evidence_summary$drugs)
+
+
+
+
+```
+
+  
   
 ### **Get pathway graph data from KEGG**  
   
@@ -2448,11 +2517,11 @@ download.file(url=postcodesURL, destfile = destPostcodesFilename)
 unzip(zipfile = paste0(getwd(),"/",destPostcodesFilename))
 
 ## tested on 16 March 2022, header row missing.... 
-## uk_postcodes <- read.csv("ukpostcodes.csv", header = TRUE, stringsAsFactors = FALSE)
+uk_postcodes <- read.csv("ukpostcodes.csv", header = TRUE, stringsAsFactors = FALSE)
 
 ## assume no header row
-uk_postcodes <- read.csv("ukpostcodes.csv", header = FALSE, stringsAsFactors = FALSE)
-## manually assign column names
+# uk_postcodes <- read.csv("ukpostcodes.csv", header = FALSE, stringsAsFactors = FALSE)
+## manually assign column names - if no header was present, first line of data will be lost...
 names(uk_postcodes) <- c( "id","postcode","latitude","longitude")
 
 
@@ -2516,6 +2585,7 @@ local_open_studies$longitude[is.na(local_open_studies$longitude)] <- local_open_
 ## select and reorder columns
 # local_open_studies <- unique(dplyr::select(local_open_studies, nct_id, facility_name, facility_status, city, latitude, longitude))
 
+
 toc()
 ```
   
@@ -2576,6 +2646,11 @@ open_cancerStudies_view$condition <- open_cancerStudies_view$matching.condition
 
 ## select, rename and reorder for consistency with trialMatchDataRefresh.Rmd
 open_cancerStudies_view <- unique(dplyr::select(open_cancerStudies_view, interventions, locations, postcode, nct_id, brief_title, overall_status,condition, site_name, site_status, investigators, contacts, central_contacts, Refresh.date, matching.condition, TARGET.condition, Link, postcode.lat, postcode.long, lat, long, ParentTerm))
+
+
+## cast variables to correct format
+open_cancerStudies_view$long <- as.character(open_cancerStudies_view$long)
+open_cancerStudies_view$lat <- as.numeric(open_cancerStudies_view$lat)
 
 ```
   
