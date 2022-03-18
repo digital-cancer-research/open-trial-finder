@@ -89,6 +89,10 @@ refresh.date <- unique(cancerStudies$Refresh.date)
 ## filter and retain only studies with overall status of "Recruiting"
 cancerStudies <- dplyr::filter(cancerStudies, overall_status == "Recruiting")
 
+## ensure lat and long values are numeric
+cancerStudies$lat <- as.numeric(cancerStudies$lat)
+cancerStudies$long <- as.numeric(cancerStudies$long)
+
 ## drop postcode.lat and postcode.long columns
 cancerStudies <- unique(dplyr::select(cancerStudies, -c("postcode.lat", "postcode.long")))
 
@@ -505,6 +509,8 @@ mergedStudyTable <-  reactive({
    ## add some html code to brief_title value with relevant link
    table$brief_title <- paste0('<a href="',table$Link,'" target="_blank">',table$brief_title ,  " </a>")
    
+
+   
    ## return table
    return(unique(table))
 })
@@ -540,19 +546,27 @@ Row {.tabset}
 output$studiesmap <- renderLeaflet({
    studies <- unique(dplyr::select(mergedStudyTable(), nct_id, brief_title))
    locations <- merge(x=studies,by.x="nct_id", y=cancer.study.locations, by.y="nct_id")
-   ## ensure lat and long values are numeric
-   locations$lat <- as.numeric(locations$lat)
-   locations$long <- as.numeric(locations$long)
+   # ## ensure lat and long values are numeric
+   # locations$lat <- as.numeric(locations$lat)
+   # locations$long <- as.numeric(locations$long)
    locations$uniqueId <- paste(locations$nct_id, locations$lat, locations$long, sep = "_")
    if(nrow(locations)>0) {
      leaflet() %>%
          addProviderTiles(providers$OpenStreetMap.Mapnik) %>%
          setView(lat = configuration$zoom.lat, lng = configuration$zoom.long, zoom = 6) %>%
-         addMarkers(data=locations, 
+         # addMarkers(data=locations, 
+         #            lat = ~lat,
+         #         lng = ~long,
+         #         popup = ~brief_title,
+         #         layerId = ~uniqueId, 
+         #         icon = awesomeIcons(),
+         #         clusterOptions = markerClusterOptions())
+        addAwesomeMarkers(data=locations, 
                     lat = ~lat,
                  lng = ~long,
                  popup = ~brief_title,
                  layerId = ~uniqueId, 
+                 icon = awesomeIcons(),
                  clusterOptions = markerClusterOptions())
   } else {
      leaflet() %>%
