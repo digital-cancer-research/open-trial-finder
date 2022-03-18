@@ -2422,7 +2422,15 @@ drug_evidence <- dplyr::select(drug_evidence, -c(drugs_lower, evidence_type))
 
 
 ```{r summarise evidence per gene and drug}
+## just get the highest level of evidence for each gene-drug combination
+drug_evidence_highest <- drug_evidence %>%
+    group_by(gene,drugs,clinical_significance) %>%
+    filter(evidence_level == min(evidence_level)) %>%
+    as.data.frame()
+
+
 ## we need to deal with conflicting evidence
+
 
 ## first, take the highest level of evidence for each gene-variant-drug association and summarise the evidence direction and clinical significance
 # drug_evidence_summary <- drug_evidence %>%
