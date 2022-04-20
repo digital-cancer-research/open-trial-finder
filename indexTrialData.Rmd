@@ -1135,7 +1135,7 @@ dbWriteTable(conn = con,name = "eligibilities", value = eligibilities, overwrite
 # dbListTables(con)
 
 ## delete data to save memory
-rm(eligibilities)
+# rm(eligibilities)
 rm(min_age_year_indices)
 rm(min_age_month_indices)
 
