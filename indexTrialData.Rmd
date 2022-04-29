@@ -2761,41 +2761,24 @@ scored_matches_dg <- dplyr::filter(scored_matches_dg, !is.na(controlled_match))
 scored_matches_dg <- dplyr::filter(scored_matches_dg, feature != "prior therapy")
 
 ## concatenate gene name and feature
-scored_matches_dg$gene_variant_type <- paste(scored_matches_dg$controlled.match, scored_matches_dg$feature, sep = " ")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+scored_matches_dg$gene_variant_type <- paste(scored_matches_dg$controlled_match, scored_matches_dg$feature, sep = " ")
 
 ## create a string to describe rationale
-scored_matches_study$eligibility_rationale <- paste0("Enrolling subjects with ", scored_matches_study$gene_variant_type)
+scored_matches_dg$stratification_rationale <- paste0("Stratified on ", scored_matches_dg$gene_variant_type)
 
 ## select, rename and reorder columns for compatibility with trialMatchDataRefresh.Rmd
-scored_matches_study <- unique(dplyr::select(scored_matches_study, "symbol"="controlled.match", "variant_type"="feature", nct_id, eligibility_rationale, "matching_criteria"="criteria"))
+scored_matches_dg <- unique(dplyr::select(scored_matches_dg, "symbol"="controlled_match", "variant_type"="feature", nct_id, stratification_rationale, text))
 
 ## where multiple criteria, aggregate
-scored_matches_study <- scored_matches_study %>%
-                                      group_by(nct_id, symbol, variant_type, eligibility_rationale) %>%
+scored_matches_dg <- scored_matches_dg %>%
+                                      group_by(nct_id, symbol, variant_type, stratification_rationale) %>%
                                       summarise(
-                                        matching_criteria = paste(unique(matching_criteria), collapse = "\n\n")
+                                        text = paste(unique(text), collapse = "\n\n")
                 ) %>%
   as.data.frame()
   
 ## add a score
-scored_matches_study$eligibility_score <- 3
+scored_matches_dg$stratification_score <- 3
 ```
   
   
