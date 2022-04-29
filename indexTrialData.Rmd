@@ -2744,6 +2744,60 @@ scored_matches_study <- scored_matches_study %>%
 ## add a score
 scored_matches_study$eligibility_score <- 3
 ```
+
+  * Assign *stratification_score* +3 if study design group includes patients with 1 or more specified alteration  
+
+```{r score design group features}
+## get matching design groups
+scored_matches_dg <- unique(dplyr::filter(population_features, id_type=="design_group"))
+
+## exclude studies not in open_cancerStudies_view
+scored_matches_dg <- unique(dplyr::filter(scored_matches_dg, nct_id %in% open_cancerStudies_nct_ids))
+
+
+## drop rows without a gene match
+scored_matches_dg <- dplyr::filter(scored_matches_dg, !is.na(controlled_match))
+## drop rows based on prior therapy
+scored_matches_dg <- dplyr::filter(scored_matches_dg, feature != "prior therapy")
+
+## concatenate gene name and feature
+scored_matches_dg$gene_variant_type <- paste(scored_matches_dg$controlled.match, scored_matches_dg$feature, sep = " ")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## create a string to describe rationale
+scored_matches_study$eligibility_rationale <- paste0("Enrolling subjects with ", scored_matches_study$gene_variant_type)
+
+## select, rename and reorder columns for compatibility with trialMatchDataRefresh.Rmd
+scored_matches_study <- unique(dplyr::select(scored_matches_study, "symbol"="controlled.match", "variant_type"="feature", nct_id, eligibility_rationale, "matching_criteria"="criteria"))
+
+## where multiple criteria, aggregate
+scored_matches_study <- scored_matches_study %>%
+                                      group_by(nct_id, symbol, variant_type, eligibility_rationale) %>%
+                                      summarise(
+                                        matching_criteria = paste(unique(matching_criteria), collapse = "\n\n")
+                ) %>%
+  as.data.frame()
+  
+## add a score
+scored_matches_study$eligibility_score <- 3
+```
+  
   
   * Assign *intervention_score* +2 if any intervention targets an altered gene directly  
 
