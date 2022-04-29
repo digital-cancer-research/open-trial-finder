@@ -2767,7 +2767,7 @@ dbWriteTable(conn = con,name = "indexed_eligibilities_view", indexed_eligibiliti
 ```
   
 ```{r delete population_features to save memory}
-rm(population_features)
+# rm(population_features)
 ```
 
   
