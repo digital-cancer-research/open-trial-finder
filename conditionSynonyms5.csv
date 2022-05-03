@@ -55,6 +55,20 @@ Bladder,Neoplasm of Urinary Bladder
 Bladder,Tumor of Bladder
 Bladder,Tumor of the Bladder
 Bladder,Tumor of the Urinary Bladder
+Brain,brain cancer
+Brain,brain neoplasms
+Brain,brain neoplasm
+Brain,brain tumor
+Brain,brain tumour
+Brain,brain tumours
+Brain,brain tumors
+Brain,Tumor of the Brain
+Brain,tumour of the brain
+Brain,cancer of brain
+Brain,cancer of the brain
+Brain,Neoplasm of brain
+Brain,Tumor of Brain
+Brain,Neoplasm of the Brain
 Breast,breast cancer
 Breast,Breast Neoplasms
 Breast,breast carcinomas
@@ -492,13 +506,13 @@ Sarcoma: Bone,Sarcoma of bone
 Sarcoma: Bone,Osteogenic sarcoma
 Sarcoma: Bone,osteoid sarcoma
 Sarcoma: Bone,Osseous Sarcoma
-Sarcoma: Soft Tissue              ,sarcoma
-Sarcoma: Soft Tissue              ,Malignant tumor of soft tissue
-Sarcoma: Soft Tissue              ,Malignant soft tissue neoplasm
-Sarcoma: Soft Tissue              ,Malignant mesenchymal tumor
-Sarcoma: Soft Tissue              ,Malignant Soft Tissue Tumor
-Sarcoma: Soft Tissue              ,Soft tissue cancer
-Sarcoma: Soft Tissue              ,soft tissue sarcoma
+Sarcoma: Soft Tissue,sarcoma
+Sarcoma: Soft Tissue,Malignant tumor of soft tissue
+Sarcoma: Soft Tissue,Malignant soft tissue neoplasm
+Sarcoma: Soft Tissue,Malignant mesenchymal tumor
+Sarcoma: Soft Tissue,Malignant Soft Tissue Tumor
+Sarcoma: Soft Tissue,Soft tissue cancer
+Sarcoma: Soft Tissue,soft tissue sarcoma
 SCCHN,squamous cell carcinoma of head and neck
 SCCHN,"Squamous cell carcinoma of the head and neck	"
 SCLC,SCLC
