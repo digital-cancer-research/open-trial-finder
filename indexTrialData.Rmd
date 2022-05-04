@@ -651,6 +651,10 @@ tic("tokenise and join to condition synonyms")
 ## we will provide condition synonyms as custom tokens, then tokenise, unnest and perform the join
 custom_tokens <- unique(conditionSynonyms$condition_synonyms)
 
+## include the controlled cancer types themselves, in order to pick up matches such as study NCT02264678 has a single value listed for condition: Adv Solid Malig - H&N SCC, ATM Pro / Def NSCLC, Gastric, Breast and Ovarian Cancer
+# custom_tokens <- unique(c(conditionSynonyms$condition_synonyms, conditionSynonyms$controlled_cancer_type))
+
+
 ## tokenise the condition names
 cancerStudies$word <- as.list(corpus::text_tokens(x=cancerStudies$condition,                                                filter= corpus::text_filter(combine = custom_tokens, map_case=TRUE, connector="_", drop_punct=TRUE )))
 
