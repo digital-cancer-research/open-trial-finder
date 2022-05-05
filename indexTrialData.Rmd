@@ -651,6 +651,10 @@ tic("tokenise and join to condition synonyms")
 ## we will provide condition synonyms as custom tokens, then tokenise, unnest and perform the join
 custom_tokens <- unique(conditionSynonyms$condition_synonyms)
 
+## include the controlled cancer types themselves, in order to pick up matches such as study NCT02264678 has a single value listed for condition: Adv Solid Malig - H&N SCC, ATM Pro / Def NSCLC, Gastric, Breast and Ovarian Cancer
+# custom_tokens <- unique(c(conditionSynonyms$condition_synonyms, conditionSynonyms$controlled_cancer_type))
+
+
 ## tokenise the condition names
 cancerStudies$word <- as.list(corpus::text_tokens(x=cancerStudies$condition,                                                filter= corpus::text_filter(combine = custom_tokens, map_case=TRUE, connector="_", drop_punct=TRUE )))
 
@@ -1927,12 +1931,14 @@ toc()
 ## first pass using unmodified tokens... 
 tic("get context words surrounding gene names in text for indexing, first pass")
 ## get bag of words around mention gene names
-kwic_genes_populations_1 <- as.data.frame(kwic(x = tokens(populations_corpus, remove_punct=FALSE, padding = FALSE, split_hyphens = TRUE), pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE))
+## ASSUME WE CAN SAFELY REMOVE PUNCTUATION IN THE CALL TO tokens BECAUSE SLASHES HAVE ALREADY BEEN OMITTED... 
+kwic_genes_populations_1 <- as.data.frame(kwic(x = tokens(populations_corpus, remove_punct=TRUE, padding = FALSE, split_hyphens = TRUE), pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE))
 toc()
 
 ## second pass sing modified tokens, get stems of words before slash and join to first character after slash 
 tic("get context words surrounding gene names in text for indexing, second pass")
-kwic_genes_populations_2 <- as.data.frame(kwic(x = tokens(gsub(pattern='./', replacement = '', x=populations_corpus), remove_punct=FALSE, padding = FALSE, split_hyphens = TRUE), pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE))
+## ASSUME WE CAN SAFELY REMOVE PUNCTUATION IN THE CALL TO tokens BECAUSE SLASHES HAVE ALREADY BEEN OMITTED... 
+kwic_genes_populations_2 <- as.data.frame(kwic(x = tokens(gsub(pattern='./', replacement = '', x=populations_corpus), remove_punct=TRUE, padding = FALSE, split_hyphens = TRUE), pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE))
 toc()  
   
 ## combine the two bags of words
@@ -2744,6 +2750,68 @@ scored_matches_study <- scored_matches_study %>%
 ## add a score
 scored_matches_study$eligibility_score <- 3
 ```
+
+  * Assign *eligibility_score* +4 if study design group includes patients with 1 or more specified alteration (i.e. stratified on alteration)  
+
+```{r score design group features}
+## get matching design groups
+scored_matches_dg <- unique(dplyr::filter(population_features, id_type=="design_group"))
+
+## exclude studies not in open_cancerStudies_view
+scored_matches_dg <- unique(dplyr::filter(scored_matches_dg, nct_id %in% open_cancerStudies_nct_ids))
+
+
+## drop rows without a gene match
+scored_matches_dg <- dplyr::filter(scored_matches_dg, !is.na(controlled_match))
+## drop rows based on prior therapy
+scored_matches_dg <- dplyr::filter(scored_matches_dg, feature != "prior therapy")
+
+## concatenate gene name and feature
+scored_matches_dg$gene_variant_type <- paste(scored_matches_dg$controlled_match, scored_matches_dg$feature, sep = " ")
+
+## create a string to describe rationale
+scored_matches_dg$eligibility_rationale <- paste0("Stratified on ", scored_matches_dg$gene_variant_type)
+
+## select, rename and reorder columns for compatibility with trialMatchDataRefresh.Rmd
+scored_matches_dg <- unique(dplyr::select(scored_matches_dg,nct_id,"symbol"="controlled_match",  "variant_type"="feature", eligibility_rationale, "matching_criteria"="text"))
+                                          
+
+
+## where multiple criteria, aggregate
+scored_matches_dg <- scored_matches_dg %>%
+                                      group_by(nct_id, symbol, variant_type, eligibility_rationale) %>%
+                                      summarise(
+                                        matching_criteria = paste(unique(matching_criteria), collapse = "\n\n")
+                ) %>%
+  as.data.frame()
+  
+## add a score - we will assign a score of +4 so that this takes precedent over inclusion criteria (where both apply)
+scored_matches_dg$eligibility_score <- 4
+```
+  
+```{r combine rationale for eligibility and design groups}
+## row bind the two tables
+scored_matches_study <- rbind(scored_matches_study, scored_matches_dg)
+
+## based on DG feedback, where there is a match in both eligibility criteria and design group descriptions, we will not add scores
+## presumably, we should only show one of the criteria - either eligibility or design groups, not both
+## in order to do so, we will only show the row with the highest eligibility_score (i.e. stratification)...  
+
+scored_matches_study <- scored_matches_study %>%
+  group_by(nct_id, symbol, variant_type) %>%
+  arrange(desc(eligibility_score)) %>%
+  summarise(
+    eligibility_rationale = eligibility_rationale[1],
+    matching_criteria = matching_criteria[1],
+    eligibility_score = 3 ## reset so stratification and inclusion are scored identically
+  ) %>%
+  as.data.frame()
+
+```
+
+
+
+
   
   * Assign *intervention_score* +2 if any intervention targets an altered gene directly  
 
