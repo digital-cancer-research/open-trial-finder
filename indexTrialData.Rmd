@@ -569,6 +569,28 @@ dbWriteTable(conn = con,name = "indications", value = indications, overwrite=TRU
 ## synonyms define on basis of those in clinicaltrials.gov
 conditionSynonyms <- read.csv(file = "conditionSynonyms5.csv", stringsAsFactors = FALSE)
 
+```
+
+
+
+```{r add simple synonyms to improve recall of mapping to cancer types}
+
+## study NCT02264678 has a single value listed for condition: "Adv Solid Malig - H&N SCC, ATM Pro / Def NSCLC, Gastric, Breast and Ovarian Cancer"
+## currently, this is correctly mapped to NSCLC, Lung and Ovarian cancer
+## however it should also be mapped to Head and neck squamous cell carcinoma (H&N SCC), Solid (Adv Solid Malig), Gastric (Gastric) and Breast (Breast)
+## in order to deal with this, we will include just the words "Breast", "Gastric", "Solid" as synonyms 
+## since we are already selecting for cancer studies in the SQL query on clinicaltrials.gov, just the mention of these words should be sufficient... 
+## first, create a new table where the synonym is just the controlled cancer type 
+simple_conditions <- data.frame(controlled_cancer_type = unique(conditionSynonyms$controlled_cancer_type), condition_synonyms = unique(conditionSynonyms$controlled_cancer_type))
+## second, bind this to the conditionSynonyms table
+conditionSynonyms <- unique(rbind(conditionSynonyms, simple_conditions))
+### now proceed as before - study NCT02264678 should get correctly mapped to Solid, NSCLC, Lung, Gastric, Breast and Ovarian cancer types... 
+```
+
+
+
+```{r process condition synonyms}
+
 ## trim leading/trailing whitespace, if any
 conditionSynonyms$condition_synonyms <- str_squish(string = conditionSynonyms$condition_synonyms)
 
