@@ -986,7 +986,7 @@ dbWriteTable(conn = con,name = "cancerStudies", value = cancerStudies, overwrite
 ## check it has saved
 # dbListTables(con)
 
-
+rm(dgi)
 ```
 
 
@@ -1443,7 +1443,7 @@ dbWriteTable(conn = con,name = "predictions", value = predictions, overwrite=TRU
 
 ## delete unmapped study ids
 rm(unmapped_study_ids)
-
+rm(predictions)
 ```
 
 ### **Get outcome data**  
@@ -1609,7 +1609,7 @@ dbWriteTable(conn = con,name = "PFS", value = PFS, overwrite=TRUE)
 
 ## check it has saved
 # dbListTables(con)
-
+rm(outcome_measurements)
 ```
 
 
@@ -1643,6 +1643,7 @@ dbWriteTable(conn = con,name = "AE_counts", value = AE_counts, overwrite=TRUE)
 ## check it has saved
 # dbListTables(con)
 
+rm(AE_counts)
 ```
 
 #### **General adverse event counts (e.g. total, any adverse event)**  
@@ -1673,6 +1674,7 @@ dbWriteTable(conn = con,name = "AE_totals", value = AE_totals, overwrite=TRUE)
 ## check it has saved
 # dbListTables(con)
 
+rm(AE_totals)
 ```
 
 
@@ -1718,6 +1720,7 @@ text_for_indexing <- rbind(eligibilities_for_indexing, design_groups_for_indexin
 rm(eligibilities_for_indexing)
 rm(design_groups_for_indexing)
 rm(result_groups_for_indexing)
+rm(design_groups)
 ```
   
   * Manually replace any whole-word occurrences of " *BRCA* " with *BRCA1, BRCA2*  
@@ -2205,7 +2208,12 @@ dbWriteTable(conn = con,name = "population_features", value = population_feature
 
 ## check it has saved
 # dbListTables(con)
-
+rm(eligibilities)
+rm(kwic_genes_populations)
+rm(kwic_prior_tx_populations)
+rm(populations_tokens)
+rm(prior_tx_populations)
+rm(text_for_indexing)
 ```
   
 ### **Download variant info from clinVar and civicDB**  
@@ -2292,6 +2300,8 @@ dbWriteTable(conn = con,name = "variants", value = variants, overwrite=TRUE)
 ## check it has saved
 # dbListTables(con)
 
+rm(clinvar)
+rm(variationAllele)
 ```
       
 
@@ -2490,7 +2500,7 @@ dbWriteTable(conn = con,name = "edges", value = edges, overwrite=TRUE)
 
 ## check it has saved
 # dbListTables(con)
-
+rm(pathwaysInCancer_KGML)
 ```
   
   
@@ -2945,7 +2955,7 @@ dbWriteTable(conn = con,name = "scoredMatches_view", scoredMatches_view , overwr
 
 ## check it has saved
 # dbListTables(con)
-
+rm(humanGenes)
 ```
 
 ```{r disconnect from  database}
