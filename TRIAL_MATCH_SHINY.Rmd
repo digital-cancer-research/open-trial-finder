@@ -649,7 +649,8 @@ output$datatable <- DT::renderDT(dplyr::select(formattedTable(),
                                  scrollY = "60vh",
                                  scrollCollapse = TRUE,
                                  autoWidth = TRUE,
-                                 columnDefs = list(list(width = '500px', targets = list(4)))
+                                 columnDefs = list(list(width = '500px', targets = list(0)))
+                                 #autoWidth = TRUE
                                 )
  )
 
