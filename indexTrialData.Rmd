@@ -59,6 +59,7 @@ require(RODBC)            ## GPL-2 | GPL-3
 require(RPostgres)        ## GPL-3
 require(RSQLite)          ## LGPL-2.1 | LGPL-3
 require(jsonlite)         ## MIT
+require(plyr)             ## MIT + LICENCE file
 require(dplyr)            ## MIT
 require(tidyr)            ## MIT
 require(formattable)      ## MIT
@@ -629,7 +630,7 @@ conn2 <- dbConnect(drv, dbname="aact",host="aact-db.ctti-clinicaltrials.org", po
 ```{r get study data}
 
 ## get data for all cancer studies that have reported results
-cancerStudiesQ <- "SELECT s.nct_id, s.brief_title, s.phase, s.acronym, s.number_of_arms, s.number_of_groups,  s.overall_status, s.last_update_posted_date, c.name AS condition
+cancerStudiesQ <- "SELECT s.nct_id, s.brief_title, s.primary_completion_date, s.last_update_posted_date, s.phase, s.acronym, s.number_of_arms, s.number_of_groups,  s.overall_status, s.last_update_posted_date, c.name AS condition
 FROM studies s
 INNER JOIN conditions c ON c.nct_id = s.nct_id
 INNER JOIN calculated_values cv ON cv.nct_id = s.nct_id
@@ -2648,9 +2649,10 @@ dbWriteTable(conn = con,name = "local_open_studies", value = local_open_studies,
 
 ## in order to restrict size of table, we will limit rows to studies with overall status of Recruiting
 
+## we will also include last_update_posted_date  
 
 ## start with cancerStudies table
-open_cancerStudies_view <- unique(dplyr::select(cancerStudies, nct_id, Link, brief_title, overall_status, condition, "Refresh.date" = "refresh_date","matching.condition" = "condition", "TARGET.condition" = "controlled_cancer_type"))
+open_cancerStudies_view <- unique(dplyr::select(cancerStudies, nct_id, Link, brief_title, primary_completion_date, last_update_posted_date, overall_status, condition, "Refresh.date" = "refresh_date","matching.condition" = "condition", "TARGET.condition" = "controlled_cancer_type"))
 
 open_cancerStudies_view <- dplyr::filter(open_cancerStudies_view, overall_status=="Recruiting")
 
@@ -2673,17 +2675,25 @@ open_cancerStudies_view <- unique(merge(x=open_cancerStudies_view,
 open_cancerStudies_view$condition <- open_cancerStudies_view$matching.condition
 
 ## select, rename and reorder for consistency with trialMatchDataRefresh.Rmd
-open_cancerStudies_view <- unique(dplyr::select(open_cancerStudies_view, interventions, locations, postcode, nct_id, brief_title, overall_status,condition, site_name, site_status, investigators, contacts, central_contacts, Refresh.date, matching.condition, TARGET.condition, Link, postcode.lat, postcode.long, lat, long, ParentTerm))
+open_cancerStudies_view <- unique(dplyr::select(open_cancerStudies_view, interventions, locations, postcode, nct_id, brief_title, primary_completion_date, last_update_posted_date, overall_status,condition, site_name, site_status, investigators, contacts, central_contacts, Refresh.date, matching.condition, TARGET.condition, Link, postcode.lat, postcode.long, lat, long, ParentTerm))
 
 
 ## cast variables to correct format
 open_cancerStudies_view$long <- as.character(open_cancerStudies_view$long)
 open_cancerStudies_view$lat <- as.numeric(open_cancerStudies_view$lat)
 
+open_cancerStudies_nct_ids <- unique(open_cancerStudies_view$nct_id)
+
+number_studies_in_view <- length(unique(open_cancerStudies_nct_ids))
+
+mean_days_since_update <- round(as.numeric(mean(Sys.Date()-open_cancerStudies_view$last_update_posted_date)), digits = 0)
 ```
   
 * Studies view is saved in the *open_cancerStudies_view*:  
-
+* As of `r format(Sys.Date(), format = "%d %b %Y")`:  
+  * the total number of studies in this view is `r number_studies_in_view`  
+  * the mean number of days since the study records were updated is `r mean_days_since_update`  
+  
 
 ```{r save open_cancerStudies_view to DB}
 ## preview
@@ -2703,7 +2713,7 @@ dbWriteTable(conn = con,name = "open_cancerStudies_view", open_cancerStudies_vie
   
 ```{r create indexedEligibility view}
 ## start with population features
-open_cancerStudies_nct_ids <- unique(open_cancerStudies_view$nct_id)
+
 
 ## exclude studies not in open_cancerStudies_view
 indexed_eligibilities_view <- unique(dplyr::filter(population_features, nct_id %in% open_cancerStudies_nct_ids))

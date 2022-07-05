@@ -36,7 +36,7 @@ runtime: shiny
 
 
 ```{r setup, include=FALSE}
-
+require(rmarkdown)
 require(flexdashboard)      ## MIT
 require(dplyr)              ## MIT
 require(tidyr)              ## MIT
@@ -72,6 +72,12 @@ con <- dbConnect(RSQLite::SQLite(), "indexedTrialData.sqlite")
 ## read cancerStudies table into memory
 #cancerStudies <- dbGetQuery(con, "SELECT * FROM cancerStudies")
 cancerStudies <- dbGetQuery(con, "SELECT * FROM open_cancerStudies_view")
+
+## format dates  
+cancerStudies$last_update_posted_date <- format(as.Date(cancerStudies$last_update_posted_date, origin = "1970-01-01"), format = "%d %b %Y")
+
+cancerStudies$primary_completion_date <- format(as.Date(cancerStudies$primary_completion_date, origin = "1970-01-01"), format = "%d %b %Y")
+
 
 ## get refresh date
 refresh.date <- unique(cancerStudies$Refresh.date)
@@ -263,16 +269,7 @@ reactiveCancerStudies <- reactive({
                  contacts = toString(sort(unique(na.omit(contacts))))) %>%
        as.data.frame()
    
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
+
    ## print to console to aid development... 
    #print(paste0("head of reactiveCancerStudies1: ", head(table)))
    
@@ -282,11 +279,7 @@ reactiveCancerStudies <- reactive({
    return(unique(table))
 })
 
-## names of reactiveCancerStudies are
-#  [1] "nct_id"             "interventions"      "brief_title"        "overall_status"    
-#  [5] "matching.condition" "TARGET.condition"   "Link"               "Mechanism"         
-#  [9] "locations"          "sites"              "conditions"         "investigators"     
-# [13] "central_contacts"   "contacts"           "Exclusions"
+
 
 ```
  
@@ -516,17 +509,6 @@ mergedStudyTable <-  reactive({
 })
 
 
-## names of mergedStudyTable are 
-#  [1] "nct_id"                 "interventions"          "brief_title"           
-#  [4] "overall_status"         "matching.condition"     "TARGET.condition"      
-#  [7] "Link"                   "Mechanism"              "locations"             
-# [10] "sites"                  "conditions"             "investigators"         
-# [13] "central_contacts"       "contacts"               "Exclusions"            
-# [16] "symbol"                 "variant_type"           "gene_variant_type"     
-# [19] "intervention_rationale" "eligibility_rationale"  "matching_criteria"     
-# [22] "combined_score"  
-  
-
 ## mergedStudyTable is the master set of data, all info for all matching studies based on user selections
 ## locations and sites are aggregated
 
@@ -629,15 +611,7 @@ formattedTable <- reactive({
    return(table)
 })
 
-## names of formattedTable are same as mergedStudyTable... 
-#  [1] "nct_id"                 "interventions"          "brief_title"           
-#  [4] "overall_status"         "matching.condition"     "TARGET.condition"      
-#  [7] "Link"                   "Mechanism"              "locations"             
-# [10] "sites"                  "conditions"             "investigators"         
-# [13] "central_contacts"       "contacts"               "Exclusions"            
-# [16] "symbol"                 "variant_type"           "gene_variant_type"     
-# [19] "intervention_rationale" "eligibility_rationale"  "matching_criteria"     
-# [22] "combined_score"  
+
 ## but formattedTable may be subsetted based on map clicks (without losing full set of data from mergedStudyTable)
 
 ```
@@ -646,12 +620,16 @@ formattedTable <- reactive({
 
 ## increase width of brief title column to 500 pixels
 output$datatable <- DT::renderDT(dplyr::select(formattedTable(),
+                            "Brief title" = "brief_title",
+                            "Est. completion date" = "primary_completion_date",
+                            "Last updated" = "last_update_posted_date",
                             # combined_score,
                             "Matching cancer type(s)" = "matching.condition",
                             "Matching alteration(s)" = "gene_variant_type",
-                            "Drug rationale" = "intervention_rationale",
                             "Eligibility" = "eligibility_rationale",
-                            "Brief title" = "brief_title",
+                            "Drug rationale" = "intervention_rationale",
+                            
+                            
                             # "Matching inclusion criteria" = "matching_criteria",
                             # "Prior Therapy exclusions" = Exclusions,
                             "Locations" = "locations",
@@ -671,7 +649,8 @@ output$datatable <- DT::renderDT(dplyr::select(formattedTable(),
                                  scrollY = "60vh",
                                  scrollCollapse = TRUE,
                                  autoWidth = TRUE,
-                                 columnDefs = list(list(width = '500px', targets = list(4)))
+                                 columnDefs = list(list(width = '500px', targets = list(0)))
+                                 #autoWidth = TRUE
                                 )
  )
 
@@ -859,12 +838,15 @@ observeEvent(input$addToShortlist, {
 ```{r define output for shortlist table}
 
 output$shortlistTable <- DT::renderDT(unique(dplyr::select(shortlist(),
+                            "Brief title" = "brief_title",
+                            "Est. completion date" = "primary_completion_date",
+                            "Last updated" = "last_update_posted_date",       
                             # combined_score,
                             "Matching cancer type(s)" = "matching.condition",
                             "Matching alteration(s)" = "gene_variant_type",
-                            "Drug rationale" = "intervention_rationale",
                             "Eligibility" = "eligibility_rationale",
-                            "Brief title" = "brief_title",
+                            "Drug rationale" = "intervention_rationale",
+                            
                             "Matching inclusion criteria" = "matching_criteria",
                             "Prior Therapy exclusions" = Exclusions,
                             "Locations" = "locations",
