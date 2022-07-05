@@ -2682,6 +2682,8 @@ open_cancerStudies_view <- unique(dplyr::select(open_cancerStudies_view, interve
 open_cancerStudies_view$long <- as.character(open_cancerStudies_view$long)
 open_cancerStudies_view$lat <- as.numeric(open_cancerStudies_view$lat)
 
+open_cancerStudies_nct_ids <- unique(open_cancerStudies_view$nct_id)
+
 number_studies_in_view <- length(unique(open_cancerStudies_nct_ids))
 
 mean_days_since_update <- round(as.numeric(mean(Sys.Date()-open_cancerStudies_view$last_update_posted_date)), digits = 0)
@@ -2711,7 +2713,7 @@ dbWriteTable(conn = con,name = "open_cancerStudies_view", open_cancerStudies_vie
   
 ```{r create indexedEligibility view}
 ## start with population features
-open_cancerStudies_nct_ids <- unique(open_cancerStudies_view$nct_id)
+
 
 ## exclude studies not in open_cancerStudies_view
 indexed_eligibilities_view <- unique(dplyr::filter(population_features, nct_id %in% open_cancerStudies_nct_ids))
