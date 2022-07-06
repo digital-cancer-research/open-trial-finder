@@ -73,10 +73,20 @@ con <- dbConnect(RSQLite::SQLite(), "indexedTrialData.sqlite")
 #cancerStudies <- dbGetQuery(con, "SELECT * FROM cancerStudies")
 cancerStudies <- dbGetQuery(con, "SELECT * FROM open_cancerStudies_view")
 
-## format dates  
-cancerStudies$last_update_posted_date <- format(as.Date(cancerStudies$last_update_posted_date, origin = "1970-01-01"), format = "%d %b %Y")
+## explicitly convert dates to numeric
+cancerStudies$last_update_posted_date <- as.numeric(cancerStudies$last_update_posted_date)
+cancerStudies$primary_completion_date <- as.numeric(cancerStudies$primary_completion_date)
 
-cancerStudies$primary_completion_date <- format(as.Date(cancerStudies$primary_completion_date, origin = "1970-01-01"), format = "%d %b %Y")
+
+## convert dates from numeric to date class
+cancerStudies$last_update_posted_date <- as.Date(cancerStudies$last_update_posted_date, origin = "1970-01-01")
+
+cancerStudies$primary_completion_date <- as.Date(cancerStudies$primary_completion_date, origin = "1970-01-01")
+
+## format dates  
+cancerStudies$last_update_posted_date <- format(cancerStudies$last_update_posted_date, format = "%d %b %Y")
+
+cancerStudies$primary_completion_date <- format(cancerStudies$primary_completion_date, format = "%d %b %Y")
 
 
 ## get refresh date
