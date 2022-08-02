@@ -631,14 +631,13 @@ formattedTable <- reactive({
 ## increase width of brief title column to 500 pixels
 output$datatable <- DT::renderDT(dplyr::select(formattedTable(),
                             "Brief title" = "brief_title",
-                            "Est. completion date" = "primary_completion_date",
-                            "Last updated" = "last_update_posted_date",
                             # combined_score,
-                            "Matching cancer type(s)" = "matching.condition",
                             "Matching alteration(s)" = "gene_variant_type",
+                            "Matching cancer type(s)" = "matching.condition",
                             "Eligibility" = "eligibility_rationale",
                             "Drug rationale" = "intervention_rationale",
-                            
+                            "Est. completion date" = "primary_completion_date",
+                            "Last updated" = "last_update_posted_date",
                             
                             # "Matching inclusion criteria" = "matching_criteria",
                             # "Prior Therapy exclusions" = Exclusions,
@@ -849,14 +848,13 @@ observeEvent(input$addToShortlist, {
 
 output$shortlistTable <- DT::renderDT(unique(dplyr::select(shortlist(),
                             "Brief title" = "brief_title",
-                            "Est. completion date" = "primary_completion_date",
-                            "Last updated" = "last_update_posted_date",       
                             # combined_score,
-                            "Matching cancer type(s)" = "matching.condition",
                             "Matching alteration(s)" = "gene_variant_type",
+                            "Matching cancer type(s)" = "matching.condition",
                             "Eligibility" = "eligibility_rationale",
                             "Drug rationale" = "intervention_rationale",
-                            
+                            "Est. completion date" = "primary_completion_date",
+                            "Last updated" = "last_update_posted_date",
                             "Matching inclusion criteria" = "matching_criteria",
                             "Prior Therapy exclusions" = Exclusions,
                             "Locations" = "locations",
