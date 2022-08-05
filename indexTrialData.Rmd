@@ -2531,6 +2531,8 @@ For compatibility with existing code for trial finder interface (and to maximise
 * For sites with a valid UK zipcode, we will map to precise locations based on the zip code  
 
 ```{r download ordnance survey data}
+## use trycatch in case download throws an error
+
 
 
 ## start timer
@@ -2542,31 +2544,43 @@ tic("download ordnance survey data")
 postcodesURL <- "https://www.freemaptools.com/download/full-uk-postcodes/ukpostcodes.zip"
 
 destPostcodesFilename <- "uk_postcodes.zip"
-download.file(url=postcodesURL, destfile = destPostcodesFilename)
-unzip(zipfile = paste0(getwd(),"/",destPostcodesFilename))
 
-## tested on 16 March 2022, header row missing.... 
-uk_postcodes <- read.csv("ukpostcodes.csv", header = TRUE, stringsAsFactors = FALSE)
+tryCatch(
+    { download.file(url=postcodesURL, destfile = destPostcodesFilename)
+        unzip(zipfile = paste0(getwd(),"/",destPostcodesFilename))
+        
+        
+        ## tested on 16 March 2022, header row missing.... 
+        uk_postcodes <- read.csv("ukpostcodes.csv", header = TRUE, stringsAsFactors = FALSE)
+        
+        ## assume no header row
+        # uk_postcodes <- read.csv("ukpostcodes.csv", header = FALSE, stringsAsFactors = FALSE)
+        ## manually assign column names - if no header was present, first line of data will be lost...
+        names(uk_postcodes) <- c( "id","postcode","latitude","longitude")
+        
+        
+        ## clean up, delete files
+        file.remove("uk_postcodes.zip")
+        file.remove("ukpostcodes.csv")
+        
+        ## create as a table in database
+        dbWriteTable(conn = con,name = "uk_postcodes", value = uk_postcodes, overwrite=TRUE)
+    }, error=function(cond) {
+      print("Unable to download postcodes, reverting to last saved version from database...")             }) 
 
-## assume no header row
-# uk_postcodes <- read.csv("ukpostcodes.csv", header = FALSE, stringsAsFactors = FALSE)
-## manually assign column names - if no header was present, first line of data will be lost...
-names(uk_postcodes) <- c( "id","postcode","latitude","longitude")
-
-
-## clean up, delete files
-file.remove("uk_postcodes.zip")
-file.remove("ukpostcodes.csv")
-
-## create as a table in database
-dbWriteTable(conn = con,name = "uk_postcodes", value = uk_postcodes, overwrite=TRUE)
-
+## if download has thrown an error, last downloaded postcodes table will be used
+if(!exists("uk_postcodes")) {
+  uk_postcodes <- dbGetQuery(con, "SELECT * FROM uk_postcodes")
+}
 toc()
+
 
 
 ```
 
 ```{r map postcodes to lat and long where possible}
+
+
 ## convert postcodes to lowercase for join
 uk_postcodes$postcode_lower <- tolower(uk_postcodes$postcode)
 local_open_studies$zip_lower <- tolower(local_open_studies$zip)
