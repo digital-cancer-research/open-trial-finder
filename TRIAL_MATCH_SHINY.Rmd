@@ -758,14 +758,10 @@ observeEvent(input$addToShortlist, {
 
 ```
 
-
-
-
 ```{r define output for shortlist table}
 
 output$shortlistTable <- DT::renderDT(unique(dplyr::select(shortlist(),
                             "Brief title" = "brief_title",
-                            # combined_score,
                             "Matching alteration(s)" = "gene_variant_type",
                             "Matching cancer type(s)" = "matching.condition",
                             "Eligibility" = "eligibility_rationale",
@@ -775,14 +771,7 @@ output$shortlistTable <- DT::renderDT(unique(dplyr::select(shortlist(),
                             "Matching inclusion criteria" = "matching_criteria",
                             "Prior Therapy exclusions" = Exclusions,
                             "Locations" = "locations",
-                            # "Centres" = "sites",
-                            # "Investigators" = "investigators",
-                            # "Central contacts" = "central_contacts",
                             "Contacts" = "contacts"
-                            # "StudyID" = nct_id,
-                            # "Overall status" = "overall_status",
-                            # "Interventions" = "interventions",
-                            # Mechanism
                             )),
                   rownames=FALSE, escape = 4, 
                   options = list(ordering=F,
@@ -873,56 +862,51 @@ output$downloadShortlist <- downloadHandler(
         table <- shortlist()
         
         
-        ## if parameters (cancer type as minimum) have been passed in the URL, record which studies were shortlisted
-        if(!is.null(urlValues$CancerType)) {
-              ## get timestamp
-              datetime <- Sys.time()
-              ## get cancer type passed in url
-              urlCancerType <- urlValues$CancerType
-              ## get alterations (if any) passed in url
-              urlAlterations <- NA
-              if(!is.null(urlValues$alterations)) {
-                urlAlterations <- urlValues$alterations
-                }
-        
-              ## create a separate table that will be written to database
-              shortlistTable <- table 
-              ## capture date and time downloaded
-              shortlistTable$datetime <- datetime
-              ## capture the cancer type passed in url
-              shortlistTable$urlCancerType <- urlCancerType
-              ## capture the alterations (if any) that have been passed in url
-              shortlistTable$urlAlterations <- urlAlterations
-        
-        
-              ## in addition, save a copy of the full set of results obtained
-              ## left join, i.e. keep matches on cancer type alone
-              ## if scoredMatches is empty, will just get empty columns
-              fullTable <- merge(x=reactiveCancerStudies(), by.x=c("nct_id"), all.x=TRUE, 
-                           y=reactiveScoredMatches(), by.y=c("nct_id"))  
-              ## aggregate interventions column
-              fullTable <- fullTable %>%
-                  group_by(across(c(-interventions))) %>%
-                  summarise("interventions" = paste(na.omit(unique(interventions)), collapse = ", ")) %>%
-                  as.data.frame()
-              
-              fullTable$datetime <- datetime
-              fullTable$urlCancerType <- urlCancerType
-              fullTable$urlAlterations <- urlAlterations
-        
-        
-        
-              ## append to dedicated table in database (if table doesn't exist, it is created)
-              con2 <- dbConnect(RSQLite::SQLite(), "trialMatchData.sqlite")
-              dbWriteTable(conn = con2,name = "shortlisted", value = shortlistTable, append=TRUE)
-              dbWriteTable(conn = con2,name = "fullresults", value = fullTable, append=TRUE)
-              dbDisconnect(con2)
-              
-              ## use existing database connection
-              # dbWriteTable(conn = con,name = "shortlisted", value = shortlistTable, append=TRUE)
-              # dbWriteTable(conn = con,name = "fullresults", value = fullTable, append=TRUE)
-
-        }
+        # ## if parameters (cancer type as minimum) have been passed in the URL, record which studies were shortlisted
+        # if(!is.null(urlValues$CancerType)) {
+        #       ## get timestamp
+        #       datetime <- Sys.time()
+        #       ## get cancer type passed in url
+        #       urlCancerType <- urlValues$CancerType
+        #       ## get alterations (if any) passed in url
+        #       urlAlterations <- NA
+        #       if(!is.null(urlValues$alterations)) {
+        #         urlAlterations <- urlValues$alterations
+        #         }
+        # 
+        #       ## create a separate table that will be written to database
+        #       shortlistTable <- table 
+        #       ## capture date and time downloaded
+        #       shortlistTable$datetime <- datetime
+        #       ## capture the cancer type passed in url
+        #       shortlistTable$urlCancerType <- urlCancerType
+        #       ## capture the alterations (if any) that have been passed in url
+        #       shortlistTable$urlAlterations <- urlAlterations
+        #       ## in addition, save a copy of the full set of results obtained
+        #       ## left join, i.e. keep matches on cancer type alone
+        #       ## if scoredMatches is empty, will just get empty columns
+        #       fullTable <- merge(x=reactiveCancerStudies(), by.x=c("nct_id"), all.x=TRUE, 
+        #                    y=reactiveScoredMatches(), by.y=c("nct_id"))  
+        #       ## aggregate interventions column
+        #       fullTable <- fullTable %>%
+        #           group_by(across(c(-interventions))) %>%
+        #           summarise("interventions" = paste(na.omit(unique(interventions)), collapse = ", ")) %>%
+        #           as.data.frame()
+        #       
+        #       fullTable$datetime <- datetime
+        #       fullTable$urlCancerType <- urlCancerType
+        #       fullTable$urlAlterations <- urlAlterations
+        #       ## append to dedicated table in database (if table doesn't exist, it is created)
+        #       con2 <- dbConnect(RSQLite::SQLite(), "trialMatchData.sqlite")
+        #       dbWriteTable(conn = con2,name = "shortlisted", value = shortlistTable, append=TRUE)
+        #       dbWriteTable(conn = con2,name = "fullresults", value = fullTable, append=TRUE)
+        #       dbDisconnect(con2)
+        #       
+        #       ## use existing database connection
+        #       # dbWriteTable(conn = con,name = "shortlisted", value = shortlistTable, append=TRUE)
+        #       # dbWriteTable(conn = con,name = "fullresults", value = fullTable, append=TRUE)
+        # 
+        # }
         
 
         table[is.na(table)] <- "-"
@@ -961,17 +945,12 @@ output$downloadShortlist <- downloadHandler(
 
 
 ```
-  
-  
 
 ```{r disconnect from database}
 dbDisconnect(con) 
 
 ```
 
-  
-
-     
 
 ### About  
   
