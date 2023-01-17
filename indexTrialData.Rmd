@@ -5,7 +5,6 @@ date: "19/11/2021"
 output: html_document
 ---
 
-
 ```{r copyright notice}
  # 
  # This file is part of the cancer-trial-match distribution (https://github.com/digital-ECMT/cancer-trial-match).
@@ -36,9 +35,6 @@ output: html_document
 
 ## Source: Office for National Statistics licensed under the Open Government Licence v.3.0
 ```
-
-
-
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
@@ -92,15 +88,12 @@ aact.username <- configuration$aact.username
 aact.password <- configuration$aact.password
 ```
 
-
 **Date of data refresh: `r today`**  
-  
-  
+ 
 ```{r connect to SQLite DB} 
 # Create an RSQLite database
 con <- dbConnect(RSQLite::SQLite(), "indexedTrialData.sqlite")
 
-# dbListTables(con)
 ```
   
 ### **Download and save a table of human genes and synonyms**  
@@ -111,17 +104,18 @@ con <- dbConnect(RSQLite::SQLite(), "indexedTrialData.sqlite")
 tic("download and process a list of all human genes and their synonyms")
 
 humanGenes <- read.table(file = "humanGenes.tsv", header = TRUE, quote = "", sep = "\t", fill = TRUE, stringsAsFactors = FALSE)
-
 ## exclude any entries that are not for Homo Sapiens
 humanGenes <- unique(dplyr::filter(humanGenes, Org_name == "Homo sapiens"))
-
-humanGenes <- unique(dplyr::select(humanGenes, GeneID, Symbol, Aliases)) ## drop everything except GeneID, Symbol and Aliases columns
-
-humanGenes$Aliases <- strsplit(x=humanGenes$Aliases, split = ",")## split the aliases on comma 
-humanGenes <- unnest(data = humanGenes, cols = Aliases, keep_empty = TRUE) ## unnest to multiply rows, keep any rows with no aliases
-humanGenes <- as.data.frame(humanGenes) ## convert to data frame
-
-humanGenes$Aliases <- str_squish(string = humanGenes$Aliases) ## trim excess whitespace from Aliases values
+## drop everything except GeneID, Symbol and Aliases columns
+humanGenes <- unique(dplyr::select(humanGenes, GeneID, Symbol, Aliases)) 
+## split the aliases on comma
+humanGenes$Aliases <- strsplit(x=humanGenes$Aliases, split = ",") 
+## unnest to multiply rows, keep any rows with no aliases
+humanGenes <- unnest(data = humanGenes, cols = Aliases, keep_empty = TRUE) 
+## convert to data frame
+humanGenes <- as.data.frame(humanGenes) 
+## trim excess whitespace from Aliases values
+humanGenes$Aliases <- str_squish(string = humanGenes$Aliases) 
 
 ## Symbol values are not represented among Aliases
 # create a data frame with unique Symbol values
@@ -188,9 +182,6 @@ names(NCIt) <- c("ID","URL","ParentID","Synonyms","Description","PreferredTerm",
 file.remove("NCIt_FLAT.zip")
 file.remove("Thesaurus.txt")
 
-## save a copy for use later if needed
-# NCIt_raw <- NCIt
-
 ## an entity may have more than one class, so need to multiply rows
 ## split and unnest the Class column of NCIt
 NCIt$Class <- strsplit(NCIt$Class, split = "\\|")
@@ -234,7 +225,6 @@ NCIt <- unique(NCIt)
 toc()
 ```
 
-  
 ```{r preprocess NCIt}
 ## start timer
 tic("preprocess NCIt")
@@ -258,15 +248,9 @@ rm(NCIt_multiple_terms)
 ## delete any rows that don't contain any letters... 
 NCIt <- NCIt[grep(pattern = "[a-zA-Z]", x=NCIt$Synonyms), ]
 
-## stem the synonyms 
-# NCIt$Synonyms_stem <- textstem::stem_strings(NCIt$Synonyms)
-## convert to lowercase
-# NCIt$Synonyms_stem <- tolower(NCIt$Synonyms_stem)
-
 ## stop timer
 toc()
 ```
-  
   
 * Preprocessed NCI thesaurus is saved in the *NCIt* table:  
   
@@ -282,30 +266,16 @@ dbWriteTable(conn = con,name = "NCIt", value = NCIt, overwrite=TRUE)
 
 ```{r subset NCIt for Pharmacologic Substance}
 
-# NCIt_Pharmacologics <- unique(dplyr::filter(NCIt, Class=="Pharmacologic Substance"))
-
 NCIt_Pharmacologics <- unique(dplyr::filter(NCIt, Class %in% c("Immunologic Factor", "Pharmacologic Substance")))
 
-## delete NCIt and NCItParents objects to save memory
-# rm(NCIt)
+## delete NCItParents to save memory
 rm(NCItParents)
 
 ```
   
-
 ### **Map NCIt drugs to targets via KEGG**  
-  
-```{r use KEGG BRITE NOT USED}
-## download Target-based Classification of Drugs (JSON format) from: https://www.genome.jp/kegg-bin/download_htext?htext=br08310&format=json&filedir=
-## save as "kegg_brite.json"
-# kegg_brite <- fromJSON("kegg_brite.json")
 
-## CAN'T USE THIS, AS SOME OF THE TARGETS LISTED REFER TO GROUPS OF PROTEINS, NOT INDIVIDUAL PROTEINS.. 
-
-```
-  
 * We will download all drugs associated with the KEGG pathway *Pathways In Cancer* (hsa05200) and get their respective target gene  
-  
   
 ```{r use pathways in cancer}
 ## start timer
@@ -380,61 +350,7 @@ kegg_drugs <- unique(dplyr::select(kegg_drugs, NCIt_drug_id, drug_name, target_s
 
 toc() 
 ```
-  
 
-```{r get cancer drugs from db}
-
-## a database of licensed cancer drugs is maintained at https://www.anticancerfund.org/en/cancerdrugs-db 
-## machine-readable version can be downloaded from... 
-# https://acfdata.coworks.be/cancerdrugsdb.txt
-
-cancer_drugs <- read.delim(file="https://acfdata.coworks.be/cancerdrugsdb.txt", header = TRUE, sep = "\t", quote = "\"", dec = ".", fill = TRUE, comment.char = "", stringsAsFactors = FALSE)
-## as of 01/11/2021, there are 282 drugs in this database
-
-
-## however, drugs such as Inavolisib don't appear in this list, but do have entries in KEGG... 
-
-
-cancer_drugs <- unique(dplyr::select(cancer_drugs, "drug_name"="Product", "EMA_approved"="EMA", "FDA_approved"="FDA", "DrugBank_link"="DrugBank.ID", Indications, Targets))
-
-## Note, drugs such as Inavolisib don't appear in this list, but do have entries in KEGG... 
-
-## map to NCIt IDs
-cancer_drugs$drug_name_lower <- tolower(cancer_drugs$drug_name)
-NCIt$Synonyms_lower <- tolower(NCIt$Synonyms)
-
-## for combinations, drug names are comma-separated - we will need to split and unnest in order to map to NCIt... 
-
-cancer_drugs$drug_name_lower <- strsplit(x=cancer_drugs$drug_name_lower, split = ", ")
-cancer_drugs <- unnest(data = cancer_drugs, cols = drug_name_lower, keep_empty = TRUE) 
-cancer_drugs <- as.data.frame(cancer_drugs) ## convert to data frame
-## join to NCIt ID
-cancer_drugs <- unique(merge(x=cancer_drugs, by.x="drug_name_lower", all.x = TRUE, y=unique(dplyr::select(NCIt, "NCIt_ID" = "ID", Synonyms_lower)), by.y="Synonyms_lower"))
-
-cancer_drugs <- dplyr::select(cancer_drugs, -drug_name_lower)
-
-## unnest the Targets column
-cancer_drugs$Targets <- strsplit(x=cancer_drugs$Targets, split = "; ")
-cancer_drugs <- unnest(data = cancer_drugs, cols = Targets, keep_empty = TRUE) 
-cancer_drugs <- as.data.frame(cancer_drugs) ## convert to data frame
-
-```
-  
-
-
-```{r bind the approved cancer drugs to kegg_drugs NOT USED}
-## select, rename and reorder columns to match kegg_drugs
-more_drugs <- unique(dplyr::select(cancer_drugs, "NCIt_drug_id"="NCIt_ID", "drug_name"="drug_name", "target_symbol"="Targets"))
-
-## row bind
-# kegg_drugs <- unique(rbind(kegg_drugs, more_drugs))
-## do not row bind... 
-## some of the drug:target relationships in this dataset are extremely tentative, e.g. pembrolizumab targets MDM2
-
-```
-
-  
-  
 * Where possible, these drugs are mapped to entities in the NCI thesaurus  
   
 * These data are saved in the *kegg_drugs* table:  
@@ -442,125 +358,9 @@ more_drugs <- unique(dplyr::select(cancer_drugs, "NCIt_drug_id"="NCIt_ID", "drug
 `r formattable(head(kegg_drugs))`  
   
 ```{r write kegg drugs to database}
-
 ## create as a table in database
 dbWriteTable(conn = con,name = "kegg_drugs", value = kegg_drugs, overwrite=TRUE)
-
-# dbListTables(con)
-
 ```
-  
-```{r download NCIt in OWL format NOT USED}
-## we will download the inferred version of the thesaurus, described at https://evs.nci.nih.gov/evs-download/thesaurus-downloads 
-
-# NCIt_url_OWL <- "https://evs.nci.nih.gov/ftp1/NCI_Thesaurus/ThesaurusInf_21.10d.OWL.zip"
-# destOWLfilename <- "NCIt_OWL.zip"
-# download.file(url=NCIt_url_OWL,destfile = destOWLfilename)
-# unzip(zipfile = paste0(getwd(),"/",destOWLfilename))
-
-## the unzipped file is called "ThesaurusInferred.owl"
-```
-
-```{r use R ontocat to navigate ontology NOT USED}
-
-## install.packages("BiocManager")
-## BiocManager::install("ontoCAT")
-## "not available for R 3.6.2" (deprecated and no longer supported?)
-
-```
-  
-```{r load using OntologyX NOT USED}
-## download NCIt in OBO format from EMBL?
-## see https://www.ebi.ac.uk/ols/ontologies/ncit
-## download manually 
-# require(ontologyIndex)
-# ontology <- get_ontology("ncit_obo.owl")
-
-
-```
-
-```{r read NCIt in OWL format NOT USED}
-## issues creating miniconda environment due to apostrophe in name of Users folder
-## Error 127 occurred creating conda environment C:/Users/O’ReganPaul/AppData/Local/r-miniconda/envs/r-reticulate
-
-## import owlready2
-```
-
-```{r define function to map drug names to KEGG drug IDs NOT USED}
-
-# test using "1-methyl-D-tryptophan", aka "Indoximod"
-
-# getDrugID <- function(drugName){
-#   if(is.na(drugName)) return(NA)
-#   ## get drug ID
-#   drugid <- tryCatch({names(keggFind(database = "drug", query = drugName))},
-#              error=function(cond) {return(NA)})
-#   if(is.null(drugid)) return(NA)
-#   if(is.na(drugid)) return(NA)
-#   drugid <- as.list(drugid)
-#   return(drugid)
-# }
-
-```
-
-```{r map NCIt drug names to KEGG drug IDs NOT USED}
-## NOT RUN, AS TAKES >20 HOURS TO COMPLETE
-## ONCE COMPLETE, NEED TO ALSO MAP FROM DRUG ID TO TARGET GENE ID, AND THEN FROM TARGET GENE ID TO TARGET GENE SYMBOL... 
-
-
-# NCIt_Pharmacologics$kegg_drug_id <- NA
-# 
-# tic("index NCIt pharmacologics with kegg drug id")
-# for(i in 1:length(unique(NCIt_Pharmacologics$ID))) {
-#   print(paste0("i:", i))
-#   id <- unique(NCIt_Pharmacologics$ID)[i]
-#   print(paste0("ID:", id))
-#   synonyms <- unique(NCIt_Pharmacologics$Synonyms[NCIt_Pharmacologics$ID == id])
-#   print(paste(synonyms, collapse = ", "))
-#   kegg_drugid <- NA
-#   ## loop through synonyms and call KEGG API
-#   for(j in 1:length(synonyms)) {
-#     kegg_drugid <- getDrugID(synonyms[j])
-#     if(!is.na(kegg_drugid)) break
-#   }
-#   print(paste0("kegg drug id:", kegg_drugid))
-#   NCIt_Pharmacologics$kegg_drug_id[NCIt_Pharmacologics$ID == id] <- kegg_drugid
-# }
-# toc()
-
-
-```
-  
-### **Store table licensed drugs and their indications**  
-  
-```{r create indications table}
-
-indications <- unique(dplyr::select(cancer_drugs, "NCIt_drug_id" = "NCIt_ID", "drug_name"="drug_name", Indications, EMA_approved,FDA_approved, DrugBank_link))
-
-## unnest the indications column
-## unnest the Targets column
-indications$Indications <- strsplit(x=indications$Indications, split = "; ")
-indications <- unnest(data = indications, cols = Indications, keep_empty = TRUE) 
-indications <- as.data.frame(indications) ## convert to data frame
-
-
-```
-  
-* These data are sourced from the Cancer Drugs Database at https://www.anticancerfund.org/en/cancerdrugs-db  
-* These data are saved in the *indications* table:  
-  
-`r formattable(head(indications))`  
-  
-```{r write indications table to database}
-
-## create as a table in database
-dbWriteTable(conn = con,name = "indications", value = indications, overwrite=TRUE)
-
-# dbListTables(con)
-```
-
-    
-
 
 ### **Define controlled terms and synonyms for cancer types**  
   
@@ -569,10 +369,7 @@ dbWriteTable(conn = con,name = "indications", value = indications, overwrite=TRU
 
 ## synonyms define on basis of those in clinicaltrials.gov
 conditionSynonyms <- read.csv(file = "conditionSynonyms5.csv", stringsAsFactors = FALSE)
-
 ```
-
-
 
 ```{r add simple synonyms to improve recall of mapping to cancer types}
 
@@ -587,8 +384,6 @@ simple_conditions <- data.frame(controlled_cancer_type = unique(conditionSynonym
 conditionSynonyms <- unique(rbind(conditionSynonyms, simple_conditions))
 ### now proceed as before - study NCT02264678 should get correctly mapped to Solid, NSCLC, Lung, Gastric, Breast and Ovarian cancer types... 
 ```
-
-
 
 ```{r process condition synonyms}
 
@@ -656,10 +451,8 @@ cancerStudies$Link <- paste0("https://clinicaltrials.gov/ct2/show/", cancerStudi
   
 * As of `r today`, there are a total of **`r length(unique(cancerStudies$nct_id))` cancer studies** listed in clinicaltrials.gov and included in this analysis.  
   
-  
 `r formattable(head(cancerStudies))`  
     
-
 #### **Map verbatim condition names to controlled set of cancer types**  
   
 * We will map these to cancer types of interest by tokenising, providing cancer type synonyms from *conditionSynonyms* as custom tokens  
@@ -676,7 +469,6 @@ custom_tokens <- unique(conditionSynonyms$condition_synonyms)
 
 ## include the controlled cancer types themselves, in order to pick up matches such as study NCT02264678 has a single value listed for condition: Adv Solid Malig - H&N SCC, ATM Pro / Def NSCLC, Gastric, Breast and Ovarian Cancer
 # custom_tokens <- unique(c(conditionSynonyms$condition_synonyms, conditionSynonyms$controlled_cancer_type))
-
 
 ## tokenise the condition names
 cancerStudies$word <- as.list(corpus::text_tokens(x=cancerStudies$condition,                                                filter= corpus::text_filter(combine = custom_tokens, map_case=TRUE, connector="_", drop_punct=TRUE )))
@@ -705,7 +497,6 @@ toc()
   
 * After mapping to controlled terms for cancer types, **`r length(unique(cancerStudies$nct_id))` studies remain**  
   
-  
 `r formattable(head(cancerStudies))`  
   
 ### **Get relevant data from clinicaltrials.gov**  
@@ -713,11 +504,9 @@ toc()
 ```{r format list of study IDs for SQL}
 ## format study IDs for SQL query
 studyIDsForSQL <- paste0("\'",paste(unique(cancerStudies$nct_id), collapse = "\',\'"), "\'")
-
 ```
   
 ```{r get study interventions}
-
 getInterventionsQ <- paste0("select i.nct_id, i.id AS intervention_id, i.name AS intervention_name 
 from interventions i
 where i.nct_id in (",
@@ -729,8 +518,7 @@ interventions <- dbGetQuery(conn2,getInterventionsQ)
 
 ```
   
-
-```{r get design group inteventions}
+```{r get design group interventions}
 
 ## get design group interventions
 get_dgi <- paste0("select *
@@ -769,65 +557,6 @@ design_groups <- dbGetQuery(conn2,getDesignGroupsQ)
 ## NOTE, SOME STUDIES HAVE NO DESIGN GROUPS SPECIFIED, BUT MAY HAVE RESULT GROUPS SPECIFIED
 ```
 
-```{r get result groups}
-getResultGroupsQ <- paste0("select rg.nct_id, rg.id as rg_id, ctgov_group_code, result_type, rg.title as rg_title, rg.description as rg_description
-from result_groups rg 
-where rg.nct_id in (",
-"", studyIDsForSQL,
-")")
-
-## get criteria from clinicaltrials.gov
-result_groups <- dbGetQuery(conn2,getResultGroupsQ)
-
-```
- 
-```{r get outcome measurements table}
-
-getOutcome_measurements <- paste0("select *
-from outcome_measurements 
-where nct_id in (",
-"", studyIDsForSQL,
-")")
-# 
-## get data from clinicaltrials.gov
-outcome_measurements <- dbGetQuery(conn2, getOutcome_measurements)
- 
-
-
-```
-  
-```{r get reported event counts}
-
-getAEcounts <- paste0("select *
-from reported_events 
-where nct_id in (",
-"", studyIDsForSQL,
-")")
-# 
-## get criteria from clinicaltrials.gov
-AE_counts <- dbGetQuery(conn2, getAEcounts)
-
-## order on subjects_affected descending
-AE_counts <- AE_counts[order(AE_counts$subjects_affected, decreasing = TRUE), ]
-
-# kbl(head(AE_counts), format = "html",escape = FALSE) %>%
-#   kable_styling(fixed_thead = T, bootstrap_options = c("striped", "hover", "condensed")) %>%
-#   scroll_box(width = "125%", height = "200px")
-```
- 
-```{r get event totals}
-
-getAEtotals <- paste0("select *
-from reported_event_totals 
-where nct_id in (",
-"", studyIDsForSQL,
-")")
-# 
-## get criteria from clinicaltrials.gov
-AE_totals <- dbGetQuery(conn2, getAEtotals)
-
-```
-
 ```{r get studies open in specified country}
 
 local_open_studiesQ <- paste0("select f.nct_id, f.status AS facility_status, f.name AS facility_name, f.city, f.zip, fi.name as investigators, cc.email as central_contacts, fc.email 
@@ -849,7 +578,7 @@ local_open_studies <- dbGetQuery(conn2, local_open_studiesQ)
 ### **Get study interventions**  
 
 * Interventions are stored as follows in clinicaltrials.gov 
-  * each intervention_id value is unique, i.e. same intervention in different studies is given different *intervention_id* values:  
+  * each intervention_id value is unique, i.e. same intervention in different studies is given different *intervention_id* values:
   
 `r formattable(head(interventions))`  
   
@@ -925,75 +654,13 @@ rm(kwic_interventions)
 ```
   
 * We retain all interventions at this stage, including those that have not mapped to either NCI thesaurus or KEGG drug target...  
-  
-```{r process intervention names NOT USED}
-# ## duplicate intervention name
-# interventions$intervention_name_processed <- interventions$intervention_name
-# ## convert to lowercase 
-# interventions$intervention_name_processed <- tolower(interventions$intervention_name_processed)
-# 
-# ## split on words related to combinations of therapy
-# combinations_pattern = "\\bwith\\b|\\band\\b|\\/|\\+|\\bplus\\b|\\,|\\bcombination\\b"
-# interventions$intervention_name_processed <- strsplit(interventions$intervention_name_processed, split = combinations_pattern)
-# interventions <- as.data.frame(unnest(data = interventions, intervention_name_processed))
-# 
-# ## split on brackets (e.g. values like "roniciclib (bay1000394)" and "e39 peptide (100mcg)")
-# brackets_pattern <- "\\(|\\)"
-# interventions$intervention_name_processed <- strsplit(interventions$intervention_name_processed, split = brackets_pattern)
-# interventions <- as.data.frame(unnest(data = interventions, intervention_name_processed))
-# 
-# ## split on any substrings related to dose
-# ## matches any digit, optionally followed by space, followed by "mg"
-# dose_pattern <- "[0-9]+ ?mg"
-# interventions$intervention_name_processed <- strsplit(interventions$intervention_name_processed, split = dose_pattern)
-# interventions <- as.data.frame(unnest(data = interventions, intervention_name_processed))
-# 
-# ## trim excess whitespace
-# interventions$intervention_name_processed <- str_squish(interventions$intervention_name_processed)
-# 
-# ## replace terms related to placebo with "placebo"
-# interventions$intervention_name_processed[grep(pattern = "placebo|dummy", x=interventions$intervention_name_processed, ignore.case = TRUE)] <- "placebo"
-# 
-# # design_group_interventions$intervention_name[grep(pattern = "placebo|dummy", x=design_group_interventions$intervention_name, ignore.case = TRUE)] <- "Placebo"
-```
-  
 
 ```{r join interventions to design groups}
 ## join to design groups
 interventions <- unique(merge(x=dplyr::select(dgi, nct_id, design_group_id, intervention_id), by.x = c("nct_id", "intervention_id"), y= interventions, by.y = c("nct_id", "intervention_id"), all.y = TRUE))
 
 ```
-  
-  
-  
-    
-  
-```{r join interventions to NCIt pharmacologics NOT USED}
-# ## create a temporary copy of NCIt pharmacologics
-# NCIt_Pharmacologics_temp <- unique(dplyr::select(NCIt_Pharmacologics, "NCIt_ID"="ID", Synonyms, PreferredTerm, "Mechanism"="Parent_synonym"))
-# ## convert synonyms to lower case for joining
-# NCIt_Pharmacologics_temp$Synonyms <- tolower(NCIt_Pharmacologics_temp$Synonyms)
-# 
-# NCIt_Pharmacologics_temp <- unique(dplyr::select(NCIt_Pharmacologics, "NCIt_ID"="ID", Synonyms, PreferredTerm, "Mechanism"="Parent_synonym"))
-# 
-# interventions <- merge(x=interventions, by.x = "intervention_name_processed", all.x=TRUE, 
-#                        y=NCIt_Pharmacologics_temp, by.y = "Synonyms")
-# 
-# ## delete temporary copy
-# rm(NCIt_Pharmacologics_temp)
-# 
-# ## select and reorder columns
-# ## remove duplicates
-# interventions <- unique(dplyr::select(interventions, nct_id, intervention_id, intervention_name, NCIt_ID, PreferredTerm, Mechanism))
-# 
 
-```
-
-```{r omit cancerstudies with unmapped interventions NOT USED}
-# cancerStudies <- unique(dplyr::filter(cancerStudies, nct_id %in% interventions$nct_id))
-
-```
-  
 #### **write indexed cancer studies to database**  
   
 * Cancer study information is saved to the *cancerStudies* table:  
@@ -1146,8 +813,20 @@ Individual eligibility criteria for all cancer studies have been written to the 
   
 `r formattable(head(eligibilities))`  
   
+
   
-### **Get design group information**  
+
+### **Index trial populations**  
+  
+* See also https://tutorials.quanteda.io/basic-operations/corpus/corpus/ for workflow from quanteda...  
+  
+We will index each of: eligibility criteria, design groups (titles and descriptions) ...  
+  
+* The process is as follows:  
+   
+* First, create a tidy table containing the relevant text, plus identifiers that will allow us to rejoin the results...  
+  * For criteria, we will use the verbatim criteria as text  
+  * For design groups, we will use concatenation of title and description  
   
 #### **Get design groups (study arms)**  
 
@@ -1159,6 +838,941 @@ design_groups$dg_title_description <- paste(design_groups$dg_title, design_group
 design_groups$dg_title_description <- gsub(pattern = "\U00B5|\U03BC", replacement = "u", x=design_groups$dg_title_description)
 
 ```
+
+
+```{r define stopwords}
+stopwords <- as.data.frame(tidytext::get_stopwords())
+```
+  
+```{r create tidy table of criteria plus dgs plus rgs}
+
+text_for_indexing <- data.frame(nct_id = character(0), 
+                                id=character(0), 
+                                id_type = character(0), 
+                                text = character(0))
+
+    
+eligibilities_for_indexing <- eligibilities %>% 
+         # mutate(id_type="criterion_index") %>%
+         dplyr::select(nct_id, "id"="criterion_index","id_type"="criterion_type","text"="criteria") %>%
+         unique()
+
+design_groups_for_indexing <- design_groups %>% 
+         mutate(id_type="design_group") %>%
+         dplyr::select(nct_id, "id"="dg_id",id_type,"text"="dg_title_description") %>%
+         unique()
+
+# result_groups_for_indexing <- result_groups %>% 
+#          mutate(id_type="result_group") %>%
+#          dplyr::select(nct_id, "id"="rg_id",id_type,"text"="rg_title_description") %>%
+#          unique()
+
+text_for_indexing <- rbind(eligibilities_for_indexing, design_groups_for_indexing)
+
+## clean up
+rm(eligibilities_for_indexing)
+rm(design_groups_for_indexing)
+# rm(result_groups_for_indexing)
+```
+  
+  * Manually replace any whole-word occurrences of " *BRCA* " with *BRCA1, BRCA2*  
+  
+```{r replace instances of BRCA}
+
+## replace whole-word matches of "BRCA" with "BRCA1, BRCA2"
+text_for_indexing$text <- gsub(pattern = "\\bBRCA\\b", replacement = "BRCA1, BRCA2", x=text_for_indexing$text )
+
+```
+
+* Second, create a corpus from the tidy table...  
+
+```{r create populations corpus}
+ 
+tic("create populations_corpus")
+populations_corpus <-  quanteda::corpus(x=text_for_indexing,
+                                          text_field = "text", 
+                                          docid_field = "id",
+                                          unique_docnames = FALSE)
+toc()
+
+```
+  
+* Third, tokenise the corpus...  
+
+```{r tokenise populations_corpus}
+
+tic("tokenise populations_corpus")
+# populations_tokens <- tokens(populations_corpus, remove_punct=TRUE, padding = FALSE, split_hyphens = TRUE)
+## keep punctuation so can expand forward slashes later... 
+populations_tokens <- tokens(populations_corpus, remove_punct=FALSE, padding = FALSE, split_hyphens = TRUE)
+toc()
+
+```
+
+```{r remove stopwords from populations_tokens}
+tic("remove stopwords from populations_tokens")
+populations_tokens <- tokens_select(x=populations_tokens, pattern = stopwords("en"), selection = "remove", padding = FALSE)
+toc()
+
+```
+
+#### **Index on genetic features**  
+  
+* We will get a "bag of words" (excluding stopwords) surrounding human gene names (inc synonyms) within a defined window on either side (default=5).  
+  
+* In order to match patterns such as "*BRCA1/2*" to both *BRCA1* and *BRCA2*, we will perform this step twice: 
+  * the first time, using unmodified tokens from *populations_corpus*  
+  * the second time, delete any occurrences of forward slash, plus the immediately preceding character (e.g. in *BRCA1/2*, delete *1/* to get *BRCA2*)  
+    * Note that patterns such as *BRCA1/BRCA2* will be converted to *BRCABRCA2* but these will be lost when we join to *humanGenes* table  
+
+```{r get context words surrounding gene names in populations_tokens}
+
+# tic("get context words surrounding gene names in populations_tokens")
+# kwic_genes_populations <- as.data.frame(kwic(populations_tokens, pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE))
+# toc()
+
+## we will tokenise within the call to kwic, as we need to modify the corpus... 
+## first pass using unmodified tokens... 
+tic("get context words surrounding gene names in text for indexing, first pass")
+## get bag of words around mention gene names
+## ASSUME WE CAN SAFELY REMOVE PUNCTUATION IN THE CALL TO tokens BECAUSE SLASHES HAVE ALREADY BEEN OMITTED... 
+kwic_genes_populations_1 <- as.data.frame(kwic(x = tokens(populations_corpus, remove_punct=TRUE, padding = FALSE, split_hyphens = TRUE), pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE))
+toc()
+
+## second pass sing modified tokens, get stems of words before slash and join to first character after slash 
+tic("get context words surrounding gene names in text for indexing, second pass")
+## ASSUME WE CAN SAFELY REMOVE PUNCTUATION IN THE CALL TO tokens BECAUSE SLASHES HAVE ALREADY BEEN OMITTED... 
+kwic_genes_populations_2 <- as.data.frame(kwic(x = tokens(gsub(pattern='./', replacement = '', x=populations_corpus), remove_punct=TRUE, padding = FALSE, split_hyphens = TRUE), pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE))
+toc()  
+  
+## combine the two bags of words
+kwic_genes_populations <- unique(rbind(kwic_genes_populations_1, kwic_genes_populations_2))
+## delete originals
+rm(kwic_genes_populations_1)
+rm(kwic_genes_populations_2)
+
+
+# tic("get context words surrounding gene names in populations_tokens")
+# kwic_genes_populations <- kwic(populations_tokens, pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE)
+# toc()
+#formattable(head(as.data.frame(kw_genes), 30))
+
+## concatenate pre, gene name and post tokens
+kwic_genes_populations <- dplyr::mutate(kwic_genes_populations, context = paste(pre,keyword, post, sep = " "))
+
+## select and rename columns
+kwic_genes_populations <- dplyr::select(kwic_genes_populations, "id"="docname", context, "gene_synonym"=pattern)
+
+```
+  
+* We will join the Entrez symbols from *humanGenes* table...  
+
+```{r join Entrez Symbols to kwic_genes_populations}
+kwic_genes_populations <- merge(x=kwic_genes_populations, by.x="gene_synonym", y=dplyr::select(humanGenes, Symbol, Aliases), by.y = "Aliases")
+```
+  
+* We will rejoin the metadata from text_for_indexing - **NB this relies on each type of identifier being unique (e.g. no matches between result group IDs and design group IDs)** - this appears to hold...  
+  
+```{r join verbatim criteria and nct_id}
+kwic_genes_populations <- merge(x=text_for_indexing, by.x="id", y=kwic_genes_populations, by.y="id", incomparables=NA)
+
+## rename and reorder columns
+kwic_genes_populations <- unique(dplyr::select(kwic_genes_populations, nct_id, id, id_type,text, context, "match"="gene_synonym", "controlled_match"="Symbol"))
+```
+  
+* We will index the populations for genetic features by filtering and retaining only those texts that include a given pattern within the bag of words surrounding the gene name...  
+  
+```{r define function to index on pattern}
+indexOnPattern <- function(dataframe, pattern, featureLabel) {
+  ## get indices with matching pattern
+  indices <- grep(pattern = pattern, x=dataframe$context, ignore.case = TRUE)
+  ## subset dataframe
+  dataframe <- dataframe[indices, ]
+  ## add a column with featurelabel
+  dataframe$feature <- featureLabel
+  return(dataframe)
+}
+
+```
+  
+* We will define different patterns for each different alteration type...  
+  
+##### **Index on mutations**  
+  
+```{r define mutant pattern}
+## define mutant pattern
+mutant_pattern <- "mutat|mutant|defect|deficien|altera|altere|loss of function|loss-of-function|loss function"
+```
+
+* For mutations, we will use the pattern **`r mutant_pattern`**.  
+  
+```{r index populations on mutations}
+
+mutation_populations <- indexOnPattern(dataframe = kwic_genes_populations, pattern = mutant_pattern, featureLabel = "mutation")
+
+## select and reorder columns for consistency with trialMatchDataRefresh
+mutation_populations <- unique(dplyr::select(mutation_populations, match, nct_id, id, id_type, text, feature, controlled_match ))
+
+```
+  
+* Sample results:  
+  
+`r formattable(head(mutation_populations)) `  
+  
+##### **Index on rearrangements**  
+  
+```{r define rearrangemnts pattern}
+rearrangement_pattern <- " fusion|rearrangement|truncation|truncated|deletion|deleted|lost|duplication|duplicated|transloc"
+```
+
+* For rearrangements, we will use the pattern **`r rearrangement_pattern`**.  
+  
+```{r index populations on rearrangements}
+
+rearrangement_populations <- indexOnPattern(dataframe = kwic_genes_populations, pattern = rearrangement_pattern, featureLabel = "rearrangement")
+
+## select and reorder columns for consistency with trialMatchDataRefresh
+rearrangement_populations <- unique(dplyr::select(rearrangement_populations, match, nct_id, id, id_type, text, feature, controlled_match ))
+
+```
+
+* Sample results:  
+  
+`r formattable(head(rearrangement_populations)) `  
+  
+##### **Index on amplifications**  
+  
+```{r define amplification pattern}
+amplification_pattern <- " amplifi|overexpress"
+```
+
+* For amplifications, we will use the pattern **`r amplification_pattern`**.  
+
+
+```{r index populations on amplifications}
+
+amplification_populations <- indexOnPattern(dataframe = kwic_genes_populations, pattern = amplification_pattern, featureLabel = "amplification")
+
+## select and reorder columns for consistency with trialMatchDataRefresh
+amplification_populations <- unique(dplyr::select(amplification_populations, match, nct_id, id, id_type, text, feature, controlled_match ))
+```
+
+* Sample results:  
+  
+`r formattable(head(amplification_populations)) `  
+  
+##### **Index on loss**  
+  
+```{r define loss pattern}
+loss_pattern <- " loss"
+```
+
+* For losses, we will use the pattern **`r loss_pattern`**.  
+  
+```{r index populations on losses}
+loss_populations <- indexOnPattern(dataframe = kwic_genes_populations, pattern = loss_pattern, featureLabel = "loss")
+```
+
+  * In order to avoid spurious hits against "loss of function" (which should be indexed as a mutation), we will filter again and exclude those rows where the context contains "loss of function" (or variants thereof)...  
+  
+```{r exclude loss of function pattern}
+loss_populations <- loss_populations[grep(pattern = "loss of function|loss-of-function|loss function", x=loss_populations$context, ignore.case = TRUE, invert = TRUE), ]
+
+## select and reorder columns for consistency with trialMatchDataRefresh
+loss_populations <- unique(dplyr::select(loss_populations, match, nct_id, id, id_type, text, feature, controlled_match ))
+
+```
+
+  
+* Sample results:  
+  
+`r formattable(head(loss_populations)) `  
+  
+
+#### **Index on prior therapies**  
+  
+* We will get keywords surrounding synonyms related to therapy (as defined by NCIt for Class "Therapeutic or Preventive Procedure")...    
+  * Since some of these entries are multi-word expressions, we need to use the phrase() function...  
+  
+```{r get context surrounding therapy keywords} 
+
+tic("get context words surrounding therapies/procedures in populations_tokens")
+kwic_prior_tx_populations <- as.data.frame(kwic(populations_tokens, 
+                                                pattern =  phrase(unique(NCIt$Synonyms[NCIt$Class=="Therapeutic or Preventive Procedure"])),
+                                                window = 5, 
+                                                case_insensitive = TRUE))
+toc()
+
+
+
+## concatenate pre, pattern and ignore post tokens
+kwic_prior_tx_populations <- dplyr::mutate(kwic_prior_tx_populations, context = paste(pre,keyword, sep = " "))
+
+## select and rename columns
+kwic_prior_tx_populations <- dplyr::select(kwic_prior_tx_populations, "id"="docname", context, "therapy_synonym"=pattern)
+
+```
+
+```{r join therapy kwic to NCIt}
+
+kwic_prior_tx_populations <- unique(merge(x=kwic_prior_tx_populations, by.x="therapy_synonym", y=dplyr::select(NCIt, "NCIt_id"="ID", Synonyms, PreferredTerm, Parent_synonym, Class ), by.y="Synonyms"))
+
+kwic_prior_tx_populations <- dplyr::filter(kwic_prior_tx_populations, Class == "Therapeutic or Preventive Procedure")
+
+```
+
+```{r join study metadata to therapy kwic}
+kwic_prior_tx_populations <- unique(merge(x=kwic_prior_tx_populations, 
+                                          by.x="id", 
+                                          y=dplyr::select(text_for_indexing, nct_id, id, id_type, text ), 
+                                          by.y="id"))
+
+## select and reorder columns
+kwic_prior_tx_populations <- dplyr::select(kwic_prior_tx_populations, nct_id, id_type, id, therapy_synonym, text, context, NCIt_id, PreferredTerm, Parent_synonym)
+```
+
+```{r define pattern for prior tx}
+prior_tx_pattern <- "previous|prior"
+# 
+# prior_tx_pattern <- c("previous", "prior", "previous therapy", "prior therapy", "previous treatment", "prior treatment")
+
+```
+
+```{r filter and retain only kwic_tx containing prior tx pattern}
+prior_tx_populations <- indexOnPattern(dataframe = kwic_prior_tx_populations, pattern = prior_tx_pattern, featureLabel = "prior therapy")
+
+## harmonise columns and names with other indexing outputs
+prior_tx_populations <- unique(dplyr::select(prior_tx_populations, "match"="therapy_synonym", nct_id, id, id_type, text, feature, "controlled_match"="PreferredTerm"))
+```
+
+
+#### **Write indexed population data to database**  
+
+```{r row bind indexed features into single table}
+
+population_features <- rbind(mutation_populations, rearrangement_populations, amplification_populations, loss_populations, prior_tx_populations)
+```
+  
+* Indexing results are saved to the *population_features* table:  
+  
+`r formattable(head(population_features))`  
+  
+
+```{r write population_features to database}
+## create as a table in database
+dbWriteTable(conn = con,name = "population_features", value = population_features, overwrite=TRUE)
+
+## check it has saved
+# dbListTables(con)
+```
+  
+### **Get pathway graph data from KEGG**  
+  
+* We will get pathway information from KEGG, specifically for the pathway *Pathways In Cancer* (KEGG ID *hsa05200*).  
+  
+```{r get edge list}
+
+## download KGML file for Pathways In Cancer as KGML file
+pathwaysInCancer_KGML <- get_KGML("hsa05200")
+#class(pathwaysInCancer_KGML)
+
+## expand mappings
+pathwaysInCancer_mappings <- expand_KEGG_mappings(pathwaysInCancer_KGML, convert_KEGG_IDs = FALSE)
+pathwaysInCancer_mappings <- expand_KEGG_mappings(pathwaysInCancer_KGML)
+pathwaysInCancer_edges <- expand_KEGG_edges(pathwaysInCancer_KGML, pathwaysInCancer_mappings)
+
+## create a simple edgelist
+edges <- unique(dplyr::select(pathwaysInCancer_edges, "from"="entry1symbol", "to"="entry2symbol", specific_subtype, value))
+
+## note this includes nodes other than genes (e.g. estradiol)
+
+# #Modify existing data sets; specify as nodes and edges
+# pathwaysInCancer_node_mapping_info <- node_mapping_info(pathwaysInCancer_mappings)
+# 
+# pathwaysInCancer_edge_mapping_info <- edge_mapping_info(pathwaysInCancer_edges)
+# 
+# #Create an igraph object
+# pathwaysInCancer.igraph <- get_graph_object(pathwaysInCancer_node_mapping_info, pathwaysInCancer_edge_mapping_info)
+# 
+# ## get edgelist
+# edges <- as_data_frame(pathwaysInCancer.igraph, what = c("edges"))
+# 
+# ## retain only edges where "from" is a gene
+# edges <- unique(dplyr::filter(edges, entry1type=="gene"))
+# 
+# ## drop unnecessary columns
+# # keep edge IDs fur use in graph analysis 
+# edges <- unique(dplyr::select(edges, "from"="entry1symbol", "to"="entry2symbol",edgeID, specific_subtype, tooltip))
+# 
+# 
+# ## unnest the from and to columns
+# edges$from <- strsplit(edges$from, split = ",")
+# edges <- unnest(edges, cols = "from")
+# 
+# edges$to <- strsplit(edges$to, split = ",")
+# edges <- unnest(edges, cols = "to")
+# 
+# ## convert back to dataframe
+# edges <- as.data.frame(edges)
+
+```
+  
+* These data are saved as a simple edge list in the *edges* table  
+ * "-->" denotes *Activation*  
+ * "--|" denotes *Inhibition*  
+ * "..>" denotes *Indirect effect*  
+ * "-+-" denotes *Dissociation*  
+ * "---" denotes *Binding*  
+ * "-/-" denotes *Missing interaction*  
+  
+
+`r formattable(head(edges))`  
+  
+```{r create table of edges}
+## preview
+formattable(head(edges))
+
+## create as a table in database
+dbWriteTable(conn = con,name = "edges", value = edges, overwrite=TRUE)
+
+## check it has saved
+# dbListTables(con)
+
+```
+  
+  
+### **Create views for trial finder**  
+  
+For compatibility with existing code for trial finder interface (and to maximise responsiveness of that interface), we will save non-normalised "views" of data in tables that will be ingested by the trial finder (*TRIAL_MATCH_SHINY.Rmd*)  
+  
+#### **Studies view**  
+  
+* For trial finder, we will retain only those studies with at least one site that is open (status = *Recruiting* or *Not yet recruiting*) in the country specified in config file...  
+
+##### **Map local open facilities to latitude and longitude values**  
+  
+* For sites with a valid UK zipcode, we will map to precise locations based on the zip code  
+
+```{r download ordnance survey data}
+
+## start timer
+tic("download ordnance survey data")
+
+## specify URL for download 
+
+## https://www.freemaptools.com/download/full-uk-postcodes/ukpostcodes.zip
+postcodesURL <- "https://www.freemaptools.com/download/full-uk-postcodes/ukpostcodes.zip"
+
+destPostcodesFilename <- "uk_postcodes.zip"
+
+## use trycatch in case download throws an error
+tryCatch(
+    { download.file(url=postcodesURL, destfile = destPostcodesFilename)
+        unzip(zipfile = paste0(getwd(),"/",destPostcodesFilename))
+        
+        
+        ## tested on 16 March 2022, header row missing.... 
+        uk_postcodes <- read.csv("ukpostcodes.csv", header = TRUE, stringsAsFactors = FALSE)
+        
+        ## assume no header row
+        # uk_postcodes <- read.csv("ukpostcodes.csv", header = FALSE, stringsAsFactors = FALSE)
+        ## manually assign column names - if no header was present, first line of data will be lost...
+        names(uk_postcodes) <- c( "id","postcode","latitude","longitude")
+        
+        
+        ## clean up, delete files
+        file.remove("uk_postcodes.zip")
+        file.remove("ukpostcodes.csv")
+        
+        ## create as a table in database
+        dbWriteTable(conn = con,name = "uk_postcodes", value = uk_postcodes, overwrite=TRUE)
+    }, error=function(cond) {
+      print("Unable to download postcodes, reverting to last saved version from database...")             }) 
+
+## if download has thrown an error, last downloaded postcodes table will be used
+if(!exists("uk_postcodes")) {
+  uk_postcodes <- dbGetQuery(con, "SELECT * FROM uk_postcodes")
+}
+toc()
+
+```
+
+```{r map postcodes to lat and long where possible}
+
+## convert postcodes to lowercase for join
+uk_postcodes$postcode_lower <- tolower(uk_postcodes$postcode)
+local_open_studies$zip_lower <- tolower(local_open_studies$zip)
+
+## merge
+local_open_studies <- merge(x=local_open_studies, by.x = "zip_lower", all.x = TRUE, y=uk_postcodes, by.y="postcode_lower")
+
+## delete uk_postcodes object from memory
+rm(uk_postcodes)
+```
+  
+* For all other sites, we will map to latitude, longitude values for the city (less precise - typically maps to centre of city)  
+  
+```{r map cities to lat and long}
+## start timer
+tic("map cities to lat and long")
+
+## get a list of cities that are still missing lat, long values 
+missing_cities <- data.frame(verbatim = as.character(unique(local_open_studies$city[is.na(local_open_studies$latitude)])))
+
+## need to process 
+missing_cities$processed <- as.character(missing_cities$verbatim)
+missing_cities$processed <- strsplit(x=missing_cities$processed, split = ",")
+missing_cities <- as.data.frame(unnest(data = missing_cities, processed))
+missing_cities$processed <- str_squish(missing_cities$processed)
+missing_cities$processed <- paste0(missing_cities$processed, ", ", configuration$country)
+
+
+## use tidygeocoder (MIT licence)
+## need append country from config file after city name...
+geocoder_addresses <- as.data.frame(tidygeocoder::geo(address = unique(missing_cities$processed), method = 'osm'))
+
+## join to missing cities
+missing_cities <- merge(x=missing_cities, by.x="processed", y=geocoder_addresses, by.y="address")
+
+## join to local_open_studies
+local_open_studies <- merge(x=local_open_studies, by.x="city", all.x=TRUE, y=dplyr::select(missing_cities, verbatim, "geo_lat"="lat", "geo_long"="long"), by.y = "verbatim")
+
+
+## replace the missing latitude and longitude values with the geocoder values
+local_open_studies$latitude[is.na(local_open_studies$latitude)] <- local_open_studies$geo_lat[is.na(local_open_studies$latitude)]
+
+local_open_studies$longitude[is.na(local_open_studies$longitude)] <- local_open_studies$geo_long[is.na(local_open_studies$longitude)]
+
+## select and reorder columns
+# local_open_studies <- unique(dplyr::select(local_open_studies, nct_id, facility_name, facility_status, city, latitude, longitude))
+
+
+toc()
+```
+  
+* A table of local study sites, their statuses and lat, long values for their location has been saved to the *local_open_studies table*:  
+  
+`r formattable(head(local_open_studies))`  
+  
+```{r write uk local_open_studies to database}
+## create as a table in database
+dbWriteTable(conn = con,name = "local_open_studies", value = local_open_studies, overwrite=TRUE)
+
+## check it has saved
+# dbListTables(con)
+
+```
+
+##### **Create studies view**  
+  
+* We will join this information with study information to create a view  
+  
+```{r create studies view }
+
+## for compatibility with TRIAL_MATCH_SHINY.Rmd
+## need to create a table with the following columns
+#  [1] "interventions"      "locations"          "postcode"           "nct_id"            
+#  [5] "brief_title"        "overall_status"     "condition"          "site_name"         
+#  [9] "site_status"        "investigators"      "contacts"           "central_contacts"  
+# [13] "Refresh.date"       "matching.condition" "TARGET.condition"   "Link"              
+# [17] "postcode.lat"       "postcode.long"      "lat"                "long"              
+# [21] "ParentTerm" 
+# no columns are aggregated
+
+## in order to restrict size of table, we will limit rows to studies with overall status of Recruiting
+
+## we will also include last_update_posted_date  
+
+## start with cancerStudies table
+open_cancerStudies_view <- unique(dplyr::select(cancerStudies, nct_id, Link, brief_title, primary_completion_date, last_update_posted_date, overall_status, condition, "Refresh.date" = "refresh_date","matching.condition" = "condition", "TARGET.condition" = "controlled_cancer_type"))
+
+open_cancerStudies_view <- dplyr::filter(open_cancerStudies_view, overall_status=="Recruiting")
+
+## join site info - at this point only sites in specified country will be retained
+open_cancerStudies_view <- unique(merge(x=open_cancerStudies_view, 
+                                   by.x = "nct_id", 
+                                   y = dplyr::select(local_open_studies, nct_id, "site_name"="facility_name", "site_status" = "facility_status", "contacts" = "email", central_contacts, investigators, "locations"="city","postcode"="zip", "postcode.lat"="latitude", "postcode.long"="longitude", "lat"="latitude", "long"="longitude"), 
+                                   by.y = "nct_id"))
+
+## add an empty postcode column (will get dropped anyway)
+#open_cancerStudies_view$postcode <- NA
+
+## join interventions info
+open_cancerStudies_view <- unique(merge(x=open_cancerStudies_view, 
+                                   by.x = "nct_id", 
+                                   y = dplyr::select(interventions, nct_id, "interventions"="intervention_name", "ParentTerm" = "Mechanism"), 
+                                   by.y = "nct_id"))
+
+## add a duplicated matching condition column for consistency with shiny app
+open_cancerStudies_view$condition <- open_cancerStudies_view$matching.condition
+
+## select, rename and reorder for consistency with trialMatchDataRefresh.Rmd
+open_cancerStudies_view <- unique(dplyr::select(open_cancerStudies_view, interventions, locations, postcode, nct_id, brief_title, primary_completion_date, last_update_posted_date, overall_status,condition, site_name, site_status, investigators, contacts, central_contacts, Refresh.date, matching.condition, TARGET.condition, Link, postcode.lat, postcode.long, lat, long, ParentTerm))
+
+
+## cast variables to correct format
+open_cancerStudies_view$long <- as.character(open_cancerStudies_view$long)
+open_cancerStudies_view$lat <- as.numeric(open_cancerStudies_view$lat)
+
+open_cancerStudies_nct_ids <- unique(open_cancerStudies_view$nct_id)
+
+number_studies_in_view <- length(unique(open_cancerStudies_nct_ids))
+
+mean_days_since_update <- round(as.numeric(mean(Sys.Date()-open_cancerStudies_view$last_update_posted_date)), digits = 0)
+```
+  
+* Studies view is saved in the *open_cancerStudies_view*:  
+* As of `r format(Sys.Date(), format = "%d %b %Y")`:  
+  * the total number of studies in this view is `r number_studies_in_view`  
+  * the mean number of days since the study records were updated is `r mean_days_since_update`  
+  
+
+```{r save open_cancerStudies_view to DB}
+## preview
+formattable(head(open_cancerStudies_view))
+
+## create as a table in database
+dbWriteTable(conn = con,name = "open_cancerStudies_view", open_cancerStudies_view, overwrite=TRUE)
+
+## check it has saved
+# dbListTables(con)
+
+```
+  
+#### **indexedEligibility view**  
+  
+* We will save genetic inclusion criteria and prior therapy exclusion criteria in the format required by trial finder  
+  
+```{r create indexedEligibility view}
+## start with population features
+
+## exclude studies not in open_cancerStudies_view
+indexed_eligibilities_view <- unique(dplyr::filter(population_features, nct_id %in% open_cancerStudies_nct_ids))
+
+## get prior therapy exclusion criteria
+therapy_exclusions <- unique(dplyr::filter(indexed_eligibilities_view, id_type == "EXCLUSION" & feature == "prior therapy"))
+
+## get inclusion criteria
+indexed_eligibilities_view <- unique(dplyr::filter(indexed_eligibilities_view, id_type == "INCLUSION"))
+
+## row bind 
+indexed_eligibilities_view <- rbind(indexed_eligibilities_view, therapy_exclusions)
+
+## select and rename columns for consistency with trialMatchDataRefresh.Rmd
+indexed_eligibilities_view <- dplyr::select(indexed_eligibilities_view, nct_id, "criteria"="text", "criterion.type"="id_type", feature, match, "controlled.match"="controlled_match")
+```
+
+* These data (studies in open_cancerStudies_view only) are saved in the *indexed_eligibilities_view* table:  
+
+```{r save indexed_eligibilities_view to DB}
+## preview
+formattable(head(indexed_eligibilities_view))
+
+## create as a table in database
+dbWriteTable(conn = con,name = "indexed_eligibilities_view", indexed_eligibilities_view , overwrite=TRUE)
+
+## check it has saved
+# dbListTables(con)
+
+```
+  
+#### **Scored matches view**  
+  
+* Studies will be scored as follows:  
+  
+  * Assign *eligibility_score* +3 if enrolling patients with 1 or more specified alteration  
+
+```{r score population features}
+## get matching inclusion criteria
+scored_matches_study <- unique(dplyr::filter(indexed_eligibilities_view, criterion.type=="INCLUSION"))
+
+## drop rows without a gene match
+scored_matches_study <- dplyr::filter(scored_matches_study, !is.na(controlled.match))
+## drop rows based on prior therapy
+scored_matches_study <- dplyr::filter(scored_matches_study, feature != "prior therapy")
+
+## concatenate gene name and feature
+scored_matches_study$gene_variant_type <- paste(scored_matches_study$controlled.match, scored_matches_study$feature, sep = " ")
+
+## create a string to describe rationale
+scored_matches_study$eligibility_rationale <- paste0("Enrolling subjects with ", scored_matches_study$gene_variant_type)
+
+## select, rename and reorder columns for compatibility with trialMatchDataRefresh.Rmd
+scored_matches_study <- unique(dplyr::select(scored_matches_study, "symbol"="controlled.match", "variant_type"="feature", nct_id, eligibility_rationale, "matching_criteria"="criteria"))
+
+## where multiple criteria, aggregate
+scored_matches_study <- scored_matches_study %>%
+                                      group_by(nct_id, symbol, variant_type, eligibility_rationale) %>%
+                                      summarise(
+                                        matching_criteria = paste(unique(matching_criteria), collapse = "\n\n")
+                ) %>%
+  as.data.frame()
+  
+## add a score
+scored_matches_study$eligibility_score <- 3
+```
+
+  * Assign *eligibility_score* +4 if study design group includes patients with 1 or more specified alteration (i.e. stratified on alteration)  
+
+```{r score design group features}
+## get matching design groups
+scored_matches_dg <- unique(dplyr::filter(population_features, id_type=="design_group"))
+
+## exclude studies not in open_cancerStudies_view
+scored_matches_dg <- unique(dplyr::filter(scored_matches_dg, nct_id %in% open_cancerStudies_nct_ids))
+
+
+## drop rows without a gene match
+scored_matches_dg <- dplyr::filter(scored_matches_dg, !is.na(controlled_match))
+## drop rows based on prior therapy
+scored_matches_dg <- dplyr::filter(scored_matches_dg, feature != "prior therapy")
+
+## concatenate gene name and feature
+scored_matches_dg$gene_variant_type <- paste(scored_matches_dg$controlled_match, scored_matches_dg$feature, sep = " ")
+
+## create a string to describe rationale
+scored_matches_dg$eligibility_rationale <- paste0("Stratified on ", scored_matches_dg$gene_variant_type)
+
+## select, rename and reorder columns for compatibility with trialMatchDataRefresh.Rmd
+scored_matches_dg <- unique(dplyr::select(scored_matches_dg,nct_id,"symbol"="controlled_match",  "variant_type"="feature", eligibility_rationale, "matching_criteria"="text"))
+                                          
+## where multiple criteria, aggregate
+scored_matches_dg <- scored_matches_dg %>%
+                                      group_by(nct_id, symbol, variant_type, eligibility_rationale) %>%
+                                      summarise(
+                                        matching_criteria = paste(unique(matching_criteria), collapse = "\n\n")
+                ) %>%
+  as.data.frame()
+  
+## add a score - we will assign a score of +4 so that this takes precedent over inclusion criteria (where both apply)
+scored_matches_dg$eligibility_score <- 4
+```
+  
+```{r combine rationale for eligibility and design groups}
+## row bind the two tables
+scored_matches_study <- rbind(scored_matches_study, scored_matches_dg)
+
+## based on DG feedback, where there is a match in both eligibility criteria and design group descriptions, we will not add scores
+## presumably, we should only show one of the criteria - either eligibility or design groups, not both
+## in order to do so, we will only show the row with the highest eligibility_score (i.e. stratification)...  
+
+scored_matches_study <- scored_matches_study %>%
+  group_by(nct_id, symbol, variant_type) %>%
+  arrange(desc(eligibility_score)) %>%
+  summarise(
+    eligibility_rationale = eligibility_rationale[1],
+    matching_criteria = matching_criteria[1],
+    eligibility_score = 3 ## reset so stratification and inclusion are scored identically
+  ) %>%
+  as.data.frame()
+
+```
+
+  * Assign *intervention_score* +2 if any intervention targets an altered gene directly  
+
+```{r score matches on intervention target}
+## start with interventions
+scored_matches_interventions <- unique(dplyr::select(interventions, nct_id, intervention_name, target_symbol))
+
+## exclude studies not in open_cancerStudies_view
+scored_matches_interventions <- unique(dplyr::filter(scored_matches_interventions, nct_id %in% open_cancerStudies_nct_ids))
+
+## exclude rows where target is NA
+scored_matches_interventions <- dplyr::filter(scored_matches_interventions, !is.na(target_symbol))
+
+## add rationale column
+scored_matches_interventions$intervention_rationale <- paste0("Study intervention (", scored_matches_interventions$intervention_name, ") targets ", scored_matches_interventions$target_symbol)
+
+## add a score
+scored_matches_interventions$intervention_score <- 2
+```
+  
+  * Assign *intervention_score* +1 if any intervention targets a gene immediately downstream of an altered gene  
+
+```{r score matches on pathway neighbour targets}
+
+## start with interventions
+scored_matches_interventions_pathways <- unique(dplyr::select(interventions, nct_id, intervention_name, target_symbol))
+
+## exclude studies not in open_cancerStudies_view
+scored_matches_interventions_pathways <- unique(dplyr::filter(scored_matches_interventions_pathways, nct_id %in% open_cancerStudies_nct_ids))
+
+## exclude rows where target is NA
+scored_matches_interventions_pathways <- dplyr::filter(scored_matches_interventions_pathways, !is.na(target_symbol))
+
+## join to edges, where drugTargetSymbol == to
+## i.e. intervention targets the downstream node
+scored_matches_interventions_pathways <- merge(x=scored_matches_interventions_pathways, by.x="target_symbol", y=dplyr::select(edges, from, to), by.y="to")
+
+## drop any from values that are not genes
+scored_matches_interventions_pathways <- dplyr::filter(scored_matches_interventions_pathways, from %in% humanGenes$Symbol)
+
+## select and rename columns
+scored_matches_interventions_pathways <- unique(dplyr::select(scored_matches_interventions_pathways,nct_id, intervention_name, "downstream"="target_symbol","upstream"="from" ))
+
+## where an intervention targets >1 gene, aggregate
+scored_matches_interventions_pathways <- as.data.frame(scored_matches_interventions_pathways %>%
+                group_by(nct_id, intervention_name, upstream) %>%
+                summarise(
+                  downstream = paste(unique(downstream), collapse = ", ")
+                ))
+
+## add rationale column
+scored_matches_interventions_pathways$intervention_rationale <- paste0("Study drug (", scored_matches_interventions_pathways$intervention_name, ") targets downstream gene(s) (", scored_matches_interventions_pathways$downstream, ")")
+
+## drop downstream column
+scored_matches_interventions_pathways <- unique(dplyr::select(scored_matches_interventions_pathways, -c(downstream)))
+
+## rename upstream column to target_symbol to match scored_matches_interventions
+#pathwayMatches <- rename(pathwayMatches, "symbol"="upstream")
+scored_matches_interventions_pathways$target_symbol <- scored_matches_interventions_pathways$upstream
+scored_matches_interventions_pathways <- dplyr::select(scored_matches_interventions_pathways, -upstream)
+
+
+## add a score
+scored_matches_interventions_pathways$intervention_score <- 1
+
+## harmonise columns
+scored_matches_interventions_pathways <- unique(dplyr::select(scored_matches_interventions_pathways, names(scored_matches_interventions)))
+
+```
+  
+    * If an intervention is listed as targeting a gene directly **and** targeting a second gene immediately downstream, we will just take the highest score (i.e. +2)  
+    
+```{r combine target and pathway matches}
+## combine matches on target and pathway
+scored_matches_interventions_combined <- rbind(scored_matches_interventions, scored_matches_interventions_pathways)
+
+## where intervention had both direct and pathway matches, just take the highest score
+scored_matches_interventions_combined <- scored_matches_interventions_combined %>%
+  group_by(nct_id, intervention_name, target_symbol) %>%
+  arrange(desc(intervention_score)) %>%
+  summarise(
+    intervention_rationale = head(intervention_rationale, 1), 
+    intervention_score = head(intervention_score, 1)
+  )
+
+```
+
+```{r expand intervention matches to apply to all alteration types}
+## for genes that don't have a match in eligilityMatches, we want to be able to match on gene alone, regardless of variant_type... 
+scored_matches_interventions_combined$variant_type <- list(unique(scored_matches_study$variant_type))
+
+## unnest to multiply rows
+scored_matches_interventions_combined <- data.frame(unnest(scored_matches_interventions_combined, cols = "variant_type"))
+
+## select and reorder columns 
+scored_matches_interventions_combined <- dplyr::select(scored_matches_interventions_combined, nct_id, "symbol"="target_symbol", variant_type, intervention_rationale, intervention_score)
+
+```
+  
+* Calculate a *combined_score* = *eligibility_score* + *intervention_score*  
+  
+```{r calculate combined scores}
+## merge matches tables 
+scoredMatches_view <- merge(x=scored_matches_study, by.x=c("nct_id", "symbol", "variant_type"), all.x=TRUE, 
+      y=scored_matches_interventions_combined, by.y = c("nct_id", "symbol", "variant_type"), all.y=TRUE)
+
+## add a combined score
+scoredMatches_view$combined_score <- rowSums(scoredMatches_view[,c("intervention_score", "eligibility_score")], na.rm=TRUE)
+
+## concatenate symbol and variant_type columns to get <gene name> <variant_type>, e.g. "EGFR mutation"
+scoredMatches_view$gene_variant_type <- paste(scoredMatches_view$symbol, scoredMatches_view$variant_type, sep=" ")
+
+## select and reorder columns
+scoredMatches_view <- unique(dplyr::select(scoredMatches_view, symbol, variant_type,gene_variant_type, nct_id, intervention_rationale, eligibility_rationale, matching_criteria, combined_score))
+
+## order on combined_score descending
+scoredMatches_view <- scoredMatches_view[order(scoredMatches_view$combined_score, decreasing = TRUE), ]
+
+```
+
+* Scored matches (studies in open_cancerStudies_view only) are saved in the *scoredMatches_view* table:  
+
+```{r save scoredMatches_view to DB}
+## preview
+formattable(head(scoredMatches_view))
+
+## create as a table in database
+dbWriteTable(conn = con,name = "scoredMatches_view", scoredMatches_view , overwrite=TRUE)
+
+## check it has saved
+# dbListTables(con)
+
+```
+
+```{r disconnect from  database}
+
+# disconnect from clinicaltrials.gov
+dbDisconnect(conn2)
+
+# Disconnect from SQLite database
+dbDisconnect(con)
+
+```
+  
+`r knitr::knit_exit()`  
+
+
+```{r get result groups}
+getResultGroupsQ <- paste0("select rg.nct_id, rg.id as rg_id, ctgov_group_code, result_type, rg.title as rg_title, rg.description as rg_description
+from result_groups rg 
+where rg.nct_id in (",
+"", studyIDsForSQL,
+")")
+
+## get criteria from clinicaltrials.gov
+result_groups <- dbGetQuery(conn2,getResultGroupsQ)
+
+```
+ 
+```{r get outcome measurements table}
+
+getOutcome_measurements <- paste0("select *
+from outcome_measurements 
+where nct_id in (",
+"", studyIDsForSQL,
+")")
+# 
+## get data from clinicaltrials.gov
+outcome_measurements <- dbGetQuery(conn2, getOutcome_measurements)
+ 
+
+
+```
+  
+```{r get reported event counts}
+
+getAEcounts <- paste0("select *
+from reported_events 
+where nct_id in (",
+"", studyIDsForSQL,
+")")
+# 
+## get criteria from clinicaltrials.gov
+AE_counts <- dbGetQuery(conn2, getAEcounts)
+
+## order on subjects_affected descending
+AE_counts <- AE_counts[order(AE_counts$subjects_affected, decreasing = TRUE), ]
+
+# kbl(head(AE_counts), format = "html",escape = FALSE) %>%
+#   kable_styling(fixed_thead = T, bootstrap_options = c("striped", "hover", "condensed")) %>%
+#   scroll_box(width = "125%", height = "200px")
+```
+ 
+```{r get event totals}
+
+getAEtotals <- paste0("select *
+from reported_event_totals 
+where nct_id in (",
+"", studyIDsForSQL,
+")")
+# 
+## get criteria from clinicaltrials.gov
+AE_totals <- dbGetQuery(conn2, getAEtotals)
+
+```
+
 
 ### **Get result groups**  
   
@@ -1172,7 +1786,19 @@ result_groups$rg_title_description <- paste(result_groups$rg_title, result_group
 result_groups$rg_title_description <- gsub(pattern = "\U00B5|\U03BC", replacement = "u", x=result_groups$rg_title_description)
 
 ```
-  
+ 
+```{r filter result groups and retain only outcomes and events}
+## NOTE SOME RESULT GROUPS ARE "TOTAL" i.e. total values for all groups
+## these will not be specified as design groups
+## if we try to map these onto a design group, the mapping is likely to barf
+## WE WILL EXCLUDE THESE GROUPS AT THIS POINT by filtering result groups and retaining only those where result_type = "Outcome" or "Reported Event"... 
+
+result_groups <- unique(dplyr::filter(result_groups, result_type %in% c("Outcome", "Reported Event")))
+
+## update list of unmapped result groups ids
+# unmapped_result_group_ids <- setdiff(x=result_groups$rg_id, y=predictions$rg_id)
+```
+
 ### **Map result groups to design groups**  
   
 Interventions are linked to design groups (study arms).   
@@ -1266,21 +1892,7 @@ unmapped_result_group_ids <- setdiff(x=result_groups$rg_id, y=predictions$rg_id)
   
 For result groups that remain unmapped after the above, we will map them to the design group for that study that has the most similar title and/or description.  
   
-```{r filter result groups and retain only outcomes and events}
-## NOTE SOME RESULT GROUPS ARE "TOTAL" i.e. total values for all groups
-## these will not be specified as design groups
-## if we try to map these onto a design group, the mapping is likely to barf
-## WE WILL EXCLUDE THESE GROUPS AT THIS POINT by filtering result groups and retaining only those where result_type = "Outcome" or "Reported Event"... 
 
-result_groups <- unique(dplyr::filter(result_groups, result_type %in% c("Outcome", "Reported Event")))
-
-## update list of unmapped result groups ids
-unmapped_result_group_ids <- setdiff(x=result_groups$rg_id, y=predictions$rg_id)
-```
-
-```{r define stopwords}
-stopwords <- as.data.frame(tidytext::get_stopwords())
-```
 
 For each unmapped design group, we will create a document-term matrix from design group title and description, then use this to generate a classification tree model to predict design group ids for document-term matrices based on result group titles and descriptions.  
   
@@ -1450,22 +2062,21 @@ predictions <- merge(x=predictions, by.x=c("nct_id", "predicted_design_group"), 
 
 ```
   
-`r length(unmapped_result_group_ids)` of `r length(unique(result_groups$rg_id))` result groups have not been mapped to a predicted design group.  
+
   
 Predicted mappings from result groups to design groups are stored in the *predictions* table:  
   
-`r formattable(head(predictions,10))`  
-  
+
   
 ```{r write predictions to database}
 ## create as a table in database
-dbWriteTable(conn = con,name = "predictions", value = predictions, overwrite=TRUE)
-
-## check it has saved
-# dbListTables(con)
-
-## delete unmapped study ids
-rm(unmapped_study_ids)
+# dbWriteTable(conn = con,name = "predictions", value = predictions, overwrite=TRUE)
+# 
+# ## check it has saved
+# # dbListTables(con)
+# 
+# ## delete unmapped study ids
+# rm(unmapped_study_ids)
 
 ```
 
@@ -1488,67 +2099,66 @@ rm(unmapped_study_ids)
 ```{r filter and return only OS data}
 
 ## first filter on on presence of OS pattern
-OS_pattern <- "\\bOS\\b|\\boverall survival\\b"
-overall_survival <- outcome_measurements[grep(pattern = OS_pattern, x=outcome_measurements$title, ignore.case = TRUE), ]
-
-## second, filter on units
-# overall_survival <- overall_survival[grep(pattern = "days|weeks|months|years", x=overall_survival$units, ignore.case = TRUE), ]
-overall_survival$units <- tolower(overall_survival$units)
-overall_survival <- unique(dplyr::filter(overall_survival, units %in% c("days", "weeks", "months", "years")))
-
-## remove the param_value column
-overall_survival <- dplyr::select(overall_survival, -c(param_value))
-
-## convert days to months
-## ASSUME 28 DAYS IN A MONTH
-# convert point estimates
-overall_survival$param_value_num[grep(pattern = "days", x=overall_survival$units, ignore.case = TRUE)] <- round(overall_survival$param_value_num[grep(pattern = "days", x=overall_survival$units, ignore.case = TRUE)]/28, digits = 1)
-# convert LL
-overall_survival$dispersion_lower_limit[grep(pattern = "days", x=overall_survival$units, ignore.case = TRUE)] <- round(overall_survival$dispersion_lower_limit[grep(pattern = "days", x=overall_survival$units, ignore.case = TRUE)]/28, digits = 1)
-# convert UL
-overall_survival$dispersion_upper_limit[grep(pattern = "days", x=overall_survival$units, ignore.case = TRUE)] <- round(overall_survival$dispersion_upper_limit[grep(pattern = "days", x=overall_survival$units, ignore.case = TRUE)]/28, digits = 1)
-# reset units 
-overall_survival$units[grep(pattern = "days", x=overall_survival$units, ignore.case = TRUE)] <- "months"
-
+# OS_pattern <- "\\bOS\\b|\\boverall survival\\b"
+# overall_survival <- outcome_measurements[grep(pattern = OS_pattern, x=outcome_measurements$title, ignore.case = TRUE), ]
+# 
+# ## second, filter on units
+# # overall_survival <- overall_survival[grep(pattern = "days|weeks|months|years", x=overall_survival$units, ignore.case = TRUE), ]
+# overall_survival$units <- tolower(overall_survival$units)
+# overall_survival <- unique(dplyr::filter(overall_survival, units %in% c("days", "weeks", "months", "years")))
+# 
+# ## remove the param_value column
+# overall_survival <- dplyr::select(overall_survival, -c(param_value))
+# 
+# ## convert days to months
+# ## ASSUME 28 DAYS IN A MONTH
+# # convert point estimates
+# overall_survival$param_value_num[grep(pattern = "days", x=overall_survival$units, ignore.case = TRUE)] <- round(overall_survival$param_value_num[grep(pattern = "days", x=overall_survival$units, ignore.case = TRUE)]/28, digits = 1)
+# # convert LL
+# overall_survival$dispersion_lower_limit[grep(pattern = "days", x=overall_survival$units, ignore.case = TRUE)] <- round(overall_survival$dispersion_lower_limit[grep(pattern = "days", x=overall_survival$units, ignore.case = TRUE)]/28, digits = 1)
+# # convert UL
+# overall_survival$dispersion_upper_limit[grep(pattern = "days", x=overall_survival$units, ignore.case = TRUE)] <- round(overall_survival$dispersion_upper_limit[grep(pattern = "days", x=overall_survival$units, ignore.case = TRUE)]/28, digits = 1)
+# # reset units 
+# overall_survival$units[grep(pattern = "days", x=overall_survival$units, ignore.case = TRUE)] <- "months"
+# 
 
 
 ## convert weeks to months
 ## ASSUME 4 WEEKS IN A MONTH
 # convert point estimates
-overall_survival$param_value_num[grep(pattern = "weeks", x=overall_survival$units, ignore.case = TRUE)] <- round(overall_survival$param_value_num[grep(pattern = "weeks", x=overall_survival$units, ignore.case = TRUE)]/4, digits = 1)
-# convert LL
-overall_survival$dispersion_lower_limit[grep(pattern = "weeks", x=overall_survival$units, ignore.case = TRUE)] <- round(overall_survival$dispersion_lower_limit[grep(pattern = "weeks", x=overall_survival$units, ignore.case = TRUE)]/4, digits = 1)
-# convert UL
-overall_survival$dispersion_upper_limit[grep(pattern = "weeks", x=overall_survival$units, ignore.case = TRUE)] <- round(overall_survival$dispersion_upper_limit[grep(pattern = "weeks", x=overall_survival$units, ignore.case = TRUE)]/4, digits = 1)
-# reset units 
-overall_survival$units[grep(pattern = "weeks", x=overall_survival$units, ignore.case = TRUE)] <- "months"
+# overall_survival$param_value_num[grep(pattern = "weeks", x=overall_survival$units, ignore.case = TRUE)] <- round(overall_survival$param_value_num[grep(pattern = "weeks", x=overall_survival$units, ignore.case = TRUE)]/4, digits = 1)
+# # convert LL
+# overall_survival$dispersion_lower_limit[grep(pattern = "weeks", x=overall_survival$units, ignore.case = TRUE)] <- round(overall_survival$dispersion_lower_limit[grep(pattern = "weeks", x=overall_survival$units, ignore.case = TRUE)]/4, digits = 1)
+# # convert UL
+# overall_survival$dispersion_upper_limit[grep(pattern = "weeks", x=overall_survival$units, ignore.case = TRUE)] <- round(overall_survival$dispersion_upper_limit[grep(pattern = "weeks", x=overall_survival$units, ignore.case = TRUE)]/4, digits = 1)
+# # reset units 
+# overall_survival$units[grep(pattern = "weeks", x=overall_survival$units, ignore.case = TRUE)] <- "months"
 
 
 
 ## convert years to months
 ## ASSUME 12 MONTHS IN A YEAR
 # convert point estimates
-overall_survival$param_value_num[grep(pattern = "years", x=overall_survival$units, ignore.case = TRUE)] <- round(overall_survival$param_value_num[grep(pattern = "years", x=overall_survival$units, ignore.case = TRUE)]*12, digits = 1)
-# convert LL
-overall_survival$dispersion_lower_limit[grep(pattern = "years", x=overall_survival$units, ignore.case = TRUE)] <- round(overall_survival$dispersion_lower_limit[grep(pattern = "years", x=overall_survival$units, ignore.case = TRUE)]*12, digits = 1)
-# convert UL
-overall_survival$dispersion_upper_limit[grep(pattern = "years", x=overall_survival$units, ignore.case = TRUE)] <- round(overall_survival$dispersion_upper_limit[grep(pattern = "years", x=overall_survival$units, ignore.case = TRUE)]*12, digits = 1)
-# reset units 
-overall_survival$units[grep(pattern = "years", x=overall_survival$units, ignore.case = TRUE)] <- "months"
-
-
-## add a column to indicate these are all OS data
-overall_survival$outcome_controlled <- "Overall survival"
+# overall_survival$param_value_num[grep(pattern = "years", x=overall_survival$units, ignore.case = TRUE)] <- round(overall_survival$param_value_num[grep(pattern = "years", x=overall_survival$units, ignore.case = TRUE)]*12, digits = 1)
+# # convert LL
+# overall_survival$dispersion_lower_limit[grep(pattern = "years", x=overall_survival$units, ignore.case = TRUE)] <- round(overall_survival$dispersion_lower_limit[grep(pattern = "years", x=overall_survival$units, ignore.case = TRUE)]*12, digits = 1)
+# # convert UL
+# overall_survival$dispersion_upper_limit[grep(pattern = "years", x=overall_survival$units, ignore.case = TRUE)] <- round(overall_survival$dispersion_upper_limit[grep(pattern = "years", x=overall_survival$units, ignore.case = TRUE)]*12, digits = 1)
+# # reset units 
+# overall_survival$units[grep(pattern = "years", x=overall_survival$units, ignore.case = TRUE)] <- "months"
+# 
+# 
+# ## add a column to indicate these are all OS data
+# overall_survival$outcome_controlled <- "Overall survival"
 ```
   
 * Overall survival measurements have been written to the *overall_survival* table:  
   
-`r formattable(head(overall_survival))`   
-  
+
   
 ```{r write OS table to DB}
 ## create as a table in database
-dbWriteTable(conn = con,name = "overall_survival", value = overall_survival, overwrite=TRUE)
+# dbWriteTable(conn = con,name = "overall_survival", value = overall_survival, overwrite=TRUE)
 
 ## check it has saved
 # dbListTables(con)
@@ -1566,69 +2176,68 @@ dbWriteTable(conn = con,name = "overall_survival", value = overall_survival, ove
   
 ```{r filter and return only PFS data}
 
-## first filter on on presence of OS pattern
-PFS_pattern <- "PFS|progression-free survival|progression free survival"
-PFS <- outcome_measurements[grep(pattern = PFS_pattern, x=outcome_measurements$title, ignore.case = TRUE), ]
-
-## second, filter on units
-# PFS <- PFS[grep(pattern = "days|weeks|months|years", x=PFS$units, ignore.case = TRUE), ]
-PFS$units <- tolower(PFS$units)
-PFS <- unique(dplyr::filter(PFS, units %in% c("days", "weeks", "months", "years")))
-
-
-## remove the param_value column
-PFS <- dplyr::select(PFS, -c(param_value))
-
-## convert days to months
-## ASSUME 28 DAYS IN A MONTH
-# convert point estimates
-PFS$param_value_num[grep(pattern = "days", x=PFS$units, ignore.case = TRUE)] <- round(PFS$param_value_num[grep(pattern = "days", x=PFS$units, ignore.case = TRUE)]/28, digits = 1)
-# convert LL
-PFS$dispersion_lower_limit[grep(pattern = "days", x=PFS$units, ignore.case = TRUE)] <- round(PFS$dispersion_lower_limit[grep(pattern = "days", x=PFS$units, ignore.case = TRUE)]/28, digits = 1)
-# convert UL
-PFS$dispersion_upper_limit[grep(pattern = "days", x=PFS$units, ignore.case = TRUE)] <- round(PFS$dispersion_upper_limit[grep(pattern = "days", x=PFS$units, ignore.case = TRUE)]/28, digits = 1)
-# reset units 
-PFS$units[grep(pattern = "days", x=PFS$units, ignore.case = TRUE)] <- "months"
+# ## first filter on on presence of OS pattern
+# PFS_pattern <- "PFS|progression-free survival|progression free survival"
+# PFS <- outcome_measurements[grep(pattern = PFS_pattern, x=outcome_measurements$title, ignore.case = TRUE), ]
+# 
+# ## second, filter on units
+# # PFS <- PFS[grep(pattern = "days|weeks|months|years", x=PFS$units, ignore.case = TRUE), ]
+# PFS$units <- tolower(PFS$units)
+# PFS <- unique(dplyr::filter(PFS, units %in% c("days", "weeks", "months", "years")))
+# 
+# 
+# ## remove the param_value column
+# PFS <- dplyr::select(PFS, -c(param_value))
+# 
+# ## convert days to months
+# ## ASSUME 28 DAYS IN A MONTH
+# # convert point estimates
+# PFS$param_value_num[grep(pattern = "days", x=PFS$units, ignore.case = TRUE)] <- round(PFS$param_value_num[grep(pattern = "days", x=PFS$units, ignore.case = TRUE)]/28, digits = 1)
+# # convert LL
+# PFS$dispersion_lower_limit[grep(pattern = "days", x=PFS$units, ignore.case = TRUE)] <- round(PFS$dispersion_lower_limit[grep(pattern = "days", x=PFS$units, ignore.case = TRUE)]/28, digits = 1)
+# # convert UL
+# PFS$dispersion_upper_limit[grep(pattern = "days", x=PFS$units, ignore.case = TRUE)] <- round(PFS$dispersion_upper_limit[grep(pattern = "days", x=PFS$units, ignore.case = TRUE)]/28, digits = 1)
+# # reset units 
+# PFS$units[grep(pattern = "days", x=PFS$units, ignore.case = TRUE)] <- "months"
 
 
 
 ## convert weeks to months
 ## ASSUME 4 WEEKS IN A MONTH
 # convert point estimates
-PFS$param_value_num[grep(pattern = "weeks", x=PFS$units, ignore.case = TRUE)] <- round(PFS$param_value_num[grep(pattern = "weeks", x=PFS$units, ignore.case = TRUE)]/4, digits = 1)
-# convert LL
-PFS$dispersion_lower_limit[grep(pattern = "weeks", x=PFS$units, ignore.case = TRUE)] <- round(PFS$dispersion_lower_limit[grep(pattern = "weeks", x=PFS$units, ignore.case = TRUE)]/4, digits = 1)
-# convert UL
-PFS$dispersion_upper_limit[grep(pattern = "weeks", x=PFS$units, ignore.case = TRUE)] <- round(PFS$dispersion_upper_limit[grep(pattern = "weeks", x=PFS$units, ignore.case = TRUE)]/4, digits = 1)
-# reset units 
-PFS$units[grep(pattern = "weeks", x=PFS$units, ignore.case = TRUE)] <- "months"
+# PFS$param_value_num[grep(pattern = "weeks", x=PFS$units, ignore.case = TRUE)] <- round(PFS$param_value_num[grep(pattern = "weeks", x=PFS$units, ignore.case = TRUE)]/4, digits = 1)
+# # convert LL
+# PFS$dispersion_lower_limit[grep(pattern = "weeks", x=PFS$units, ignore.case = TRUE)] <- round(PFS$dispersion_lower_limit[grep(pattern = "weeks", x=PFS$units, ignore.case = TRUE)]/4, digits = 1)
+# # convert UL
+# PFS$dispersion_upper_limit[grep(pattern = "weeks", x=PFS$units, ignore.case = TRUE)] <- round(PFS$dispersion_upper_limit[grep(pattern = "weeks", x=PFS$units, ignore.case = TRUE)]/4, digits = 1)
+# # reset units 
+# PFS$units[grep(pattern = "weeks", x=PFS$units, ignore.case = TRUE)] <- "months"
 
 
 
 ## convert years to months
 ## ASSUME 12 MONTHS IN A YEAR
 # convert point estimates
-PFS$param_value_num[grep(pattern = "years", x=PFS$units, ignore.case = TRUE)] <- round(PFS$param_value_num[grep(pattern = "years", x=PFS$units, ignore.case = TRUE)]*12, digits = 1)
-# convert LL
-PFS$dispersion_lower_limit[grep(pattern = "years", x=PFS$units, ignore.case = TRUE)] <- round(PFS$dispersion_lower_limit[grep(pattern = "years", x=PFS$units, ignore.case = TRUE)]*12, digits = 1)
-# convert UL
-PFS$dispersion_upper_limit[grep(pattern = "years", x=PFS$units, ignore.case = TRUE)] <- round(PFS$dispersion_upper_limit[grep(pattern = "years", x=PFS$units, ignore.case = TRUE)]*12, digits = 1)
-# reset units 
-PFS$units[grep(pattern = "years", x=PFS$units, ignore.case = TRUE)] <- "months"
-
-## add a column to indicate these are all PFS data
-PFS$outcome_controlled <- "Progression free survival"
+# PFS$param_value_num[grep(pattern = "years", x=PFS$units, ignore.case = TRUE)] <- round(PFS$param_value_num[grep(pattern = "years", x=PFS$units, ignore.case = TRUE)]*12, digits = 1)
+# # convert LL
+# PFS$dispersion_lower_limit[grep(pattern = "years", x=PFS$units, ignore.case = TRUE)] <- round(PFS$dispersion_lower_limit[grep(pattern = "years", x=PFS$units, ignore.case = TRUE)]*12, digits = 1)
+# # convert UL
+# PFS$dispersion_upper_limit[grep(pattern = "years", x=PFS$units, ignore.case = TRUE)] <- round(PFS$dispersion_upper_limit[grep(pattern = "years", x=PFS$units, ignore.case = TRUE)]*12, digits = 1)
+# # reset units 
+# PFS$units[grep(pattern = "years", x=PFS$units, ignore.case = TRUE)] <- "months"
+# 
+# ## add a column to indicate these are all PFS data
+# PFS$outcome_controlled <- "Progression free survival"
 ```
   
     
 * Progression-free survival measurements have been written to the *PFS* table:  
   
-`r formattable(head(PFS))`   
 
 
 ```{r write PFS table to DB}
 ## create as a table in database
-dbWriteTable(conn = con,name = "PFS", value = PFS, overwrite=TRUE)
+# dbWriteTable(conn = con,name = "PFS", value = PFS, overwrite=TRUE)
 
 ## check it has saved
 # dbListTables(con)
@@ -1649,19 +2258,19 @@ dbWriteTable(conn = con,name = "PFS", value = PFS, overwrite=TRUE)
 * We can derive *percent_affected* based on subjects_affected / subjects_at_risk...  
 
 ```{r derive AE rates}
-AE_counts$percent_affected <- round(((AE_counts$subjects_affected * 100)/ AE_counts$subjects_at_risk), digits = 1)
-
-
-kbl(head(AE_counts), format = "html",escape = FALSE) %>%
-  kable_styling(fixed_thead = T, bootstrap_options = c("striped", "hover", "condensed")) %>%
-  scroll_box(width = "125%", height = "200px")
+# AE_counts$percent_affected <- round(((AE_counts$subjects_affected * 100)/ AE_counts$subjects_at_risk), digits = 1)
+# 
+# 
+# kbl(head(AE_counts), format = "html",escape = FALSE) %>%
+#   kable_styling(fixed_thead = T, bootstrap_options = c("striped", "hover", "condensed")) %>%
+#   scroll_box(width = "125%", height = "200px")
 
 
 ```
   
 ```{r write AE counts table to DB}
 ## create as a table in database
-dbWriteTable(conn = con,name = "AE_counts", value = AE_counts, overwrite=TRUE)
+# dbWriteTable(conn = con,name = "AE_counts", value = AE_counts, overwrite=TRUE)
 
 ## check it has saved
 # dbListTables(con)
@@ -1681,1327 +2290,20 @@ dbWriteTable(conn = con,name = "AE_counts", value = AE_counts, overwrite=TRUE)
 ```{r derive percent affected}
 
 ## derive percent affected
-AE_totals$percent_affected <- round((AE_totals$subjects_affected * 100)/ AE_totals$subjects_at_risk, digits = 1)
-
-kbl(head(AE_totals), format = "html",escape = FALSE) %>%
-  kable_styling(fixed_thead = T, bootstrap_options = c("striped", "hover", "condensed")) %>%
-  scroll_box(width = "125%", height = "200px")
+# AE_totals$percent_affected <- round((AE_totals$subjects_affected * 100)/ AE_totals$subjects_at_risk, digits = 1)
+# 
+# kbl(head(AE_totals), format = "html",escape = FALSE) %>%
+#   kable_styling(fixed_thead = T, bootstrap_options = c("striped", "hover", "condensed")) %>%
+#   scroll_box(width = "125%", height = "200px")
 ```
 
 
 ```{r write AE totals table to DB}
 ## create as a table in database
-dbWriteTable(conn = con,name = "AE_totals", value = AE_totals, overwrite=TRUE)
+# dbWriteTable(conn = con,name = "AE_totals", value = AE_totals, overwrite=TRUE)
 
 ## check it has saved
 # dbListTables(con)
 
 ```
 
-
-### **Index trial populations**  
-  
-* See also https://tutorials.quanteda.io/basic-operations/corpus/corpus/ for workflow from quanteda...  
-  
-( We will index each of: eligibility criteria, design groups (titles and descriptions) and result groups (titles and descriptions)...  
-  
-* The process is as follows:  
-   
-* First, create a tidy table containing the relevant text, plus identifiers that will allow us to rejoin the results...  
-  * For criteria, we will use the verbatim criteria as text  
-  * For design and result groups, we will use concatenation of title and description  
-  
-  
-```{r create tidy table of criteria plus dgs plus rgs}
-
-text_for_indexing <- data.frame(nct_id = character(0), 
-                                id=character(0), 
-                                id_type = character(0), 
-                                text = character(0))
-
-    
-eligibilities_for_indexing <- eligibilities %>% 
-         # mutate(id_type="criterion_index") %>%
-         dplyr::select(nct_id, "id"="criterion_index","id_type"="criterion_type","text"="criteria") %>%
-         unique()
-
-design_groups_for_indexing <- design_groups %>% 
-         mutate(id_type="design_group") %>%
-         dplyr::select(nct_id, "id"="dg_id",id_type,"text"="dg_title_description") %>%
-         unique()
-
-result_groups_for_indexing <- result_groups %>% 
-         mutate(id_type="result_group") %>%
-         dplyr::select(nct_id, "id"="rg_id",id_type,"text"="rg_title_description") %>%
-         unique()
-
-text_for_indexing <- rbind(eligibilities_for_indexing, design_groups_for_indexing, result_groups_for_indexing)
-
-## clean up
-rm(eligibilities_for_indexing)
-rm(design_groups_for_indexing)
-rm(result_groups_for_indexing)
-```
-  
-  * Manually replace any whole-word occurrences of " *BRCA* " with *BRCA1, BRCA2*  
-  
-```{r replace instances of BRCA}
-
-## replace whole-word matches of "BRCA" with "BRCA1, BRCA2"
-text_for_indexing$text <- gsub(pattern = "\\bBRCA\\b", replacement = "BRCA1, BRCA2", x=text_for_indexing$text )
-
-```
-
-```{r Expand contractions NOT USED}
-# example_sentence <- "Module 2 Part B5 Study expansion: BRCA mutant or RAD51C/D mutant or HRD positive status ovarian cancer patient who are Platinum sensitive and have previously progressed on a licensed PARPi"
-# 
-# 
-# example_sentences <- c("Module 2 Part B5 Study expansion: BRCA mutant or RAD51C/D mutant", 
-#                        "Positive for the BRCA1/BRCA2 gene.", 
-#                        "Greater than 20% probability of carrying BRCA1/2 mutation", 
-#                        "Any patient with a known germline BRCA1 or 2 mutation", 
-#                        "prior adjuvant chemotherapy and/or hormonal therapy")
-# 
-# ## replace whole-word matches of "BRCA" with "BRCA1 or BRCA2"
-# example_sentences <- gsub(pattern = "\\bBRCA\\b", replacement = "BRCA1 BRCA2", x=example_sentences)
-# 
-# ## get bag of words around mention gene names
-# kwic_example_sentences <- as.data.frame(kwic(x = tokens(example_sentences, remove_punct=FALSE, padding = FALSE, split_hyphens = TRUE), pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE))
-# 
-# ## now trim slashes/"or" and get a second bag of words
-# ## trim the preceding character from word before slash and replace with character after slash
-# kwic_example_sentences_2 <- as.data.frame(kwic(x = tokens(gsub(pattern='./', replacement = '', x=example_sentences), remove_punct=FALSE, padding = FALSE, split_hyphens = TRUE), pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE))
-# ## combine the two bags of words
-# kwic_example_sentences <- unique(rbind(kwic_example_sentences, kwic_example_sentences_2))
-# 
-# ## concatenate
-# kwic_example_sentences <- dplyr::mutate(kwic_example_sentences, context = paste(pre,keyword, post, sep = " "))
-#   
-# ## select and rename columns
-# kwic_example_sentences <- dplyr::select(kwic_example_sentences, "id"="docname", context, "gene_synonym"=pattern)
-# 
-# 
-# 
-# kwic_example_sentences <- merge(x=kwic_example_sentences, by.x="gene_synonym", y=dplyr::select(humanGenes, Symbol, Aliases), by.y = "Aliases")
-
-## ... UNUSED CODE TO FOLLOW IN THIS CHUNK... 
-
-## replace /(char) with "or <keyword>(char)" 
-## get stems of keywords
-# kwic_example_sentences$keyword_stem <- str_extract(string = kwic_example_sentences$keyword, pattern = "[^\\s]*(?=.)")
-## trim "/" or "or" from start of post column
-# kwic_example_sentences$post <- gsub(pattern = "^/ |^or ", replacement = "", x=kwic_example_sentences$post)
-## add "or "
-
-
-# ## get indices where "post" starts with either slash or "or"
-# indices_alternatives <- grep(pattern = "^/ |^or ", x=kwic_example_sentences$post)
-# ## create a copy of post column that will be processed
-# kwic_example_sentences$post_processed <- kwic_example_sentences$post 
-# ## trim off the leading characters at those indices
-# kwic_example_sentences$post_processed[indices_alternatives] <- gsub(pattern = "^/ |^or ", replacement = "", x=kwic_example_sentences$post_processed[indices_alternatives] )
-# ## prefix with the stem at those indices
-# kwic_example_sentences$post_processed[indices_alternatives] <- paste0(kwic_example_sentences$keyword_stem[indices_alternatives], kwic_example_sentences$post_processed[indices_alternatives])
-
-# ## concatenate
-# kwic_example_sentences$text_processed <- paste(kwic_example_sentences$pre, kwic_example_sentences$keyword, kwic_example_sentences$post_processed, sep = " ")
-
-## recreate bag of words on processed text
-# kwic_example_sentences <- as.data.frame(kwic(tokens_example_sentences, pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE))
-
-## concatenate
-#kwic_example_sentences$processed <- paste(kwic_example_sentences$pre, kwic_example_sentences$keyword, kwic_example_sentences$post, sep = " ")
-
-# 
-# gsub(pattern = " / | or ", replacement = kwic_example_sentences$keyword_stem, x=kwic_example_sentences$post)
-# 
-# str_dup("word ", 2)
-
-# # tic("create eligibility bigrams")
-# eligibilities_bigrams <- dplyr::select(eligibilities, criterion_sentence_index, sentences) %>%
-#   # head() %>%
-#   tidytext::unnest_tokens(bigram, sentences, token="ngrams", n=2, to_lower=FALSE) %>%
-#   separate(bigram, c("from", "to"), sep = " ", remove=FALSE)
-# # toc()
-
-
-
-
-# ## extract the substring containing the slash
-# # str_extract(pattern='[^\\s]*/.', string = example_sentence) 
-# str_extract(pattern='[^\\s]*/[^\\s]*', string = example_sentence) # [^\\s] is a regex pattern for "anything but whitespace"
-
- 
-# ## extract the word before the slash
-# str_extract(string = example_sentence, pattern = "[^\\s]*(?=/)")
-# 
-# ## extract the stem of the word before the slash (minus last character)
-# str_extract(string = example_sentences, pattern = "[^\\s]*(?=./)")
-# 
-# ## extract the slash and the word after it
-# str_extract(string = example_sentences, pattern = "(?=/)[^\\s]*")
-
-# ## trim the preceding character from word before slash and replace with character after slash
-# gsub(pattern='./', replacement = '', x=example_sentences)
-
-
-# paste0(gsub(pattern='/.*', replacement = '', x=example_sentences),    " or ",      str_extract(string = example_sentences, pattern = "[^\\s]*(?=./)"),         gsub(pattern='.*/', replacement = '', x=example_sentences))
-
-
-
-
-
-
-## this works
-# tic("expand forward slashes in text")
-# text_for_indexing$text_processed <- paste0(gsub(pattern='/.*', replacement = '', x=text_for_indexing$text),    " or ",      str_extract(string = text_for_indexing$text, pattern = "[^\\s]*(?=./)"),         gsub(pattern='.*/', replacement = '', x=text_for_indexing$text))
-# toc()
-
-
-## BUT if use this as input... 
-# "Positive for the BRCA1/BRCA2 gene."
-## get this output... 
-# "Positive for the BRCA1 or BRCABRCA2 gene."
-
-```
-
-* Second, create a corpus from the tidy table...  
-  
-```{r create corpus NOT USED}
-# tic("create eligibilities corpus")
-# eligibilities_corpus <-  quanteda::corpus(x=unique(dplyr::select(eligibilities, nct_id, criterion_index, criteria, criterion_type)),
-#                                           text_field = "criteria", 
-#                                           docid_field = "criterion_index",
-#                                           unique_docnames = FALSE)
-# toc()
-
-
-```
-  
-```{r create populations corpus}
- 
-tic("create populations_corpus")
-populations_corpus <-  quanteda::corpus(x=text_for_indexing,
-                                          text_field = "text", 
-                                          docid_field = "id",
-                                          unique_docnames = FALSE)
-toc()
-
-```
-  
-* Third, tokenise the corpus...  
-  
-```{r tokenise the corpus NOT USED}
-# tic("tokenise eligibilities corpus")
-# eligibilities_tokens <- tokens(eligibilities_corpus, remove_punct=TRUE, padding = FALSE, split_hyphens = TRUE)
-# toc()
-```
-
-```{r tokenise populations_corpus}
-
-tic("tokenise populations_corpus")
-# populations_tokens <- tokens(populations_corpus, remove_punct=TRUE, padding = FALSE, split_hyphens = TRUE)
-## keep punctuation so can expand forward slashes later... 
-populations_tokens <- tokens(populations_corpus, remove_punct=FALSE, padding = FALSE, split_hyphens = TRUE)
-toc()
-
-```
-  
-```{r remove stopwords NOT USED}
-# tic("remove stopwords")
-# eligibilities_tokens <- tokens_select(x=eligibilities_tokens, pattern = stopwords("en"), selection = "remove", padding = FALSE)
-# toc()
-```
-
-```{r remove stopwords from populations_tokens}
-tic("remove stopwords from populations_tokens")
-populations_tokens <- tokens_select(x=populations_tokens, pattern = stopwords("en"), selection = "remove", padding = FALSE)
-toc()
-
-```
-
-#### **Index on genetic features**  
-  
-* We will get a "bag of words" (excluding stopwords) surrounding human gene names (inc synonyms) within a defined window on either side (default=5).  
-  
-* In order to match patterns such as "*BRCA1/2*" to both *BRCA1* and *BRCA2*, we will perform this step twice: 
-  * the first time, using unmodified tokens from *populations_corpus*  
-  * the second time, delete any occurrences of forward slash, plus the immediately preceding character (e.g. in *BRCA1/2*, delete *1/* to get *BRCA2*)  
-    * Note that patterns such as *BRCA1/BRCA2* will be converted to *BRCABRCA2* but these will be lost when we join to *humanGenes* table  
-   
-```{r get context words surrounding gene names NOT USED}
-
-# tic("get kwic for genes")
-# kwic_genes <- as.data.frame(kwic(eligibilities_tokens, pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE))
-# toc()
-# #formattable(head(as.data.frame(kw_genes), 30))
-# 
-# ## concatenate pre, gene name and post tokens
-# kwic_genes <- dplyr::mutate(kwic_genes, context = paste(pre,keyword, post, sep = " "))
-# 
-# ## select and rename columns
-# kwic_genes <- dplyr::select(kwic_genes, "criterion_index"="docname", context, "gene_synonym"=pattern)
-
-```
-
-```{r get context words surrounding gene names in populations_tokens}
-
-# tic("get context words surrounding gene names in populations_tokens")
-# kwic_genes_populations <- as.data.frame(kwic(populations_tokens, pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE))
-# toc()
-
-## we will tokenise within the call to kwic, as we need to modify the corpus... 
-## first pass using unmodified tokens... 
-tic("get context words surrounding gene names in text for indexing, first pass")
-## get bag of words around mention gene names
-## ASSUME WE CAN SAFELY REMOVE PUNCTUATION IN THE CALL TO tokens BECAUSE SLASHES HAVE ALREADY BEEN OMITTED... 
-kwic_genes_populations_1 <- as.data.frame(kwic(x = tokens(populations_corpus, remove_punct=TRUE, padding = FALSE, split_hyphens = TRUE), pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE))
-toc()
-
-## second pass sing modified tokens, get stems of words before slash and join to first character after slash 
-tic("get context words surrounding gene names in text for indexing, second pass")
-## ASSUME WE CAN SAFELY REMOVE PUNCTUATION IN THE CALL TO tokens BECAUSE SLASHES HAVE ALREADY BEEN OMITTED... 
-kwic_genes_populations_2 <- as.data.frame(kwic(x = tokens(gsub(pattern='./', replacement = '', x=populations_corpus), remove_punct=TRUE, padding = FALSE, split_hyphens = TRUE), pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE))
-toc()  
-  
-## combine the two bags of words
-kwic_genes_populations <- unique(rbind(kwic_genes_populations_1, kwic_genes_populations_2))
-## delete originals
-rm(kwic_genes_populations_1)
-rm(kwic_genes_populations_2)
-
-
-# tic("get context words surrounding gene names in populations_tokens")
-# kwic_genes_populations <- kwic(populations_tokens, pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE)
-# toc()
-#formattable(head(as.data.frame(kw_genes), 30))
-
-## concatenate pre, gene name and post tokens
-kwic_genes_populations <- dplyr::mutate(kwic_genes_populations, context = paste(pre,keyword, post, sep = " "))
-
-## select and rename columns
-kwic_genes_populations <- dplyr::select(kwic_genes_populations, "id"="docname", context, "gene_synonym"=pattern)
-
-```
-  
-* We will join the Entrez symbols from *humanGenes* table...  
-  
-```{r join Entrez Symbols NOT USED}
-# 
-# kwic_genes <- merge(x=kwic_genes, by.x="gene_synonym", y=dplyr::select(humanGenes, Symbol, Aliases), by.y = "Aliases")
-
-```
-
-```{r join Entrez Symbols to kwic_genes_populations}
-
-kwic_genes_populations <- merge(x=kwic_genes_populations, by.x="gene_synonym", y=dplyr::select(humanGenes, Symbol, Aliases), by.y = "Aliases")
-
-```
-  
-* We will rejoin the metadata from text_for_indexing - **NB this relies on each type of identifier being unique (e.g. no matches between result group IDs and design group IDs)** - this appears to hold...  
-  
-```{r join verbatim criteria and nct_id}
-kwic_genes_populations <- merge(x=text_for_indexing, by.x="id", y=kwic_genes_populations, by.y="id", incomparables=NA)
-
-## rename and reorder columns
-kwic_genes_populations <- unique(dplyr::select(kwic_genes_populations, nct_id, id, id_type,text, context, "match"="gene_synonym", "controlled_match"="Symbol"))
-```
-  
-* We will index the populations for genetic features by filtering and retaining only those texts that include a given pattern within the bag of words surrounding the gene name...  
-  
-```{r define function to index on pattern}
-indexOnPattern <- function(dataframe, pattern, featureLabel) {
-  ## get indices with matching pattern
-  indices <- grep(pattern = pattern, x=dataframe$context, ignore.case = TRUE)
-  ## subset dataframe
-  dataframe <- dataframe[indices, ]
-  ## add a column with featurelabel
-  dataframe$feature <- featureLabel
-  return(dataframe)
-}
-
-```
-  
-* We will define different patterns for each different alteration type...  
-  
-##### **Index on mutations**  
-  
-```{r define mutant pattern}
-## define mutant pattern
-mutant_pattern <- "mutat|mutant|defect|deficien|altera|altere|loss of function|loss-of-function|loss function"
-```
-
-* For mutations, we will use the pattern **`r mutant_pattern`**.  
-  
-
-```{r index populations on mutations}
-
-mutation_populations <- indexOnPattern(dataframe = kwic_genes_populations, pattern = mutant_pattern, featureLabel = "mutation")
-
-## select and reorder columns for consistency with trialMatchDataRefresh
-mutation_populations <- unique(dplyr::select(mutation_populations, match, nct_id, id, id_type, text, feature, controlled_match ))
-
-```
-  
-  
-* Sample results:  
-  
-`r formattable(head(mutation_populations)) `  
-  
-  
-##### **Index on rearrangements**  
-  
-```{r define rearrangemnts pattern}
-rearrangement_pattern <- " fusion|rearrangement|truncation|truncated|deletion|deleted|lost|duplication|duplicated|transloc"
-```
-
-* For rearrangements, we will use the pattern **`r rearrangement_pattern`**.  
-
-
-```{r index on rearrangements NOT USED}
-
-# rearrangement_pattern <- " fusion|rearrangement|truncation|truncated|deletion|deleted|lost|duplication|duplicated|transloc"
-# 
-# rearrangement_eligibilities <- indexOnPattern(dataframe = kwic_genes, pattern = rearrangement_pattern, featureLabel = "rearrangement")
-# 
-# ## select and reorder columns for consistency with trialMatchDataRefresh
-# rearrangement_eligibilities <- unique(dplyr::select(rearrangement_eligibilities, names(mutation_eligibilities) ))
-```
-  
-```{r index populations on rearrangements}
-
-rearrangement_populations <- indexOnPattern(dataframe = kwic_genes_populations, pattern = rearrangement_pattern, featureLabel = "rearrangement")
-
-## select and reorder columns for consistency with trialMatchDataRefresh
-rearrangement_populations <- unique(dplyr::select(rearrangement_populations, match, nct_id, id, id_type, text, feature, controlled_match ))
-
-```
-
-* Sample results:  
-  
-`r formattable(head(rearrangement_populations)) `  
-  
-##### **Index on amplifications**  
-  
-```{r define amplification pattern}
-amplification_pattern <- " amplifi|overexpress"
-
-```
-
-* For amplifications, we will use the pattern **`r amplification_pattern`**.  
-
-```{r index on amplifications NOT USED}
-# 
-# 
-# amplification_eligibilities <- indexOnPattern(dataframe = kwic_genes, pattern = amplification_pattern, featureLabel = "amplification")
-# 
-# ## select and reorder columns for consistency with trialMatchDataRefresh
-# amplification_eligibilities <- unique(dplyr::select(amplification_eligibilities, names(mutation_eligibilities) ))
-
-```
-
-```{r index populations on amplifications}
-
-amplification_populations <- indexOnPattern(dataframe = kwic_genes_populations, pattern = amplification_pattern, featureLabel = "amplification")
-
-## select and reorder columns for consistency with trialMatchDataRefresh
-amplification_populations <- unique(dplyr::select(amplification_populations, match, nct_id, id, id_type, text, feature, controlled_match ))
-```
-
-* Sample results:  
-  
-`r formattable(head(amplification_populations)) `  
-  
-##### **Index on loss**  
-  
-```{r define loss pattern}
-loss_pattern <- " loss"
-
-```
-
-* For losses, we will use the pattern **`r loss_pattern`**.  
-  
-```{r index populations on losses}
-
-loss_populations <- indexOnPattern(dataframe = kwic_genes_populations, pattern = loss_pattern, featureLabel = "loss")
-```
-
-  * In order to avoid spurious hits against "loss of function" (which should be indexed as a mutation), we will filter again and exclude those rows where the context contains "loss of function" (or variants thereof)...  
-  
-
-```{r exclude loss of function pattern}
-loss_populations <- loss_populations[grep(pattern = "loss of function|loss-of-function|loss function", x=loss_populations$context, ignore.case = TRUE, invert = TRUE), ]
-
-## select and reorder columns for consistency with trialMatchDataRefresh
-loss_populations <- unique(dplyr::select(loss_populations, match, nct_id, id, id_type, text, feature, controlled_match ))
-
-```
-
-  
-* Sample results:  
-  
-`r formattable(head(loss_populations)) `  
-  
-
-#### **Index on prior therapies**  
-  
-* We will get keywords surrounding synonyms related to therapy (as defined by NCIt for Class "Therapeutic or Preventive Procedure")...    
-  * Since some of these entries are multi-word expressions, we need to use the phrase() function...  
-  
-```{r get context surrounding therapy keywords} 
-
-tic("get context words surrounding therapies/procedures in populations_tokens")
-kwic_prior_tx_populations <- as.data.frame(kwic(populations_tokens, 
-                                                pattern =  phrase(unique(NCIt$Synonyms[NCIt$Class=="Therapeutic or Preventive Procedure"])),
-                                                window = 5, 
-                                                case_insensitive = TRUE))
-toc()
-
-
-
-## concatenate pre, pattern and ignore post tokens
-kwic_prior_tx_populations <- dplyr::mutate(kwic_prior_tx_populations, context = paste(pre,keyword, sep = " "))
-
-## select and rename columns
-kwic_prior_tx_populations <- dplyr::select(kwic_prior_tx_populations, "id"="docname", context, "therapy_synonym"=pattern)
-
-```
-
-```{r join therapy kwic to NCIt}
-
-kwic_prior_tx_populations <- unique(merge(x=kwic_prior_tx_populations, by.x="therapy_synonym", y=dplyr::select(NCIt, "NCIt_id"="ID", Synonyms, PreferredTerm, Parent_synonym, Class ), by.y="Synonyms"))
-
-kwic_prior_tx_populations <- dplyr::filter(kwic_prior_tx_populations, Class == "Therapeutic or Preventive Procedure")
-
-```
-
-```{r join study metadata to therapy kwic}
-kwic_prior_tx_populations <- unique(merge(x=kwic_prior_tx_populations, 
-                                          by.x="id", 
-                                          y=dplyr::select(text_for_indexing, nct_id, id, id_type, text ), 
-                                          by.y="id"))
-
-## select and reorder columns
-kwic_prior_tx_populations <- dplyr::select(kwic_prior_tx_populations, nct_id, id_type, id, therapy_synonym, text, context, NCIt_id, PreferredTerm, Parent_synonym)
-```
-
-```{r define pattern for prior tx}
-prior_tx_pattern <- "previous|prior"
-# 
-# prior_tx_pattern <- c("previous", "prior", "previous therapy", "prior therapy", "previous treatment", "prior treatment")
-
-```
-
-```{r filter and retain only kwic_tx containing prior tx pattern}
-prior_tx_populations <- indexOnPattern(dataframe = kwic_prior_tx_populations, pattern = prior_tx_pattern, featureLabel = "prior therapy")
-
-## harmonise columns and names with other indexing outputs
-prior_tx_populations <- unique(dplyr::select(prior_tx_populations, "match"="therapy_synonym", nct_id, id, id_type, text, feature, "controlled_match"="PreferredTerm"))
-```
-
-```{r index populations on prior therapies NOT USED}
-# 
-# ## select and reorder columns for consistency with trialMatchDataRefresh
-# amplification_populations <- unique(dplyr::select(amplification_populations, match, nct_id, id, id_type, text, feature, controlled_match ))
-
-# tokens_compound(toks, pattern = phrase("prior * therapy"))
-
-# phrase(unique(NCIt$Synonyms[NCIt$Class=="Therapeutic or Preventive Procedure"]))
-
-```
-
-#### **Write indexed population data to database**  
-
-```{r row bind indexed features into single table}
-
-population_features <- rbind(mutation_populations, rearrangement_populations, amplification_populations, loss_populations, prior_tx_populations)
-```
-  
-* Indexing results are saved to the *population_features* table:  
-  
-`r formattable(head(population_features))`  
-  
-
-```{r write population_features to database}
-## create as a table in database
-dbWriteTable(conn = con,name = "population_features", value = population_features, overwrite=TRUE)
-
-## check it has saved
-# dbListTables(con)
-
-```
-  
-### **Download variant info from clinVar and civicDB**  
-    
-* We will download and save variant information from ClinVar  
-* This includes a classification of clinical significance for included variants, together with a summary of supporting evidence  
-  
-```{r download and process variants from clinvar}
-## download variant summaries from clinvar
-download.file(url="https://ftp.ncbi.nlm.nih.gov/pub/clinvar/tab_delimited/variant_summary.txt.gz",destfile = "variant_summary.txt.gz")
-clinvar <- read.table(gzfile("variant_summary.txt.gz"), sep="\t", quote="", fill = TRUE, stringsAsFactors = FALSE) 
-
-## clean up, remove files
-file.remove("variant_summary.txt.gz")
-
-# V1 contains values for Allele ID
-# V2 gives nature (e.g. fusion, single nucleotide variant etc)
-# V7 contains values for clinical significance (inc whether pathogenic or not)
-# V25 gives a measure of confidence in assertion
-clinvar <- unique(dplyr::select(clinvar, "allele.id" = "V1", "nature"="V2", "significance"="V7", "confidence"="V25"))
-
-## variation_allele contains mappings from clinvar variation ID (clinvar ID) and allele ID
-download.file(url="https://ftp.ncbi.nlm.nih.gov/pub/clinvar/tab_delimited/variation_allele.txt.gz",destfile = "variation_allele.txt.gz")
-variationAllele <- read.table(gzfile("variation_allele.txt.gz"), sep="\t", quote="", fill = TRUE, stringsAsFactors = FALSE) 
-
-## clean up, remove files
-file.remove("variation_allele.txt.gz")
-
-# V1 contains values for clinvar ID
-# V3 contains values for Allele ID
-variationAllele <- unique(dplyr::select(variationAllele, "clinvar.id"="V1", "allele.id"="V3"))
-
-## join tables
-clinvar <- merge(x=clinvar, by.x="allele.id", y=variationAllele, by.y="allele.id")
-
-
-# variants contains mappings from variant_id to clinvar_ids
-variants <- read.csv(file = "https://civicdb.org/downloads/nightly/nightly-VariantSummaries.tsv", sep = "\t", quote = "", stringsAsFactors = FALSE)
-# variants$gene contains gene name (Entrez symbol)
-# variants$variant contains amino acid change
-# variants$summary contains a useful summary of evidence for each variant
-# variants$clinvar_ids contains (comma-separated) clinvar IDs that can be mapped to the clinvar table to get info whether pathogenic or not... 
-
-
-## drop unwanted columns
-variants <- unique(dplyr::select(variants, variant_id, gene, variant, summary, variant_groups,civic_variant_evidence_score,clinvar_ids ))
-
-## split and unnest the clinvar_ids column
-variants$clinvar_ids <- strsplit(as.character(variants$clinvar_ids), split = ",")
-variants <- unnest(data = variants, clinvar_ids)
-
-
-## join significance from clinvar
-variants <- unique(merge(x=variants, by.x="clinvar_ids", all.x=TRUE, y=clinvar, by.y="clinvar.id"))
-
-
-
-## drop unwanted columns 
-variants <- unique(dplyr::select(variants,variant_id, clinvar_ids,gene,variant,summary,variant_groups, significance,confidence))
-
-## split on the word "and"
-variants$variant <- strsplit(x=variants$variant, split = " and ") 
-variants <- unnest(data = variants, cols = variant, keep_empty = TRUE) ## unnest to multiply rows, keep any rows with no aliases
-variants <- as.data.frame(variants) ## convert to datack a frame
-
-
-## trim everything after first space in variants$variant
-variants$variant <- gsub(pattern = " .*", replacement = "", x=variants$variant)
-
-```
-  
-* These data are saved to the *variants* table:  
-  
-`r formattable(head(variants))`  
-    
- 
-```{r create table of variants}
-## preview
-# formattable(head(variants))
-
-## create as a table in database
-dbWriteTable(conn = con,name = "variants", value = variants, overwrite=TRUE)
-
-## check it has saved
-# dbListTables(con)
-
-```
-      
-
-### **Download variant:drug evidence from clinVar**  
-    
-* We will download clinical evidence summaries from CIViC database (https://civicdb.org/home)  
-  
-    
-```{r download and process evidence from civic DB}
-## download evidence from civicDB
-# evidence contains mappings from variant_id to gene (gene name) and variant (amino acid change) to drugs etc
-evidence <- read.csv(file = "https://civicdb.org/downloads/nightly/nightly-ClinicalEvidenceSummaries.tsv", sep = "\t", quote="", stringsAsFactors = FALSE)
-# evidence contains more detailed data re: drugs, sensitivity etc
-# evidence$evidence_level contains details of nature of evidence: 
-# A = validated
-# B = clinical
-# C = case study
-# D = preclinical
-
-
-## drop unwanted columns
-evidence <- unique(dplyr::select(evidence, variant_id, disease, drugs,  evidence_type, evidence_direction,evidence_level,clinical_significance,evidence_statement, gene_civic_url, variant_civic_url, evidence_civic_url))
-
-evidence <- as.data.frame(evidence)
-
-## unnest the drugs column
-evidence$drugs <- strsplit(x=evidence$drugs, split=",")
-evidence <- unnest(data = evidence, cols = drugs, keep_empty = TRUE) 
-evidence <- as.data.frame(evidence) ## convert to data frame
-
-
-## join the gene and variant details from variants table
-evidence <- unique(merge(x=dplyr::select(variants, variant_id, gene, variant, significance), 
-                         by.x = "variant_id", 
-                         y=evidence, 
-                         by.y = "variant_id"))
-
-
-## add an indicator of what each evidence level means
-evidence_levels <- data.frame("evidence_level"=c("A", "B", "C", "D", "E"), 
-                              "evidence_level_type"=c("Validated association", "Clinical evidence", "Case study", "Preclinical evidence", "Inferential association"))
-
-## merge with evidence table
-evidence <- unique(merge(x=evidence, by.x="evidence_level", y=evidence_levels, by.y="evidence_level"))
-```
-
-* Information about drug-variant relationships (e.g. variant predicts sensitivity to drug) is saved to the evidence table:  
-  
-`r formattable(head(evidence))`  
-  
-```{r create table of evidence}
-## preview
-# formattable(head(evidence))
-
-## create as a table in database
-dbWriteTable(conn = con,name = "evidence", value = evidence, overwrite=TRUE)
-
-## check it has saved
-# dbListTables(con)
-
-
-## print a list of disease in evidence table, but not represented among condition synonyms
-# setdiff(x=unique(evidence$disease), y=unique(conditionSynonyms$condition.synonyms))
-```
-  
-  
-```{r create a table of evidence related to drugs}
-
-drug_evidence <- unique(dplyr::select(evidence, gene, variant, drugs, evidence_type, evidence_direction, evidence_level, evidence_level_type, clinical_significance, evidence_statement, gene_civic_url, variant_civic_url, evidence_civic_url))
-
-## filter and retain only predictive evidence
-drug_evidence <- unique(dplyr::filter(drug_evidence, evidence_type %in% c("Predictive")))
-
-```
-
-
-
-```{r map drugs from evidence table to NCIt entities}
-## The elements of setdiff(x,y) are those elements in x but not in y.
-# setdiff(x=tolower(drug_evidence$drugs), y=NCIt_Pharmacologics$Synonyms_lower)
-
-drug_evidence$drugs_lower <- tolower(drug_evidence$drugs)
-
-## some of the "drugs" cited in the evidence table are actually mechanisms (e.g. "aromatase inhibitor")
-drug_evidence <- unique(merge(x=drug_evidence, by.x = "drugs_lower", y=unique(dplyr::select(NCIt, "NCIt_ID" = "ID", Synonyms_lower)), by.y="Synonyms_lower"))
-
-## drop unnecessary columns
-drug_evidence <- dplyr::select(drug_evidence, -c(drugs_lower, evidence_type))
-```
-
-
-```{r summarise evidence per gene and drug}
-## we need to deal with conflicting evidence
-
-## first, take the highest level of evidence for each gene-variant-drug association and summarise the evidence direction and clinical significance
-# drug_evidence_summary <- drug_evidence %>%
-#     group_by(gene,variant, drugs, variant_civic_url, NCIt_ID) %>%
-#     filter(evidence_level == min(evidence_level)) %>%
-#     summarise(
-#         evidence_level_type = paste(unique(evidence_level_type), collapse = ", "),
-#         evidence_direction_summary = paste(sort(unique(evidence_direction)), collapse = "/"), 
-#         clinical_significance_summary = paste(sort(unique(clinical_significance)), collapse = "/")
-#     ) %>%
-#     as.data.frame()
-
-
-
-## add a column that will summarise the rationale
-# drug_evidence_summary$rationale <- paste0(drug_evidence_summary$evidence_level_type,
-#                                           " linking ",
-#                                           drug_evidence_summary$gene, 
-#                                           " ", 
-#                                           drug_evidence_summary$variant, 
-#                                           " with ", 
-#                                           drug_evidence_summary$clinical_significance_summary, 
-#                                           " to ", 
-#                                           drug_evidence_summary$drugs)
-
-
-
-
-```
-
-  
-  
-### **Get pathway graph data from KEGG**  
-  
-* We will get pathway information from KEGG, specifically for the pathway *Pathways In Cancer* (KEGG ID *hsa05200*).  
-  
-  
-```{r get edge list}
-
-## download KGML file for Pathways In Cancer as KGML file
-pathwaysInCancer_KGML <- get_KGML("hsa05200")
-#class(pathwaysInCancer_KGML)
-
-## expand mappings
-pathwaysInCancer_mappings <- expand_KEGG_mappings(pathwaysInCancer_KGML, convert_KEGG_IDs = FALSE)
-pathwaysInCancer_mappings <- expand_KEGG_mappings(pathwaysInCancer_KGML)
-pathwaysInCancer_edges <- expand_KEGG_edges(pathwaysInCancer_KGML, pathwaysInCancer_mappings)
-
-## create a simple edgelist
-edges <- unique(dplyr::select(pathwaysInCancer_edges, "from"="entry1symbol", "to"="entry2symbol", specific_subtype, value))
-
-## note this includes nodes other than genes (e.g. estradiol)
-
-# #Modify existing data sets; specify as nodes and edges
-# pathwaysInCancer_node_mapping_info <- node_mapping_info(pathwaysInCancer_mappings)
-# 
-# pathwaysInCancer_edge_mapping_info <- edge_mapping_info(pathwaysInCancer_edges)
-# 
-# #Create an igraph object
-# pathwaysInCancer.igraph <- get_graph_object(pathwaysInCancer_node_mapping_info, pathwaysInCancer_edge_mapping_info)
-# 
-# ## get edgelist
-# edges <- as_data_frame(pathwaysInCancer.igraph, what = c("edges"))
-# 
-# ## retain only edges where "from" is a gene
-# edges <- unique(dplyr::filter(edges, entry1type=="gene"))
-# 
-# ## drop unnecessary columns
-# # keep edge IDs fur use in graph analysis 
-# edges <- unique(dplyr::select(edges, "from"="entry1symbol", "to"="entry2symbol",edgeID, specific_subtype, tooltip))
-# 
-# 
-# ## unnest the from and to columns
-# edges$from <- strsplit(edges$from, split = ",")
-# edges <- unnest(edges, cols = "from")
-# 
-# edges$to <- strsplit(edges$to, split = ",")
-# edges <- unnest(edges, cols = "to")
-# 
-# ## convert back to dataframe
-# edges <- as.data.frame(edges)
-
-```
-  
-* These data are saved as a simple edge list in the *edges* table  
- * "-->" denotes *Activation*  
- * "--|" denotes *Inhibition*  
- * "..>" denotes *Indirect effect*  
- * "-+-" denotes *Dissociation*  
- * "---" denotes *Binding*  
- * "-/-" denotes *Missing interaction*  
-  
-
-`r formattable(head(edges))`  
-  
-
-```{r create table of edges}
-## preview
-formattable(head(edges))
-
-## create as a table in database
-dbWriteTable(conn = con,name = "edges", value = edges, overwrite=TRUE)
-
-## check it has saved
-# dbListTables(con)
-
-```
-  
-  
-### **Create views for trial finder**  
-  
-For compatibility with existing code for trial finder interface (and to maximise responsiveness of that interface), we will save non-normalised "views" of data in tables that will be ingested by the trial finder (*TRIAL_MATCH_SHINY.Rmd*)  
-  
-  
-#### **Studies view**  
-  
-* For trial finder, we will retain only those studies with at least one site that is open (status = *Recruiting* or *Not yet recruiting*) in the country specified in config file...  
-
-##### **Map local open facilities to latitude and longitude values**  
-  
-* For sites with a valid UK zipcode, we will map to precise locations based on the zip code  
-
-```{r download ordnance survey data}
-## use trycatch in case download throws an error
-
-
-
-## start timer
-tic("download ordnance survey data")
-
-## specify URL for download 
-
-## https://www.freemaptools.com/download/full-uk-postcodes/ukpostcodes.zip
-postcodesURL <- "https://www.freemaptools.com/download/full-uk-postcodes/ukpostcodes.zip"
-
-destPostcodesFilename <- "uk_postcodes.zip"
-
-tryCatch(
-    { download.file(url=postcodesURL, destfile = destPostcodesFilename)
-        unzip(zipfile = paste0(getwd(),"/",destPostcodesFilename))
-        
-        
-        ## tested on 16 March 2022, header row missing.... 
-        uk_postcodes <- read.csv("ukpostcodes.csv", header = TRUE, stringsAsFactors = FALSE)
-        
-        ## assume no header row
-        # uk_postcodes <- read.csv("ukpostcodes.csv", header = FALSE, stringsAsFactors = FALSE)
-        ## manually assign column names - if no header was present, first line of data will be lost...
-        names(uk_postcodes) <- c( "id","postcode","latitude","longitude")
-        
-        
-        ## clean up, delete files
-        file.remove("uk_postcodes.zip")
-        file.remove("ukpostcodes.csv")
-        
-        ## create as a table in database
-        dbWriteTable(conn = con,name = "uk_postcodes", value = uk_postcodes, overwrite=TRUE)
-    }, error=function(cond) {
-      print("Unable to download postcodes, reverting to last saved version from database...")             }) 
-
-## if download has thrown an error, last downloaded postcodes table will be used
-if(!exists("uk_postcodes")) {
-  uk_postcodes <- dbGetQuery(con, "SELECT * FROM uk_postcodes")
-}
-toc()
-
-
-
-```
-
-```{r map postcodes to lat and long where possible}
-
-
-## convert postcodes to lowercase for join
-uk_postcodes$postcode_lower <- tolower(uk_postcodes$postcode)
-local_open_studies$zip_lower <- tolower(local_open_studies$zip)
-
-## merge
-local_open_studies <- merge(x=local_open_studies, by.x = "zip_lower", all.x = TRUE, y=uk_postcodes, by.y="postcode_lower")
-
-## delete uk_postcodes object from memory
-rm(uk_postcodes)
-```
-  
-* For all other sites, we will map to latitude, longitude values for the city (less precise - typically maps to centre of city)  
-  
-```{r map cities to lat and long}
-## start timer
-tic("map cities to lat and long")
-
-## get a list of cities that are still missing lat, long values 
-missing_cities <- data.frame(verbatim = as.character(unique(local_open_studies$city[is.na(local_open_studies$latitude)])))
-
-## need to process 
-missing_cities$processed <- as.character(missing_cities$verbatim)
-missing_cities$processed <- strsplit(x=missing_cities$processed, split = ",")
-missing_cities <- as.data.frame(unnest(data = missing_cities, processed))
-missing_cities$processed <- str_squish(missing_cities$processed)
-missing_cities$processed <- paste0(missing_cities$processed, ", ", configuration$country)
-
-
-## use tidygeocoder (MIT licence)
-## need append country from config file after city name...
-geocoder_addresses <- as.data.frame(tidygeocoder::geo(address = unique(missing_cities$processed), method = 'osm'))
-
-## join to missing cities
-missing_cities <- merge(x=missing_cities, by.x="processed", y=geocoder_addresses, by.y="address")
-
-## join to local_open_studies
-local_open_studies <- merge(x=local_open_studies, by.x="city", all.x=TRUE, y=dplyr::select(missing_cities, verbatim, "geo_lat"="lat", "geo_long"="long"), by.y = "verbatim")
-
-
-## replace the missing latitude and longitude values with the geocoder values
-local_open_studies$latitude[is.na(local_open_studies$latitude)] <- local_open_studies$geo_lat[is.na(local_open_studies$latitude)]
-
-local_open_studies$longitude[is.na(local_open_studies$longitude)] <- local_open_studies$geo_long[is.na(local_open_studies$longitude)]
-
-## select and reorder columns
-# local_open_studies <- unique(dplyr::select(local_open_studies, nct_id, facility_name, facility_status, city, latitude, longitude))
-
-
-toc()
-```
-  
-* A table of local study sites, their statuses and lat, long values for their location has been saved to the *local_open_studies table*:  
-  
-`r formattable(head(local_open_studies))`  
-  
-```{r write uk local_open_studies to database}
-## create as a table in database
-dbWriteTable(conn = con,name = "local_open_studies", value = local_open_studies, overwrite=TRUE)
-
-## check it has saved
-# dbListTables(con)
-
-```
-
-##### **Create studies view**  
-  
-* We will join this information with study information to create a view  
-  
-```{r create studies view }
-
-## for compatibility with TRIAL_MATCH_SHINY.Rmd
-## need to create a table with the following columns
-#  [1] "interventions"      "locations"          "postcode"           "nct_id"            
-#  [5] "brief_title"        "overall_status"     "condition"          "site_name"         
-#  [9] "site_status"        "investigators"      "contacts"           "central_contacts"  
-# [13] "Refresh.date"       "matching.condition" "TARGET.condition"   "Link"              
-# [17] "postcode.lat"       "postcode.long"      "lat"                "long"              
-# [21] "ParentTerm" 
-# no columns are aggregated
-
-## in order to restrict size of table, we will limit rows to studies with overall status of Recruiting
-
-## we will also include last_update_posted_date  
-
-## start with cancerStudies table
-open_cancerStudies_view <- unique(dplyr::select(cancerStudies, nct_id, Link, brief_title, primary_completion_date, last_update_posted_date, overall_status, condition, "Refresh.date" = "refresh_date","matching.condition" = "condition", "TARGET.condition" = "controlled_cancer_type"))
-
-open_cancerStudies_view <- dplyr::filter(open_cancerStudies_view, overall_status=="Recruiting")
-
-## join site info - at this point only sites in specified country will be retained
-open_cancerStudies_view <- unique(merge(x=open_cancerStudies_view, 
-                                   by.x = "nct_id", 
-                                   y = dplyr::select(local_open_studies, nct_id, "site_name"="facility_name", "site_status" = "facility_status", "contacts" = "email", central_contacts, investigators, "locations"="city","postcode"="zip", "postcode.lat"="latitude", "postcode.long"="longitude", "lat"="latitude", "long"="longitude"), 
-                                   by.y = "nct_id"))
-
-## add an empty postcode column (will get dropped anyway)
-#open_cancerStudies_view$postcode <- NA
-
-## join interventions info
-open_cancerStudies_view <- unique(merge(x=open_cancerStudies_view, 
-                                   by.x = "nct_id", 
-                                   y = dplyr::select(interventions, nct_id, "interventions"="intervention_name", "ParentTerm" = "Mechanism"), 
-                                   by.y = "nct_id"))
-
-## add a duplicated matching condition column for consistency with shiny app
-open_cancerStudies_view$condition <- open_cancerStudies_view$matching.condition
-
-## select, rename and reorder for consistency with trialMatchDataRefresh.Rmd
-open_cancerStudies_view <- unique(dplyr::select(open_cancerStudies_view, interventions, locations, postcode, nct_id, brief_title, primary_completion_date, last_update_posted_date, overall_status,condition, site_name, site_status, investigators, contacts, central_contacts, Refresh.date, matching.condition, TARGET.condition, Link, postcode.lat, postcode.long, lat, long, ParentTerm))
-
-
-## cast variables to correct format
-open_cancerStudies_view$long <- as.character(open_cancerStudies_view$long)
-open_cancerStudies_view$lat <- as.numeric(open_cancerStudies_view$lat)
-
-open_cancerStudies_nct_ids <- unique(open_cancerStudies_view$nct_id)
-
-number_studies_in_view <- length(unique(open_cancerStudies_nct_ids))
-
-mean_days_since_update <- round(as.numeric(mean(Sys.Date()-open_cancerStudies_view$last_update_posted_date)), digits = 0)
-```
-  
-* Studies view is saved in the *open_cancerStudies_view*:  
-* As of `r format(Sys.Date(), format = "%d %b %Y")`:  
-  * the total number of studies in this view is `r number_studies_in_view`  
-  * the mean number of days since the study records were updated is `r mean_days_since_update`  
-  
-
-```{r save open_cancerStudies_view to DB}
-## preview
-formattable(head(open_cancerStudies_view))
-
-## create as a table in database
-dbWriteTable(conn = con,name = "open_cancerStudies_view", open_cancerStudies_view, overwrite=TRUE)
-
-## check it has saved
-# dbListTables(con)
-
-```
-  
-#### **indexedEligibility view**  
-  
-* We will save genetic inclusion criteria and prior therapy exclusion criteria in the format required by trial finder  
-  
-```{r create indexedEligibility view}
-## start with population features
-
-
-## exclude studies not in open_cancerStudies_view
-indexed_eligibilities_view <- unique(dplyr::filter(population_features, nct_id %in% open_cancerStudies_nct_ids))
-
-## get prior therapy exclusion criteria
-therapy_exclusions <- unique(dplyr::filter(indexed_eligibilities_view, id_type == "EXCLUSION" & feature == "prior therapy"))
-
-## get inclusion criteria
-indexed_eligibilities_view <- unique(dplyr::filter(indexed_eligibilities_view, id_type == "INCLUSION"))
-
-## row bind 
-indexed_eligibilities_view <- rbind(indexed_eligibilities_view, therapy_exclusions)
-
-## select and rename columns for consistency with trialMatchDataRefresh.Rmd
-indexed_eligibilities_view <- dplyr::select(indexed_eligibilities_view, nct_id, "criteria"="text", "criterion.type"="id_type", feature, match, "controlled.match"="controlled_match")
-```
-
-  
-* These data (studies in open_cancerStudies_view only) are saved in the *indexed_eligibilities_view* table:  
-
-
-```{r save indexed_eligibilities_view to DB}
-## preview
-formattable(head(indexed_eligibilities_view))
-
-## create as a table in database
-dbWriteTable(conn = con,name = "indexed_eligibilities_view", indexed_eligibilities_view , overwrite=TRUE)
-
-## check it has saved
-# dbListTables(con)
-
-```
-  
-#### **Scored matches view**  
-  
-* Studies will be scored as follows:  
-  
-  * Assign *eligibility_score* +3 if enrolling patients with 1 or more specified alteration  
-
-```{r score population features}
-## get matching inclusion criteria
-scored_matches_study <- unique(dplyr::filter(indexed_eligibilities_view, criterion.type=="INCLUSION"))
-
-## drop rows without a gene match
-scored_matches_study <- dplyr::filter(scored_matches_study, !is.na(controlled.match))
-## drop rows based on prior therapy
-scored_matches_study <- dplyr::filter(scored_matches_study, feature != "prior therapy")
-
-## concatenate gene name and feature
-scored_matches_study$gene_variant_type <- paste(scored_matches_study$controlled.match, scored_matches_study$feature, sep = " ")
-
-## create a string to describe rationale
-scored_matches_study$eligibility_rationale <- paste0("Enrolling subjects with ", scored_matches_study$gene_variant_type)
-
-## select, rename and reorder columns for compatibility with trialMatchDataRefresh.Rmd
-scored_matches_study <- unique(dplyr::select(scored_matches_study, "symbol"="controlled.match", "variant_type"="feature", nct_id, eligibility_rationale, "matching_criteria"="criteria"))
-
-## where multiple criteria, aggregate
-scored_matches_study <- scored_matches_study %>%
-                                      group_by(nct_id, symbol, variant_type, eligibility_rationale) %>%
-                                      summarise(
-                                        matching_criteria = paste(unique(matching_criteria), collapse = "\n\n")
-                ) %>%
-  as.data.frame()
-  
-## add a score
-scored_matches_study$eligibility_score <- 3
-```
-
-  * Assign *eligibility_score* +4 if study design group includes patients with 1 or more specified alteration (i.e. stratified on alteration)  
-
-```{r score design group features}
-## get matching design groups
-scored_matches_dg <- unique(dplyr::filter(population_features, id_type=="design_group"))
-
-## exclude studies not in open_cancerStudies_view
-scored_matches_dg <- unique(dplyr::filter(scored_matches_dg, nct_id %in% open_cancerStudies_nct_ids))
-
-
-## drop rows without a gene match
-scored_matches_dg <- dplyr::filter(scored_matches_dg, !is.na(controlled_match))
-## drop rows based on prior therapy
-scored_matches_dg <- dplyr::filter(scored_matches_dg, feature != "prior therapy")
-
-## concatenate gene name and feature
-scored_matches_dg$gene_variant_type <- paste(scored_matches_dg$controlled_match, scored_matches_dg$feature, sep = " ")
-
-## create a string to describe rationale
-scored_matches_dg$eligibility_rationale <- paste0("Stratified on ", scored_matches_dg$gene_variant_type)
-
-## select, rename and reorder columns for compatibility with trialMatchDataRefresh.Rmd
-scored_matches_dg <- unique(dplyr::select(scored_matches_dg,nct_id,"symbol"="controlled_match",  "variant_type"="feature", eligibility_rationale, "matching_criteria"="text"))
-                                          
-
-
-## where multiple criteria, aggregate
-scored_matches_dg <- scored_matches_dg %>%
-                                      group_by(nct_id, symbol, variant_type, eligibility_rationale) %>%
-                                      summarise(
-                                        matching_criteria = paste(unique(matching_criteria), collapse = "\n\n")
-                ) %>%
-  as.data.frame()
-  
-## add a score - we will assign a score of +4 so that this takes precedent over inclusion criteria (where both apply)
-scored_matches_dg$eligibility_score <- 4
-```
-  
-```{r combine rationale for eligibility and design groups}
-## row bind the two tables
-scored_matches_study <- rbind(scored_matches_study, scored_matches_dg)
-
-## based on DG feedback, where there is a match in both eligibility criteria and design group descriptions, we will not add scores
-## presumably, we should only show one of the criteria - either eligibility or design groups, not both
-## in order to do so, we will only show the row with the highest eligibility_score (i.e. stratification)...  
-
-scored_matches_study <- scored_matches_study %>%
-  group_by(nct_id, symbol, variant_type) %>%
-  arrange(desc(eligibility_score)) %>%
-  summarise(
-    eligibility_rationale = eligibility_rationale[1],
-    matching_criteria = matching_criteria[1],
-    eligibility_score = 3 ## reset so stratification and inclusion are scored identically
-  ) %>%
-  as.data.frame()
-
-```
-
-
-
-
-  
-  * Assign *intervention_score* +2 if any intervention targets an altered gene directly  
-
-```{r score matches on intervention target}
-## start with interventions
-scored_matches_interventions <- unique(dplyr::select(interventions, nct_id, intervention_name, target_symbol))
-
-## exclude studies not in open_cancerStudies_view
-scored_matches_interventions <- unique(dplyr::filter(scored_matches_interventions, nct_id %in% open_cancerStudies_nct_ids))
-
-## exclude rows where target is NA
-scored_matches_interventions <- dplyr::filter(scored_matches_interventions, !is.na(target_symbol))
-
-## add rationale column
-scored_matches_interventions$intervention_rationale <- paste0("Study intervention (", scored_matches_interventions$intervention_name, ") targets ", scored_matches_interventions$target_symbol)
-
-## add a score
-scored_matches_interventions$intervention_score <- 2
-```
-  
-  * Assign *intervention_score* +1 if any intervention targets a gene immediately downstream of an altered gene  
-
-```{r score matches on pathway neighbour targets}
-
-## start with interventions
-scored_matches_interventions_pathways <- unique(dplyr::select(interventions, nct_id, intervention_name, target_symbol))
-
-## exclude studies not in open_cancerStudies_view
-scored_matches_interventions_pathways <- unique(dplyr::filter(scored_matches_interventions_pathways, nct_id %in% open_cancerStudies_nct_ids))
-
-## exclude rows where target is NA
-scored_matches_interventions_pathways <- dplyr::filter(scored_matches_interventions_pathways, !is.na(target_symbol))
-
-## join to edges, where drugTargetSymbol == to
-## i.e. intervention targets the downstream node
-scored_matches_interventions_pathways <- merge(x=scored_matches_interventions_pathways, by.x="target_symbol", y=dplyr::select(edges, from, to), by.y="to")
-
-## drop any from values that are not genes
-scored_matches_interventions_pathways <- dplyr::filter(scored_matches_interventions_pathways, from %in% humanGenes$Symbol)
-
-## select and rename columns
-scored_matches_interventions_pathways <- unique(dplyr::select(scored_matches_interventions_pathways,nct_id, intervention_name, "downstream"="target_symbol","upstream"="from" ))
-
-## where an intervention targets >1 gene, aggregate
-scored_matches_interventions_pathways <- as.data.frame(scored_matches_interventions_pathways %>%
-                group_by(nct_id, intervention_name, upstream) %>%
-                summarise(
-                  downstream = paste(unique(downstream), collapse = ", ")
-                ))
-
-## add rationale column
-scored_matches_interventions_pathways$intervention_rationale <- paste0("Study drug (", scored_matches_interventions_pathways$intervention_name, ") targets downstream gene(s) (", scored_matches_interventions_pathways$downstream, ")")
-
-## drop downstream column
-scored_matches_interventions_pathways <- unique(dplyr::select(scored_matches_interventions_pathways, -c(downstream)))
-
-## rename upstream column to target_symbol to match scored_matches_interventions
-#pathwayMatches <- rename(pathwayMatches, "symbol"="upstream")
-scored_matches_interventions_pathways$target_symbol <- scored_matches_interventions_pathways$upstream
-scored_matches_interventions_pathways <- dplyr::select(scored_matches_interventions_pathways, -upstream)
-
-
-## add a score
-scored_matches_interventions_pathways$intervention_score <- 1
-
-## harmonise columns
-scored_matches_interventions_pathways <- unique(dplyr::select(scored_matches_interventions_pathways, names(scored_matches_interventions)))
-
-```
-  
-    * If an intervention is listed as targeting a gene directly **and** targeting a second gene immediately downstream, we will just take the highest score (i.e. +2)  
-    
-
-```{r combine target and pathway matches}
-## combine matches on target and pathway
-scored_matches_interventions_combined <- rbind(scored_matches_interventions, scored_matches_interventions_pathways)
-
-## where intervention had both direct and pathway matches, just take the highest score
-scored_matches_interventions_combined <- scored_matches_interventions_combined %>%
-  group_by(nct_id, intervention_name, target_symbol) %>%
-  arrange(desc(intervention_score)) %>%
-  summarise(
-    intervention_rationale = head(intervention_rationale, 1), 
-    intervention_score = head(intervention_score, 1)
-  )
-
-```
-
-```{r expand intervention matches to apply to all alteration types}
-## for genes that don't have a match in eligilityMatches, we want to be able to match on gene alone, regardless of variant_type... 
-scored_matches_interventions_combined$variant_type <- list(unique(scored_matches_study$variant_type))
-
-## unnest to multiply rows
-scored_matches_interventions_combined <- data.frame(unnest(scored_matches_interventions_combined, cols = "variant_type"))
-
-## select and reorder columns 
-scored_matches_interventions_combined <- dplyr::select(scored_matches_interventions_combined, nct_id, "symbol"="target_symbol", variant_type, intervention_rationale, intervention_score)
-
-```
-  
-* Calculate a *combined_score* = *eligibility_score* + *intervention_score*  
-  
-```{r calculate combined scores}
-## merge matches tables 
-scoredMatches_view <- merge(x=scored_matches_study, by.x=c("nct_id", "symbol", "variant_type"), all.x=TRUE, 
-      y=scored_matches_interventions_combined, by.y = c("nct_id", "symbol", "variant_type"), all.y=TRUE)
-
-## add a combined score
-scoredMatches_view$combined_score <- rowSums(scoredMatches_view[,c("intervention_score", "eligibility_score")], na.rm=TRUE)
-
-## concatenate symbol and variant_type columns to get <gene name> <variant_type>, e.g. "EGFR mutation"
-scoredMatches_view$gene_variant_type <- paste(scoredMatches_view$symbol, scoredMatches_view$variant_type, sep=" ")
-
-## select and reorder columns
-scoredMatches_view <- unique(dplyr::select(scoredMatches_view, symbol, variant_type,gene_variant_type, nct_id, intervention_rationale, eligibility_rationale, matching_criteria, combined_score))
-
-## order on combined_score descending
-scoredMatches_view <- scoredMatches_view[order(scoredMatches_view$combined_score, decreasing = TRUE), ]
-
-```
-
-* Scored matches (studies in open_cancerStudies_view only) are saved in the *scoredMatches_view* table:  
-
-
-```{r save scoredMatches_view to DB}
-## preview
-formattable(head(scoredMatches_view))
-
-## create as a table in database
-dbWriteTable(conn = con,name = "scoredMatches_view", scoredMatches_view , overwrite=TRUE)
-
-## check it has saved
-# dbListTables(con)
-
-```
-
-```{r disconnect from  database}
-
-# disconnect from clinicaltrials.gov
-dbDisconnect(conn2)
-
-# Disconnect from SQLite database
-dbDisconnect(con)
-
-```
-  
-`r knitr::knit_exit()`    
