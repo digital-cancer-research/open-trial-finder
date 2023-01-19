@@ -178,6 +178,11 @@ unzip(zipfile = paste0(getwd(),"/",destFlatFilename))
 
 NCIt <- read.table("Thesaurus.txt",header = FALSE, sep = "\t", comment.char = "", fill = TRUE, stringsAsFactors = FALSE, quote = "")
 names(NCIt) <- c("ID","URL","ParentID","Synonyms","Description","PreferredTerm","Type","Class")
+
+## revised names as of 19 Jan 2023
+names(NCIt) <- c("ID","URL","ParentID","Synonyms","Description","PreferredTerm","Type","Class", "concept_in_subset")
+
+
 ## clean up, remove files
 file.remove("NCIt_FLAT.zip")
 file.remove("Thesaurus.txt")
