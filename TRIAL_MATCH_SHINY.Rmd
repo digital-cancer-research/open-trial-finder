@@ -596,7 +596,7 @@ output$datatable <- DT::renderDT(dplyr::select(formattedTable(),
                             ),
                   rownames=FALSE, escape = 4,
                   options = list(ordering=F,
-                                 paging = TRUE,
+                                 paging = FALSE,
                                  scrollX = TRUE,
                                  scrollY = "60vh",
                                  scrollCollapse = TRUE,
@@ -608,7 +608,7 @@ output$datatable <- DT::renderDT(dplyr::select(formattedTable(),
                                                         targets = 7,
                                                         render = JS("function(data, type, row, meta) {",
     "return type === 'display' && data.length > 20 ?",
-    "'<span title=\"' + data + '\">' + data.substr(0, 20) + '...</span>' : data;",
+    "'<span title=\"' + data + '\">' + data.substr(0, 20) + '<br><b>(see more ...)</b></span>' : data;",
     "}"  )
     ))
     # ,     callback = JS('table.page(3).draw(false);'))
