@@ -559,6 +559,30 @@ formattedTable <- reactive({
 ```{r define output for main results table}
 
 ## increase width of brief title column to 500 pixels
+# output$datatable <- DT::renderDT(dplyr::select(formattedTable(),
+#                             "Brief title" = "brief_title",
+#                             "Matching alteration(s)" = "gene_variant_type",
+#                             "Matching cancer type(s)" = "matching.condition",
+#                             "Eligibility" = "eligibility_rationale",
+#                             "Drug rationale" = "intervention_rationale",
+#                             "Est. completion date" = "primary_completion_date",
+#                             "Last updated" = "last_update_posted_date",
+#                             "Locations" = "locations",
+#                             "Contacts" = "contacts"
+#                             ),
+#                   rownames=FALSE, escape = 4, 
+#                   options = list(ordering=F,
+#                                  paging = TRUE,
+#                                  scrollX = TRUE,
+#                                  scrollY = "60vh",
+#                                  scrollCollapse = TRUE,
+#                                  autoWidth = TRUE,
+#                                  columnDefs = list(list(width = '500px', targets = list(0)))
+#                                  #autoWidth = TRUE
+#                                 )
+ # )
+
+## add ellipsis to locations
 output$datatable <- DT::renderDT(dplyr::select(formattedTable(),
                             "Brief title" = "brief_title",
                             "Matching alteration(s)" = "gene_variant_type",
@@ -570,22 +594,31 @@ output$datatable <- DT::renderDT(dplyr::select(formattedTable(),
                             "Locations" = "locations",
                             "Contacts" = "contacts"
                             ),
-                  rownames=FALSE, escape = 4, 
+                  rownames=FALSE, escape = 4,
                   options = list(ordering=F,
                                  paging = TRUE,
                                  scrollX = TRUE,
                                  scrollY = "60vh",
                                  scrollCollapse = TRUE,
                                  autoWidth = TRUE,
-                                 columnDefs = list(list(width = '500px', targets = list(0)))
-                                 #autoWidth = TRUE
-                                )
- )
+                                 columnDefs = list(list(
+                                                        # width = '500px'
+                                                        # , targets = list(0)
+                                                        # ,
+                                                        targets = 7,
+                                                        render = JS("function(data, type, row, meta) {",
+    "return type === 'display' && data.length > 20 ?",
+    "'<span title=\"' + data + '\">' + data.substr(0, 20) + '...</span>' : data;",
+    "}"  )
+    ))
+    # ,     callback = JS('table.page(3).draw(false);'))
+))
+
 
 
 ## UNUSED CODE FOR OTHER OPTIONS...
 
-## add ellipsis to locations, lose ID and contacts columns
+# add ellipsis to locations, lose ID and contacts columns
 # output$datatable <- DT::renderDT(dplyr::select(formattedTable(), -c(ID,Contacts)), escape = 5, options = list(ordering=F, paging = FALSE, scrollX = TRUE, scrollY = "450px", scrollCollapse = TRUE, columnDefs = list(list(
 #   targets = 6,
 #   render = JS(
