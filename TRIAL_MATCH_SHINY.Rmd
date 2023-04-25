@@ -840,8 +840,8 @@ output$shortlistTable <- DT::renderDT(unique(dplyr::select(shortlist(),
                                  autoWidth = TRUE,
                                  columnDefs = list(list(width = '250px', targets = list(7,8,9), 
                                                        render = JS("function(data, type, row, meta) {
-                                                           if (type === 'display' && data.length > 50) {
-                                                               return '<span title=\"'+data+'\">'+data.substr(0, 50)+'<br><b>more ...</b></span>';
+                                                           if (type === 'display' && data.length > 200) {
+                                                               return '<span title=\"'+data+'\">'+data.substr(0, 200)+'<br><b>(see more ...)</b></span>';
                                                            } else {
                                                                return data;
                                                            }
