@@ -793,6 +793,31 @@ observeEvent(input$addToShortlist, {
 
 ```{r define output for shortlist table}
 
+# output$shortlistTable <- DT::renderDT(unique(dplyr::select(shortlist(),
+#                             "Brief title" = "brief_title",
+#                             "Matching alteration(s)" = "gene_variant_type",
+#                             "Matching cancer type(s)" = "matching.condition",
+#                             "Eligibility" = "eligibility_rationale",
+#                             "Drug rationale" = "intervention_rationale",
+#                             "Est. completion date" = "primary_completion_date",
+#                             "Last updated" = "last_update_posted_date",
+#                             "Matching inclusion criteria" = "matching_criteria",
+#                             "Prior Therapy exclusions" = Exclusions,
+#                             "Locations" = "locations",
+#                             "Contacts" = "contacts"
+#                             )),
+#                   rownames=FALSE, escape = 4, 
+#                   options = list(ordering=F,
+#                                  paging = TRUE,
+#                                  scrollX = TRUE,
+#                                  scrollY = "60vh",
+#                                  scrollCollapse = TRUE,
+#                                  autoWidth = TRUE,
+#                                  columnDefs = list(list(width = '500px', targets = list(4)))
+#                                 )
+#   )
+
+## show tooltips
 output$shortlistTable <- DT::renderDT(unique(dplyr::select(shortlist(),
                             "Brief title" = "brief_title",
                             "Matching alteration(s)" = "gene_variant_type",
@@ -813,9 +838,21 @@ output$shortlistTable <- DT::renderDT(unique(dplyr::select(shortlist(),
                                  scrollY = "60vh",
                                  scrollCollapse = TRUE,
                                  autoWidth = TRUE,
-                                 columnDefs = list(list(width = '500px', targets = list(4)))
+                                 columnDefs = list(list(width = '250px', targets = list(7,8,9), 
+                                                       render = JS("function(data, type, row, meta) {
+                                                           if (type === 'display' && data.length > 50) {
+                                                               return '<span title=\"'+data+'\">'+data.substr(0, 50)+'<br><b>more ...</b></span>';
+                                                           } else {
+                                                               return data;
+                                                           }
+                                                       }"),
+                                                       ellipsis = TRUE))
                                 )
   )
+
+
+
+
 ```
 
  
