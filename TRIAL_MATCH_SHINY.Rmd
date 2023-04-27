@@ -125,30 +125,30 @@ cancerStudies$locations[cancerStudies$site_status=="Not yet recruiting"] <- past
 
 ```
 
-```{r get prior tx exclusions}
-## read indexed eligibilities table into memory
-indexedEligibility <- DBI::dbGetQuery(con, "SELECT * FROM indexed_eligibilities_view")
-
-## filter for exclusions
-excludedTX <- dplyr::filter(indexedEligibility, criterion.type=="EXCLUSION")
-
-## filter for prior therapy
-excludedTX <- dplyr::filter(excludedTX, feature=="prior therapy")
-
-## drop unnecessary columns
-excludedTX <- unique(dplyr::select(excludedTX, nct_id, "Exclusions"="criteria"))
-
-## aggregate into single row per study
-excludedTX <- excludedTX %>%
-       dplyr::group_by(nct_id) %>%
-       dplyr::summarize(Exclusions = paste(sort(unique(na.omit(Exclusions))), collapse="\n")) %>%
-       as.data.frame()
-
-## join to cancerStudies
-# cancerStudies <- merge(x=cancerStudies, by.x = "nct_id", all.x = TRUE, y=excludedTX, by.y="nct_id")
-cancerStudies <- plyr::join(x=cancerStudies, y=excludedTX, by = "nct_id", type = "left")    ## plyr::join is faster than merge
-
-# message(print(paste0("got prior tx exclusions: ", Sys.time() - start_time)))
+```{r get prior tx exclusions (MOVED TO INDEXTRIALDATA.Rmd)}
+# ## read indexed eligibilities table into memory
+# indexedEligibility <- DBI::dbGetQuery(con, "SELECT * FROM indexed_eligibilities_view")
+# 
+# ## filter for exclusions
+# excludedTX <- dplyr::filter(indexedEligibility, criterion.type=="EXCLUSION")
+# 
+# ## filter for prior therapy
+# excludedTX <- dplyr::filter(excludedTX, feature=="prior therapy")
+# 
+# ## drop unnecessary columns
+# excludedTX <- unique(dplyr::select(excludedTX, nct_id, "Exclusions"="criteria"))
+# 
+# ## aggregate into single row per study
+# excludedTX <- excludedTX %>%
+#        dplyr::group_by(nct_id) %>%
+#        dplyr::summarize(Exclusions = paste(sort(unique(na.omit(Exclusions))), collapse="\n")) %>%
+#        as.data.frame()
+# 
+# ## join to cancerStudies
+# # cancerStudies <- merge(x=cancerStudies, by.x = "nct_id", all.x = TRUE, y=excludedTX, by.y="nct_id")
+# cancerStudies <- plyr::join(x=cancerStudies, y=excludedTX, by = "nct_id", type = "left")    ## plyr::join is faster than merge
+# 
+# # message(print(paste0("got prior tx exclusions: ", Sys.time() - start_time)))
 
 ```
 
@@ -399,16 +399,10 @@ reactiveScoredMatches <- shiny::reactive({
 
 mergedStudyTable <-  shiny::reactive({
   ## get cancerStudies filtered on cancer type 
-  cancerstudies <- reactiveCancerStudies()
   ## get scoredMatches filtered on alterations
-  scoredmatches <- reactiveScoredMatches()
   ## left join, i.e. keep matches on cancer type alone
   ## if scoredMatches is empty, will just get empty columns
-  # table <- merge(x=cancerstudies, by.x=c("nct_id"), all.x=TRUE, 
-  #                    y=scoredmatches, by.y=c("nct_id"))
-  
-  table <- plyr::join(x=cancerStudies, y=scoredmatches, by = "nct_id", type = "left")   ## join is faster than merge
-  
+  table <- plyr::join(x=reactiveCancerStudies(), y=reactiveScoredMatches(), by = "nct_id", type = "left")   ## join is faster than merge
   
   ## display error message if table is empty 
   shiny::validate(
@@ -458,32 +452,32 @@ Row {.tabset}
 ## zoomed based on lat and long values in configuration file
 ## NOTE: layerIds must be unique (i.e. one study would only appear once)
 ## need to use combination of study ID and location to make layerIds unique
-output$studiesmap <- leaflet::renderLeaflet({
+output$studiesmap <- renderLeaflet({
    studies <- unique(dplyr::select(mergedStudyTable(), nct_id, brief_title))
    # locations <- merge(x=studies,by.x="nct_id", y=cancer.study.locations, by.y="nct_id")
    locations <- plyr::join(x=studies, y=cancer.study.locations, by = "nct_id", type = "inner")   ## join is faster than merge
    locations$uniqueId <- paste(locations$nct_id, locations$lat, locations$long, sep = "_")
    if(nrow(locations)>0) {
-     leaflet::leaflet() %>%
-         leaflet::addProviderTiles(providers$OpenStreetMap.Mapnik) %>%
-         leaflet::setView(lat = configuration$zoom.lat, lng = configuration$zoom.long, zoom = 6) %>%
-         leaflet::addAwesomeMarkers(data=locations, 
+     leaflet() %>%
+         addProviderTiles(providers$OpenStreetMap.Mapnik) %>%
+         setView(lat = configuration$zoom.lat, lng = configuration$zoom.long, zoom = 6) %>%
+         addAwesomeMarkers(data=locations, 
                     lat = ~lat,
                  lng = ~long,
                  popup = ~brief_title,
                  layerId = ~uniqueId, 
-                 icon = leaflet::awesomeIcons(),
-                 clusterOptions = leaflet::markerClusterOptions())
+                 icon = awesomeIcons(),
+                 clusterOptions = markerClusterOptions())
   } else {
-     leaflet::leaflet() %>%
-         leaflet::addProviderTiles(leaflet::providers$OpenStreetMap.Mapnik) %>%
-         leaflet::setView(lat = configuration$zoom.lat, lng = configuration$zoom.long, zoom = 6)
+     leaflet() %>%
+         addProviderTiles(providers$OpenStreetMap.Mapnik) %>%
+         setView(lat = configuration$zoom.lat, lng = configuration$zoom.long, zoom = 6)
   }
 })
 
 ## render reactive map
 shiny::renderUI({
-   leaflet::leafletOutput("studiesmap")
+   leafletOutput("studiesmap")
    
 })
 
