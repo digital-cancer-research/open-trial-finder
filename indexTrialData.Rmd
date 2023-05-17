@@ -418,7 +418,7 @@ NCIt_to_CHEMBL <- unique(NCIt_to_CHEMBL)
   
 ```{r select desired columns from NCIt_to_CHEMBL}
 ## select and reorder columns
-drugs_targets <- unique(dplyr::select(NCIt_to_CHEMBL, "NCIt_code"="code", TARGET_SYMBOL, action_type, mechanism_of_action))
+drugs_targets <- unique(dplyr::select(NCIt_to_CHEMBL, "NCIt_code"="code", TARGET_SYMBOL, action_type))
 
 ```
 
@@ -484,7 +484,6 @@ iuphar_processed <- dplyr::rename(iuphar_processed,"TARGET_SYMBOL"= "SYMBOL")
 ## harmonise columns with drugs_targets table
 iuphar_processed <- unique(dplyr::select(iuphar_processed, NCIt_code, TARGET_SYMBOL, action_type ))
 iuphar_processed$action_type <- toupper(iuphar_processed$action_type)
-iuphar_processed$mechanism_of_action <- NA
 
 ## bind as new rows to drugs_targets table
 drugs_targets <- unique(rbind(drugs_targets, iuphar_processed))
@@ -494,111 +493,27 @@ dplyr::filter(drugs_targets, NCIt_code == "C48387")
 ```
 
 
-**NEED DEAL WITH REDUNDANCY DUE TO IUPHAR HAVING SAME DRUG, SAME TARGET BUT MISSING MECHANISM OF ACTION**    
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-### **Map NCIt drugs to targets via KEGG**  
 
-* We will download all drugs associated with the KEGG pathway *Pathways In Cancer* (hsa05200) and get their respective target gene  
   
-```{r use pathways in cancer}
-## start timer
-tic("use pathways in cancer")
-
-## the KEGG pathways in cancer entry (hsa05200) is associated with 329 different drugs...
-hsa05200_list <- keggGet("hsa05200")
-# the drug names are stored in even numbered elements
-# the KEGG drug IDs are stored in odd numbered elements
-hsa05200_list_drugs <- hsa05200_list[1][[1]]$DRUG
-
-kegg_drugs <- data.frame(
-  drug_name = hsa05200_list_drugs[seq(2, length(hsa05200_list_drugs), 2)], ## get even numbered elements 
-  kegg_drug_id = hsa05200_list_drugs[seq(1, length(hsa05200_list_drugs), 2)] ## get odd numbered elements
-)
-
-## process drug names
-kegg_drugs$drug_name <- gsub(pattern = " \\(.*", replacement = "", x=kegg_drugs$drug_name)
-
-## join to NCIt ID
-kegg_drugs$drug_name_lower <- tolower(kegg_drugs$drug_name)
-NCIt_Pharmacologics$Synonyms_lower <- tolower(NCIt_Pharmacologics$Synonyms)
-
-kegg_drugs <- unique(merge(x=dplyr::select(NCIt_Pharmacologics, "NCIt_drug_id"="ID", Synonyms_lower ), 
-      by.x = "Synonyms_lower", 
-      y=kegg_drugs, by.y="drug_name_lower", all.y=TRUE))
-
-# can use drug IDs to get targets, e.g. 
-# keggGet("D12282")[[1]]$TARGET$TARGET
-## however, cannot use this directly, as some drugs map to multiple targets, e.g. 
-# keggGet("D11138")[[1]]$TARGET$TARGET
-
-## add a column that will hold ID for target gene(s)
-kegg_drugs$target_id <- NA
-for(i in 1:nrow(kegg_drugs)) {
-  drug_id = as.character(kegg_drugs$kegg_drug_id[i])
-  geneid <- NA
-  tryCatch({geneid <- keggGet(drug_id)[[1]]$TARGET$TARGET},
-             error=function(cond) {return(NA)})
-  #print(geneid)
-  if(length(geneid)>0) kegg_drugs$target_id[i] <- geneid
-}
-## parse to retain only the id numbers for target genes
-kegg_drugs$target_id <- gsub(pattern = ".*HSA:", replacement = "", x=kegg_drugs$target_id)
-
-kegg_drugs$target_id <- gsub(pattern = "\\].*", replacement = "", x=kegg_drugs$target_id)
-
-# split on space into individual ids, where applicable
-kegg_drugs$target_id <- strsplit(kegg_drugs$target_id, split = " ")
-kegg_drugs <- unnest(data = kegg_drugs, target_id)
-kegg_drugs <- as.data.frame(kegg_drugs)
-kegg_drugs$target_id <- str_squish(kegg_drugs$target_id)
-kegg_drugs$target_id <- paste0("hsa:", kegg_drugs$target_id)
-## need to parse the hsa codes, convert to lowercase and then call e.g. 
-# keggGet("hsa:4914")[[1]]$SYMBOL
-
-## add a column that will hold symbol for target gene(s)
-kegg_drugs$target_symbol <- NA
-for(i in 1:nrow(kegg_drugs)) {
-  target_id = as.character(kegg_drugs$target_id[i])
-  target_symbol <- NA
-  tryCatch({target_symbol <- keggGet(target_id)[[1]]$SYMBOL},
-             error=function(cond) {return(NA)})
-  #print(target_symbol)
-  if(length(target_symbol)>0) kegg_drugs$target_symbol[i] <- target_symbol
-}
-## parse to retain only the first value (Entrez symbol)
-kegg_drugs$target_symbol <- gsub(pattern = ",.*", replacement = "", x=kegg_drugs$target_symbol)
-
-## select and reorder columns
-kegg_drugs <- unique(dplyr::select(kegg_drugs, NCIt_drug_id, drug_name, target_symbol))
-
-toc() 
-```
-
-* Where possible, these drugs are mapped to entities in the NCI thesaurus  
   
-* These data are saved in the *kegg_drugs* table:  
   
-`r formattable(head(kegg_drugs))`  
   
-```{r write kegg drugs to database}
+**CONTINUTE FROM HERE ON THURSDAY**    
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+
+```{r write drugs_targets to database}
 ## create as a table in database
-dbWriteTable(conn = con,name = "kegg_drugs", value = kegg_drugs, overwrite=TRUE)
+dbWriteTable(conn = con,name = "drugs_targets", value = drugs_targets, overwrite=TRUE)
 ```
 
 ### **Define controlled terms and synonyms for cancer types**  
@@ -874,17 +789,17 @@ kwic_interventions <- unique(dplyr::select(kwic_interventions, nct_id, intervent
 
 ```
   
-* We will also map interventions to their molecular targets (where possible), based on the *kegg_drugs* table  
+* We will also map interventions to their molecular targets (where possible), based on the *drugs_targets* table  
   
 ```{r join kegg targets to kwic interventions}
 
 ## use "incomparables = NA" to avoid joining on NA values ?!...
 ## see https://community.rstudio.com/t/why-does-na-match-na-when-joining-two-dataframes/28785/2
 
-kwic_interventions <- unique(merge(x=kwic_interventions, by.x="NCIt_id", all.x=TRUE, y=unique(dplyr::select(kegg_drugs, NCIt_drug_id, target_symbol)), by.y = "NCIt_drug_id", incomparables = NA))
+kwic_interventions <- unique(merge(x=kwic_interventions, by.x="NCIt_id", all.x=TRUE, y=unique(dplyr::select(drugs_targets, NCIt_code, TARGET_SYMBOL)), by.y = "NCIt_code", incomparables = NA))
 
 ## select and reorder columns
-kwic_interventions <- unique(dplyr::select(kwic_interventions, nct_id, intervention_id, intervention_name, NCIt_id, PreferredTerm,target_symbol, Mechanism))
+kwic_interventions <- unique(dplyr::select(kwic_interventions, nct_id, intervention_id, intervention_name, NCIt_id, PreferredTerm,TARGET_SYMBOL, Mechanism))
 
 interventions <- kwic_interventions
 
@@ -1811,16 +1726,16 @@ scored_matches_study <- scored_matches_study %>%
 
 ```{r score matches on intervention target}
 ## start with interventions
-scored_matches_interventions <- unique(dplyr::select(interventions, nct_id, intervention_name, target_symbol))
+scored_matches_interventions <- unique(dplyr::select(interventions, nct_id, intervention_name, TARGET_SYMBOL))
 
 ## exclude studies not in open_cancerStudies_view
 scored_matches_interventions <- unique(dplyr::filter(scored_matches_interventions, nct_id %in% open_cancerStudies_nct_ids))
 
 ## exclude rows where target is NA
-scored_matches_interventions <- dplyr::filter(scored_matches_interventions, !is.na(target_symbol))
+scored_matches_interventions <- dplyr::filter(scored_matches_interventions, !is.na(TARGET_SYMBOL))
 
 ## add rationale column
-scored_matches_interventions$intervention_rationale <- paste0("Study intervention (", scored_matches_interventions$intervention_name, ") targets ", scored_matches_interventions$target_symbol)
+scored_matches_interventions$intervention_rationale <- paste0("Study intervention (", scored_matches_interventions$intervention_name, ") targets ", scored_matches_interventions$TARGET_SYMBOL)
 
 ## add a score
 scored_matches_interventions$intervention_score <- 2
@@ -1831,23 +1746,23 @@ scored_matches_interventions$intervention_score <- 2
 ```{r score matches on pathway neighbour targets}
 
 ## start with interventions
-scored_matches_interventions_pathways <- unique(dplyr::select(interventions, nct_id, intervention_name, target_symbol))
+scored_matches_interventions_pathways <- unique(dplyr::select(interventions, nct_id, intervention_name, TARGET_SYMBOL))
 
 ## exclude studies not in open_cancerStudies_view
 scored_matches_interventions_pathways <- unique(dplyr::filter(scored_matches_interventions_pathways, nct_id %in% open_cancerStudies_nct_ids))
 
 ## exclude rows where target is NA
-scored_matches_interventions_pathways <- dplyr::filter(scored_matches_interventions_pathways, !is.na(target_symbol))
+scored_matches_interventions_pathways <- dplyr::filter(scored_matches_interventions_pathways, !is.na(TARGET_SYMBOL))
 
 ## join to edges, where drugTargetSymbol == to
 ## i.e. intervention targets the downstream node
-scored_matches_interventions_pathways <- merge(x=scored_matches_interventions_pathways, by.x="target_symbol", y=dplyr::select(edges, from, to), by.y="to")
+scored_matches_interventions_pathways <- merge(x=scored_matches_interventions_pathways, by.x="TARGET_SYMBOL", y=dplyr::select(edges, from, to), by.y="to")
 
 ## drop any from values that are not genes
 scored_matches_interventions_pathways <- dplyr::filter(scored_matches_interventions_pathways, from %in% humanGenes$Symbol)
 
 ## select and rename columns
-scored_matches_interventions_pathways <- unique(dplyr::select(scored_matches_interventions_pathways,nct_id, intervention_name, "downstream"="target_symbol","upstream"="from" ))
+scored_matches_interventions_pathways <- unique(dplyr::select(scored_matches_interventions_pathways,nct_id, intervention_name, "downstream"="TARGET_SYMBOL","upstream"="from" ))
 
 ## where an intervention targets >1 gene, aggregate
 scored_matches_interventions_pathways <- as.data.frame(scored_matches_interventions_pathways %>%
@@ -1862,9 +1777,9 @@ scored_matches_interventions_pathways$intervention_rationale <- paste0("Study dr
 ## drop downstream column
 scored_matches_interventions_pathways <- unique(dplyr::select(scored_matches_interventions_pathways, -c(downstream)))
 
-## rename upstream column to target_symbol to match scored_matches_interventions
+## rename upstream column to TARGET_SYMBOL to match scored_matches_interventions
 #pathwayMatches <- rename(pathwayMatches, "symbol"="upstream")
-scored_matches_interventions_pathways$target_symbol <- scored_matches_interventions_pathways$upstream
+scored_matches_interventions_pathways$TARGET_SYMBOL <- scored_matches_interventions_pathways$upstream
 scored_matches_interventions_pathways <- dplyr::select(scored_matches_interventions_pathways, -upstream)
 
 
@@ -1884,7 +1799,7 @@ scored_matches_interventions_combined <- rbind(scored_matches_interventions, sco
 
 ## where intervention had both direct and pathway matches, just take the highest score
 scored_matches_interventions_combined <- scored_matches_interventions_combined %>%
-  group_by(nct_id, intervention_name, target_symbol) %>%
+  group_by(nct_id, intervention_name, TARGET_SYMBOL) %>%
   arrange(desc(intervention_score)) %>%
   summarise(
     intervention_rationale = head(intervention_rationale, 1), 
@@ -1901,7 +1816,7 @@ scored_matches_interventions_combined$variant_type <- list(unique(scored_matches
 scored_matches_interventions_combined <- data.frame(unnest(scored_matches_interventions_combined, cols = "variant_type"))
 
 ## select and reorder columns 
-scored_matches_interventions_combined <- dplyr::select(scored_matches_interventions_combined, nct_id, "symbol"="target_symbol", variant_type, intervention_rationale, intervention_score)
+scored_matches_interventions_combined <- dplyr::select(scored_matches_interventions_combined, nct_id, "symbol"="TARGET_SYMBOL", variant_type, intervention_rationale, intervention_score)
 
 ```
   
