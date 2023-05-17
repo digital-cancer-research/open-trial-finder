@@ -1426,23 +1426,10 @@ number_studies_in_view <- length(unique(open_cancerStudies_nct_ids))
 mean_days_since_update <- round(as.numeric(mean(Sys.Date()-open_cancerStudies_view$last_update_posted_date)), digits = 0)
 ```
   
-* Studies view is saved in the *open_cancerStudies_view*:  
-* As of `r format(Sys.Date(), format = "%d %b %Y")`:  
-  * the total number of studies in this view is `r number_studies_in_view`  
-  * the mean number of days since the study records were updated is `r mean_days_since_update`  
+
+* In order to reduce the number of joins in the Shiny app, we will join prior therapy exclusion criteria to the open cancer studies view before saving to DB (see below)...   
   
 
-```{r save open_cancerStudies_view to DB}
-## preview
-formattable(head(open_cancerStudies_view))
-
-## create as a table in database
-dbWriteTable(conn = con,name = "open_cancerStudies_view", open_cancerStudies_view, overwrite=TRUE)
-
-## check it has saved
-# dbListTables(con)
-
-```
   
 #### **indexedEligibility view**  
   
@@ -1480,7 +1467,53 @@ dbWriteTable(conn = con,name = "indexed_eligibilities_view", indexed_eligibiliti
 # dbListTables(con)
 
 ```
+    
+##### **Save studies view to database**  
   
+* Studies view is saved in the *open_cancerStudies_view*:  
+* As of `r format(Sys.Date(), format = "%d %b %Y")`:  
+  * the total number of studies in this view is `r number_studies_in_view`  
+  * the mean number of days since the study records were updated is `r mean_days_since_update`  ```{r save open_cancerStudies_view to DB}
+## preview
+formattable(head(open_cancerStudies_view))
+
+
+```{r join prior tx exclusions to open_cancerStudies_view}
+
+## filter for exclusions
+excludedTX <- dplyr::filter(indexed_eligibilities_view, criterion.type=="EXCLUSION")
+
+## filter for prior therapy
+excludedTX <- dplyr::filter(excludedTX, feature=="prior therapy")
+
+## drop unnecessary columns
+excludedTX <- unique(dplyr::select(excludedTX, nct_id, "Exclusions"="criteria"))
+
+## aggregate into single row per study
+excludedTX <- excludedTX %>%
+       dplyr::group_by(nct_id) %>%
+       dplyr::summarize(Exclusions = paste(sort(unique(na.omit(Exclusions))), collapse="\n")) %>%
+       as.data.frame()
+
+## join to open_cancerStudies_view
+
+open_cancerStudies_view <- plyr::join(x=open_cancerStudies_view, y=excludedTX, by = "nct_id", type = "left")    ## plyr::join is faster than merge
+
+```
+
+
+
+````{r write studies view to DB}
+## create as a table in database
+dbWriteTable(conn = con,name = "open_cancerStudies_view", open_cancerStudies_view, overwrite=TRUE)
+
+## check it has saved
+# dbListTables(con)
+
+``` 
+
+
+
 #### **Scored matches view**  
   
 * Studies will be scored as follows:  
@@ -1717,6 +1750,11 @@ dbDisconnect(con)
 ```
   
 `r knitr::knit_exit()`  
+
+
+
+
+## **unused code**  
 
 
 ```{r get result groups}
