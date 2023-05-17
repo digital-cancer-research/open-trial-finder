@@ -88,16 +88,12 @@ aact.username <- configuration$aact.username
 aact.password <- configuration$aact.password
 ```
 
-
 ```{r download CHEMBL as SQLite database}
 
 ## note this: You will need around 35GB of free space available to import the ChEMBL dump files. (https://chembl.gitbook.io/chembl-interface-documentation/frequently-asked-questions/chembl-download-questions)
 
 ## see here for schema: https://ftp.ebi.ac.uk/pub/databases/chembl/ChEMBLdb/latest/chembl_32_schema.png
 ## and here for schema documentation: https://ftp.ebi.ac.uk/pub/databases/chembl/ChEMBLdb/latest/schema_documentation.txt 
-
-
-
 ## specify which release of chembl to be downloaded
 chembl_download_url <- "https://ftp.ebi.ac.uk/pub/databases/chembl/ChEMBLdb/releases/chembl_32/chembl_32_sqlite.tar.gz"
 chembl_db_filename <- "chembl_32/chembl_32_sqlite/chembl_32.db"
@@ -114,18 +110,10 @@ if(!file.exists(chembl_db_filename)) {
   untar(destfile)           ## extract files
 }
 
-
 chemblDB_con <- dbConnect(RSQLite::SQLite(), chembl_db_filename)
-# dbListTables(con)
+# dbListTables(chemblDB_con)
 
 ```
-
-
-
-
-
-
-
 
 **Date of data refresh: `r today`**  
  
@@ -216,46 +204,48 @@ download.file(url=NCItURL,destfile = destFlatFilename)
 unzip(zipfile = paste0(getwd(),"/",destFlatFilename))
 
 NCIt <- read.table("Thesaurus.txt",header = FALSE, sep = "\t", comment.char = "", fill = TRUE, stringsAsFactors = FALSE, quote = "")
-names(NCIt) <- c("ID","URL","ParentID","Synonyms","Description","PreferredTerm","Type","Class")
+# names(NCIt) <- c("ID","URL","ParentID","Synonyms","Description","PreferredTerm","Type","Class")
 
 ## revised names as of 19 Jan 2023
-names(NCIt) <- c("ID","URL","ParentID","Synonyms","Description","PreferredTerm","Type","Class", "concept_in_subset")
+# names(NCIt) <- c("ID","URL","ParentID","Synonyms","Description","PreferredTerm","Type","Class", "concept_in_subset")
 
+# revised names as of May 2023
+names(NCIt) <- c("code", "concept_IRI", "parents", "synonyms", "definition", "display_name", "concept_status", "semantic_type", "concept_in_subset")
 
 ## clean up, remove files
 file.remove("NCIt_FLAT.zip")
 file.remove("Thesaurus.txt")
 
-## an entity may have more than one class, so need to multiply rows
-## split and unnest the Class column of NCIt
-NCIt$Class <- strsplit(NCIt$Class, split = "\\|")
-NCIt <- unnest(data = NCIt, Class)
+## an entity may have more than one semantic_type, so need to multiply rows
+## split and unnest the semantic_type column of NCIt
+NCIt$semantic_type <- strsplit(NCIt$semantic_type, split = "\\|")
+NCIt <- unnest(data = NCIt, semantic_type)
 
-## do the same for Parent column
-## split ParentID column on pipe symbol
-NCIt$ParentID <- strsplit(NCIt$ParentID, split = "\\|")
-## unnest the ID column to multiply rows
-NCIt <- unnest(data=NCIt,ParentID)
+## do the same for parents column
+## split parents column on pipe symbol
+NCIt$parents <- strsplit(NCIt$parents, split = "\\|")
+## unnest the parents column to multiply rows
+NCIt <- unnest(data=NCIt,parents)
 
 ## drop unnecessary rows
-NCIt <- unique(dplyr::select(NCIt, ID, ParentID, Synonyms, PreferredTerm, Class))
+NCIt <- unique(dplyr::select(NCIt, code, parents, synonyms, display_name, semantic_type))
 
-## join parent column back
-## first, get the synonyms and IDs for parents
-NCItParents <- NCIt[which(NCIt$ID %in% NCIt$ParentID), ]
+## join parents column back
+## first, get the synonyms and codes for parents
+NCItParents <- NCIt[which(NCIt$code %in% NCIt$parents), ]
 
 ## each parent term may have more than one synonym
 ## for simplicity, we will retain only the first synonym for each parent term
-NCItParents$Synonyms <- gsub("\\|.*","",NCItParents$Synonyms)
+NCItParents$synonyms <- gsub("\\|.*","",NCItParents$synonyms)
 
-NCItParents <- unique(dplyr::select(NCItParents, "ParentID"="ID", "Parent_synonym"="Synonyms"))
+NCItParents <- unique(dplyr::select(NCItParents, "ParentID"="code", "Parent_synonym"="synonyms"))
 
 ## merge parents on entity ID = parent ID
-NCIt <- merge(x=NCIt,y=NCItParents,by.x="ParentID",by.y="ParentID",all.x=TRUE)
+NCIt <- merge(x=NCIt,y=NCItParents,by.x="parents",by.y="ParentID",all.x=TRUE)
 
-## split and unnest the Synonyms column
-NCIt$Synonyms <- strsplit(NCIt$Synonyms, split = "\\|")
-NCIt <- unnest(data = NCIt, Synonyms)
+## split and unnest the synonyms column
+NCIt$synonyms <- strsplit(NCIt$synonyms, split = "\\|")
+NCIt <- unnest(data = NCIt, synonyms)
 
 NCIt <- as.data.frame(NCIt)
 
@@ -274,23 +264,23 @@ toc()
 tic("preprocess NCIt")
 
 ## delete any rows containing the pattern "Retired Concept"
-NCIt <- NCIt[grep(pattern = "Retired Concept", x=NCIt$Synonyms, invert = TRUE), ]
+NCIt <- NCIt[grep(pattern = "Retired Concept", x=NCIt$synonyms, invert = TRUE), ]
 NCIt <- NCIt[grep(pattern = "Retired Concept", x=NCIt$Parent_synonym, invert = TRUE), ]
 
 ## delete any rows with Synonyms that map to >1 term within a Class
 NCIt_multiple_terms <- NCIt %>%
-  group_by(Synonyms, Class) %>%
+  group_by(synonyms, semantic_type) %>%
   summarise(
-    number_terms = length(unique(ID))
+    number_terms = length(unique(code))
   ) %>%
   filter(number_terms >1) %>%
   as.data.frame()
 ## anti join
-NCIt <- anti_join(NCIt, NCIt_multiple_terms, by=c("Synonyms", "Class"))
+NCIt <- anti_join(NCIt, NCIt_multiple_terms, by=c("synonyms", "semantic_type"))
 rm(NCIt_multiple_terms)
 
 ## delete any rows that don't contain any letters... 
-NCIt <- NCIt[grep(pattern = "[a-zA-Z]", x=NCIt$Synonyms), ]
+NCIt <- NCIt[grep(pattern = "[a-zA-Z]", x=NCIt$synonyms), ]
 
 ## stop timer
 toc()
@@ -306,16 +296,221 @@ dbWriteTable(conn = con,name = "NCIt", value = NCIt, overwrite=TRUE)
 
 ```
   
-* A subset of the preprocessed NCI thesaurus (Class==*Pharmacologic Substance* is saved in memory in the NCIt_Pharmacologics table (not saved to DB).  
+* A subset of the preprocessed NCI thesaurus (semantic_type==*Pharmacologic Substance* is saved in memory in the NCIt_Pharmacologics table (not saved to DB).  
 
 ```{r subset NCIt for Pharmacologic Substance}
 
-NCIt_Pharmacologics <- unique(dplyr::filter(NCIt, Class %in% c("Immunologic Factor", "Pharmacologic Substance")))
+NCIt_Pharmacologics <- unique(dplyr::filter(NCIt, semantic_type %in% c("Immunologic Factor", "Pharmacologic Substance")))
 
 ## delete NCItParents to save memory
 rm(NCItParents)
 
 ```
+  
+## **Map NCIt drugs to their targets via CHEMBL**  
+  
+
+```{r read data from tables}
+# COMPONENT_SYNONYMS <- dbGetQuery(con, "SELECT * FROM COMPONENT_SYNONYMS")         ## Table storing synonyms for the components of molecular targets
+# dim(COMPONENT_SYNONYMS)       ## 104,000 rows
+# 
+# DRUG_INDICATION <- dbGetQuery(chemblDB_con, "SELECT * FROM DRUG_INDICATION")           ## Table storing indications for drugs, and clinical candidate drugs, from a variety of sources (e.g., ATC, DailyMed, ClinicalTrials.gov)
+
+DRUG_MECHANISM <- dbGetQuery(chemblDB_con, "SELECT * FROM drug_mechanism")           ## Table storing mechanism of action information for drugs, and clinical candidate drugs, from a variety of sources (e.g., ATC, FDA, ClinicalTrials.gov)
+
+DRUG_WARNING <- dbGetQuery(chemblDB_con, "SELECT * FROM drug_warning")           ## Table storing safety-related information for drugs and clinical candidates
+
+MOLECULE_DICTIONARY <- dbGetQuery(chemblDB_con, "SELECT * FROM molecule_dictionary")           ## Table storing a non-redundant list of curated compounds for ChEMBL (includes preclinical compounds, drugs and clinical candidate drugs) and some associated attributes
+
+MOLECULE_SYNONYMS <- dbGetQuery(chemblDB_con, "SELECT * FROM molecule_synonyms")           ## Stores synonyms for a compound (e.g., common names, trade names, research codes etc)
+
+TARGET_DICTIONARY <- dbGetQuery(chemblDB_con, "SELECT * FROM target_dictionary")           ## Target Dictionary containing all curated targets for ChEMBL. Includes both protein targets and non-protein targets (e.g., organisms, tissues, cell lines)
+
+ACTION_TYPE <- dbGetQuery(chemblDB_con, "SELECT * FROM action_type")           ## Table storing the distinct list of action types used in the drug_mechanism table, together with a higher-level parent action type.
+
+COMPONENT_SEQUENCES <- dbGetQuery(chemblDB_con, "SELECT * FROM component_sequences")           ## Table storing the sequences for components of molecular targets (e.g., protein sequences), along with other details taken from sequence databases (e.g., names, accessions). Single protein targets will have a single protein component in this table, whereas protein complexes/protein families will have multiple protein components
+
+TARGET_COMPONENTS  <- dbGetQuery(chemblDB_con, "SELECT * FROM target_components")           ## Links molecular target from the target_dictionary to the components they consist of (in the component_sequences table). For a protein complex or protein family target, for example, there will be multiple protein components in the component_sequences table
+```
+  
+```{r map NCIt codes to CHEMBL IDs}
+## NOTE: for a given NCIt entity, some synonyms can map to one CHEMBL ID, but not to others 
+## this causes issues later, we end up with 2 rows for the same NCIt_code
+
+## join to molregno (Internal Primary Key for the molecule)
+NCIt_Pharmacologics$synonyms_lower <- tolower(NCIt_Pharmacologics$synonyms)
+MOLECULE_SYNONYMS$synonyms_lower <- tolower(MOLECULE_SYNONYMS$synonyms)
+
+
+
+NCIt_to_CHEMBL <- unique(merge(x=dplyr::select(NCIt_Pharmacologics, code, synonyms_lower), 
+                               by.x = "synonyms_lower", all.x = FALSE, 
+                    y=dplyr::select(MOLECULE_SYNONYMS, molregno, synonyms_lower), 
+                    by.y = "synonyms_lower"))
+
+NCIt_to_CHEMBL <- unique(dplyr::select(NCIt_to_CHEMBL, -synonyms_lower))
+
+## join to CHEMBL_ID (ChEMBL identifier for this compound (for use on web interface etc))
+## also: 
+# MAX_PHASE: Maximum phase of development reached for the compound across all indications (4 = Approved, 3 = Phase 3 Clinical Trials, 2 = Phase 2 Clinical Trials, 1 = Phase 1 Clinical Trials, 0.5 = Early Phase 1 Clinical Trials, -1 = Clinical Phase unknown for drug or clinical candidate drug ie where ChEMBL cannot assign a clinical phase, NULL = preclinical compounds with bioactivity data)
+# BLACK_BOX_WARNING: 	Indicates that the drug has a black box warning (1 = yes, 0 = default value)
+NCIt_to_CHEMBL <- merge(x=NCIt_to_CHEMBL, by.x = "molregno", all.x = TRUE, 
+                    y=dplyr::select(MOLECULE_DICTIONARY, molregno, chembl_id, max_phase, black_box_warning), 
+                    by.y = "molregno")
+
+NCIt_to_CHEMBL$black_box_warning <- as.logical(NCIt_to_CHEMBL$black_box_warning)
+
+```
+  
+```{r join drugs to their mechanisms}
+# MECHANISM_OF_ACTION: Description of the mechanism of action e.g., 'Phosphodiesterase 5 inhibitor'
+# ACTION_TYPE:  Type of action of the drug on the target e.g., agonist/antagonist etc (foreign key to action_type table)
+# DISEASE_EFFICACY: Flag to show whether the target assigned is believed to play a role in the efficacy of the drug in the indication(s) for which it is approved (1 = yes, 0 = no)
+# SELECTIVITY_COMMENT: Additional comments regarding the selectivity of the drug
+# TID: Target associated with this mechanism of action (foreign key to target_dictionary table)
+NCIt_to_CHEMBL <- unique(merge(x=NCIt_to_CHEMBL, by.x = "molregno", all.x = TRUE, 
+                    y=dplyr::select(DRUG_MECHANISM, molregno, mechanism_of_action, action_type, disease_efficacy, selectivity_comment, tid), 
+                    by.y = "molregno"))
+
+NCIt_to_CHEMBL$disease_efficacy <- as.logical(NCIt_to_CHEMBL$disease_efficacy)
+
+# PARENT_TYPE: Higher-level grouping of action types e.g., positive vs negative action
+NCIt_to_CHEMBL <- unique(merge(x=NCIt_to_CHEMBL, by.x = "action_type", all.x = TRUE, 
+                    y=dplyr::select(ACTION_TYPE, action_type, "parent_action_type"="parent_type"), 
+                    by.y = "action_type"))
+
+
+```
+  
+```{r join drugs to their targets}
+
+
+NCIt_to_CHEMBL <- merge(x=NCIt_to_CHEMBL, by.x = "tid", all.x = TRUE,
+                    y=dplyr::select(TARGET_DICTIONARY, tid, "target_chembl_id"="chembl_id"),
+                    by.y = "tid")
+
+
+NCIt_to_CHEMBL <- merge(x=NCIt_to_CHEMBL, by.x = "tid", all.x = TRUE,
+                    y=dplyr::select(TARGET_COMPONENTS, tid, component_id),
+                    by.y = "tid")
+
+
+NCIt_to_CHEMBL <- merge(x=NCIt_to_CHEMBL, by.x = "component_id", all.x = TRUE,
+                    y=dplyr::select(COMPONENT_SEQUENCES, component_id, organism, accession),
+                    by.y = "component_id")
+
+
+## drop rows related to non-human targets
+NCIt_to_CHEMBL <- dplyr::filter(NCIt_to_CHEMBL, organism == "Homo sapiens" )
+
+
+
+
+## map from UniProt accession numbers to Entrez Symbols
+uniprot_entrez_cols <- c("SYMBOL", "UNIPROT" )
+uniprot_ids <- as.data.frame(AnnotationDbi::select(org.Hs.eg.db, keys=NCIt_to_CHEMBL$accession, columns=uniprot_entrez_cols, keytype="UNIPROT"))
+## merge with mechanisms table
+NCIt_to_CHEMBL <- merge(x=NCIt_to_CHEMBL, by.x = "accession", all.x=TRUE, y=uniprot_ids, by.y = "UNIPROT")
+NCIt_to_CHEMBL <- dplyr::rename(NCIt_to_CHEMBL,"TARGET_SYMBOL"= "SYMBOL")
+
+NCIt_to_CHEMBL <- unique(NCIt_to_CHEMBL)
+```
+  
+```{r select desired columns from NCIt_to_CHEMBL}
+## select and reorder columns
+drugs_targets <- unique(dplyr::select(NCIt_to_CHEMBL, "NCIt_code"="code", TARGET_SYMBOL, action_type, mechanism_of_action))
+
+```
+
+* Although CHEMBL is comprehensive, it does not include MTOR as a target for Everolimus (only FKBP1A)  
+* There are likely to be other examples  
+* Therefore, supplement drug->target edges from CHEMBL with data from other sources - this case, IUPHAR  
+  * See descriptions for downloads here: https://www.guidetopharmacology.org/DATA/file_descriptions.txt  
+  
+```{r download interactions from IUPHAR }
+IUPHAR_interactions_url <- "https://www.guidetopharmacology.org/DATA/interactions.csv"
+iuphar_interactions <- read.csv(IUPHAR_interactions_url, skip = 1:1)      ## first row is date refreshed, not a header
+
+
+## manually download the file from above URL and add to public repo on GitHub where neo4j can access it... 
+# IUPHAR_interactions_url <- "https://raw.githubusercontent.com/digital-ECMT/network_data/main/interactions.csv"
+
+## get ligand id mappings
+iuphar_ligand_id_mappings <- read.csv("https://www.guidetopharmacology.org/DATA/ligand_id_mapping.csv", skip = 1:1)      ## first row is date refreshed, not a header
+
+```
+ 
+```{r process iuphar interactions}
+
+iuphar_processed <- dplyr::select(iuphar_interactions, "drug_name"=Ligand, Ligand.ID, Target.UniProt.ID, "action_type"="Type", Selectivity, Primary.Target)
+
+## join to molecule ChEMBL IDs 
+iuphar_processed <- merge(x=dplyr::select(iuphar_ligand_id_mappings, ChEMBl.ID, Ligand.id), by.x = "Ligand.id", 
+                          y=iuphar_processed, by.y = "Ligand.ID")
+
+
+# ## join parent_action_type values
+# iuphar_processed <- merge(x=iuphar_processed, by.x = "action_type", 
+#                           y=action_types, by.y = "action_type")
+
+## select and reorder columns
+iuphar_processed <- unique(dplyr::select(iuphar_processed, "drug_chembl_id"="ChEMBl.ID", "target_uniprot_id"="Target.UniProt.ID", action_type))
+
+## drop rows where there is no chembl id
+iuphar_processed <- iuphar_processed[iuphar_processed$drug_chembl_id != "", ]
+## drop rows where there is no target uniprot id
+iuphar_processed <- iuphar_processed[iuphar_processed$target_uniprot_id != "", ]
+
+## some entries have >1 uniprot id, pipe-delimited
+# split and unnest
+iuphar_processed$target_uniprot_id <- strsplit(iuphar_processed$target_uniprot_id, split = "\\|")
+iuphar_processed <- tidyr::unnest(data = iuphar_processed, target_uniprot_id)
+iuphar_processed <- as.data.frame(iuphar_processed)
+
+## join to NCIt ID's on CHEMBL ID
+iuphar_processed <- unique(merge(x=unique(dplyr::select(NCIt_to_CHEMBL,"NCIt_code"="code", chembl_id)), 
+                                 by.x = "chembl_id", 
+                                 y = iuphar_processed,
+                                 by.y = "drug_chembl_id"
+                                 ))
+
+## map from UniProt accession numbers to Entrez Symbols
+iuphar_uniprot_ids <- as.data.frame(AnnotationDbi::select(org.Hs.eg.db, keys=iuphar_processed$target_uniprot_id, columns=uniprot_entrez_cols, keytype="UNIPROT"))
+
+## join to iuphar_processed on target_uniprot_id
+iuphar_processed <- merge(x=iuphar_processed, by.x = "target_uniprot_id", y=uniprot_ids, by.y = "UNIPROT")
+iuphar_processed <- dplyr::rename(iuphar_processed,"TARGET_SYMBOL"= "SYMBOL")
+
+## harmonise columns with drugs_targets table
+iuphar_processed <- unique(dplyr::select(iuphar_processed, NCIt_code, TARGET_SYMBOL, action_type ))
+iuphar_processed$action_type <- toupper(iuphar_processed$action_type)
+iuphar_processed$mechanism_of_action <- NA
+
+## bind as new rows to drugs_targets table
+drugs_targets <- unique(rbind(drugs_targets, iuphar_processed))
+
+## check e.g. for Everolimus (C48387)
+dplyr::filter(drugs_targets, NCIt_code == "C48387")
+```
+
+
+**NEED DEAL WITH REDUNDANCY DUE TO IUPHAR HAVING SAME DRUG, SAME TARGET BUT MISSING MECHANISM OF ACTION**    
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
   
 ### **Map NCIt drugs to targets via KEGG**  
 
@@ -1753,9 +1948,17 @@ dbDisconnect(conn2)
 # Disconnect from SQLite database
 dbDisconnect(con)
 
+# disconnect from CHEMBL DB
+dbDisconnect(chemblDB_con)
 ```
   
 `r knitr::knit_exit()`  
+
+
+
+
+
+
 
 
 ```{r get result groups}
