@@ -88,6 +88,45 @@ aact.username <- configuration$aact.username
 aact.password <- configuration$aact.password
 ```
 
+
+```{r download CHEMBL as SQLite database}
+
+## note this: You will need around 35GB of free space available to import the ChEMBL dump files. (https://chembl.gitbook.io/chembl-interface-documentation/frequently-asked-questions/chembl-download-questions)
+
+## see here for schema: https://ftp.ebi.ac.uk/pub/databases/chembl/ChEMBLdb/latest/chembl_32_schema.png
+## and here for schema documentation: https://ftp.ebi.ac.uk/pub/databases/chembl/ChEMBLdb/latest/schema_documentation.txt 
+
+
+
+## specify which release of chembl to be downloaded
+chembl_download_url <- "https://ftp.ebi.ac.uk/pub/databases/chembl/ChEMBLdb/releases/chembl_32/chembl_32_sqlite.tar.gz"
+chembl_db_filename <- "chembl_32/chembl_32_sqlite/chembl_32.db"
+destfile <- "chembl_32_sqlite.tar.gz"
+
+## allow longer download time before timeout
+options(timeout=1000)
+
+if(!file.exists(chembl_db_filename)) {
+  tic("download CHEMBL DB...")
+  download.file(url=chembl_download_url,destfile = destfile)
+  toc()
+  untar(destfile,list=TRUE)  ## list files without extracting
+  untar(destfile)           ## extract files
+}
+
+
+chemblDB_con <- dbConnect(RSQLite::SQLite(), chembl_db_filename)
+# dbListTables(con)
+
+```
+
+
+
+
+
+
+
+
 **Date of data refresh: `r today`**  
  
 ```{r connect to SQLite DB} 
