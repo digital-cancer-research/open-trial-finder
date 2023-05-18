@@ -492,25 +492,6 @@ drugs_targets <- unique(rbind(drugs_targets, iuphar_processed))
 dplyr::filter(drugs_targets, NCIt_code == "C48387")
 ```
 
-
-
-  
-  
-  
-  
-**CONTINUTE FROM HERE ON THURSDAY**    
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-
 ```{r write drugs_targets to database}
 ## create as a table in database
 dbWriteTable(conn = con,name = "drugs_targets", value = drugs_targets, overwrite=TRUE)
@@ -760,7 +741,7 @@ toc()
 tic("get context words surrounding intervention names")
 
 ## we can specify any window size, since we just want to pick out drug synonyms from surrounding text
-kwic_interventions <- as.data.frame(kwic(interventions_tokens, pattern =  unique(NCIt_Pharmacologics$Synonyms), window = 1, valuetype = "fixed", case_insensitive = TRUE))
+kwic_interventions <- as.data.frame(kwic(interventions_tokens, pattern =  unique(NCIt_Pharmacologics$synonyms), window = 1, valuetype = "fixed", case_insensitive = TRUE))
 
 #formattable(head(as.data.frame(kw_genes), 30))
 
@@ -780,26 +761,26 @@ kwic_interventions <- unique(merge(x=interventions, by.x="intervention_id", all.
 ```
 
 ```{r join NCIt IDs to kwic interventions}
-kwic_interventions <- unique(merge(x=kwic_interventions, by.x="intervention_synonym", all.x=TRUE, y=NCIt_Pharmacologics, by.y = "Synonyms", incomparables = NA))
+kwic_interventions <- unique(merge(x=kwic_interventions, by.x="intervention_synonym", all.x=TRUE, y=NCIt_Pharmacologics, by.y = "synonyms", incomparables = NA))
 
 ```
 
 ```{r drop redundant rows in kwic interventions}
-kwic_interventions <- unique(dplyr::select(kwic_interventions, nct_id, intervention_id, intervention_name, "NCIt_id"="ID", PreferredTerm, "Mechanism"="Parent_synonym"))
+kwic_interventions <- unique(dplyr::select(kwic_interventions, nct_id, intervention_id, intervention_name, "NCIt_code"="code", "PreferredTerm"="display_name", "Mechanism"="Parent_synonym"))
 
 ```
   
 * We will also map interventions to their molecular targets (where possible), based on the *drugs_targets* table  
   
-```{r join kegg targets to kwic interventions}
+```{r join drugs_targets to kwic interventions}
 
 ## use "incomparables = NA" to avoid joining on NA values ?!...
 ## see https://community.rstudio.com/t/why-does-na-match-na-when-joining-two-dataframes/28785/2
 
-kwic_interventions <- unique(merge(x=kwic_interventions, by.x="NCIt_id", all.x=TRUE, y=unique(dplyr::select(drugs_targets, NCIt_code, TARGET_SYMBOL)), by.y = "NCIt_code", incomparables = NA))
+kwic_interventions <- unique(merge(x=kwic_interventions, by.x="NCIt_code", all.x=TRUE, y=unique(dplyr::select(drugs_targets, NCIt_code, TARGET_SYMBOL)), by.y = "NCIt_code", incomparables = NA))
 
 ## select and reorder columns
-kwic_interventions <- unique(dplyr::select(kwic_interventions, nct_id, intervention_id, intervention_name, NCIt_id, PreferredTerm,TARGET_SYMBOL, Mechanism))
+kwic_interventions <- unique(dplyr::select(kwic_interventions, nct_id, intervention_id, intervention_name, NCIt_code, PreferredTerm,TARGET_SYMBOL, Mechanism))
 
 interventions <- kwic_interventions
 
@@ -846,7 +827,7 @@ dbWriteTable(conn = con,name = "cancerStudies", value = cancerStudies, overwrite
 dbWriteTable(conn = con,name = "interventions", value = interventions, overwrite=TRUE)
 
 ## check it has saved
-dbListTables(con)
+# dbListTables(con)
 
 ```
 
@@ -1252,7 +1233,7 @@ loss_populations <- unique(dplyr::select(loss_populations, match, nct_id, id, id
 
 tic("get context words surrounding therapies/procedures in populations_tokens")
 kwic_prior_tx_populations <- as.data.frame(kwic(populations_tokens, 
-                                                pattern =  phrase(unique(NCIt$Synonyms[NCIt$Class=="Therapeutic or Preventive Procedure"])),
+                                                pattern =  phrase(unique(NCIt$synonyms[NCIt$semantic_type=="Therapeutic or Preventive Procedure"])),
                                                 window = 5, 
                                                 case_insensitive = TRUE))
 toc()
@@ -1269,9 +1250,9 @@ kwic_prior_tx_populations <- dplyr::select(kwic_prior_tx_populations, "id"="docn
 
 ```{r join therapy kwic to NCIt}
 
-kwic_prior_tx_populations <- unique(merge(x=kwic_prior_tx_populations, by.x="therapy_synonym", y=dplyr::select(NCIt, "NCIt_id"="ID", Synonyms, PreferredTerm, Parent_synonym, Class ), by.y="Synonyms"))
+kwic_prior_tx_populations <- unique(merge(x=kwic_prior_tx_populations, by.x="therapy_synonym", y=dplyr::select(NCIt, "NCIt_code"="code", synonyms, display_name, Parent_synonym, semantic_type ), by.y="synonyms"))
 
-kwic_prior_tx_populations <- dplyr::filter(kwic_prior_tx_populations, Class == "Therapeutic or Preventive Procedure")
+kwic_prior_tx_populations <- dplyr::filter(kwic_prior_tx_populations, semantic_type == "Therapeutic or Preventive Procedure")
 
 ```
 
@@ -1282,7 +1263,7 @@ kwic_prior_tx_populations <- unique(merge(x=kwic_prior_tx_populations,
                                           by.y="id"))
 
 ## select and reorder columns
-kwic_prior_tx_populations <- dplyr::select(kwic_prior_tx_populations, nct_id, id_type, id, therapy_synonym, text, context, NCIt_id, PreferredTerm, Parent_synonym)
+kwic_prior_tx_populations <- dplyr::select(kwic_prior_tx_populations, nct_id, id_type, id, therapy_synonym, text, context, NCIt_code, display_name, Parent_synonym)
 ```
 
 ```{r define pattern for prior tx}
@@ -1296,7 +1277,7 @@ prior_tx_pattern <- "previous|prior"
 prior_tx_populations <- indexOnPattern(dataframe = kwic_prior_tx_populations, pattern = prior_tx_pattern, featureLabel = "prior therapy")
 
 ## harmonise columns and names with other indexing outputs
-prior_tx_populations <- unique(dplyr::select(prior_tx_populations, "match"="therapy_synonym", nct_id, id, id_type, text, feature, "controlled_match"="PreferredTerm"))
+prior_tx_populations <- unique(dplyr::select(prior_tx_populations, "match"="therapy_synonym", nct_id, id, id_type, text, feature, "controlled_match"="display_name"))
 ```
 
 
@@ -1868,6 +1849,23 @@ dbDisconnect(chemblDB_con)
 ```
   
 `r knitr::knit_exit()`  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
