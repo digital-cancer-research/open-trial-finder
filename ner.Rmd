@@ -187,4 +187,9 @@ criteria <- dplyr::select(criteria, criterion, ngrams, code, display_name, seman
 
 formattable(criteria)
 
+criteria <- unique(dplyr::filter(criteria, semantic_type %in% c("Pharmacologic Substance", "Neoplastic Process", "Therapeutic or Preventive Procedure", "Laboratory Procedure", "Disease or Syndrome", "Body Part, Organ, or Organ Component", "Finding", "Clinical Attribute")))
+
+formattable(criteria)
+
+
 ```
