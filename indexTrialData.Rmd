@@ -429,14 +429,14 @@ drugs_targets <- unique(dplyr::select(NCIt_to_CHEMBL, "NCIt_code"="code", TARGET
   
 ```{r download interactions from IUPHAR }
 IUPHAR_interactions_url <- "https://www.guidetopharmacology.org/DATA/interactions.csv"
-iuphar_interactions <- read.csv(IUPHAR_interactions_url, skip = 1:1)      ## first row is date refreshed, not a header
+iuphar_interactions <- read.csv(IUPHAR_interactions_url, skip = 1:1, stringsAsFactors = FALSE)      ## first row is date refreshed, not a header
 
 
 ## manually download the file from above URL and add to public repo on GitHub where neo4j can access it... 
 # IUPHAR_interactions_url <- "https://raw.githubusercontent.com/digital-ECMT/network_data/main/interactions.csv"
 
 ## get ligand id mappings
-iuphar_ligand_id_mappings <- read.csv("https://www.guidetopharmacology.org/DATA/ligand_id_mapping.csv", skip = 1:1)      ## first row is date refreshed, not a header
+iuphar_ligand_id_mappings <- read.csv("https://www.guidetopharmacology.org/DATA/ligand_id_mapping.csv", skip = 1:1, stringsAsFactors = FALSE)      ## first row is date refreshed, not a header
 
 ```
  
