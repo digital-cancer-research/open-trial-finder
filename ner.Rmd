@@ -157,9 +157,6 @@ NCIt$synonyms_lower <- tolower(NCIt$synonyms)
 toc()
 ```
   
-  
-  
-  
 ```{r test chunking criteria}
 
 criterion <- "Completely resected histologically confirmed adenocarcinoma of the colon"
@@ -167,7 +164,7 @@ chunk_size <- 4
 quanteda::tokens_chunk(x=tokens(criterion), size=chunk_size, overlap = chunk_size-1, use_docvars = TRUE)
 
 
-criteria <- data.frame(criterion = c("Completely resected histologically confirmed adenocarcinoma of the colon"))
+criteria <- data.frame(criterion = c("Completely resected histologically confirmed adenocarcinoma of the colon", "Adjuvant chemotherapy treatment for colon cancer with a 5-fluorouracil- based regimen received with an intent to provide a complete course of treatment. While one current standard is 24 weeks of treatment, patients who are pre-planned to receive a shorter duration of chemotherapy, including as part of a research study will also be permitted. The actual treatment received may be less than 24 weeks; participants must have received a minimum of one treatment cycle."))
 
 ## split into ngrams
 criteria <- tidytext::unnest_tokens(criteria, input = "criterion", output = "ngrams", token = "ngrams", n = chunk_size, drop = FALSE) %>%
