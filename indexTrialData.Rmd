@@ -307,7 +307,7 @@ rm(NCItParents)
 
 ```
   
-## **Map NCIt drugs to their targets via CHEMBL**  
+### **Map NCIt drugs to their targets via CHEMBL**  
   
 
 ```{r read data from tables}
@@ -1394,27 +1394,16 @@ For compatibility with existing code for trial finder interface (and to maximise
 tic("download ordnance survey data")
 
 ## specify URL for download 
-
-## https://www.freemaptools.com/download/full-uk-postcodes/ukpostcodes.zip
-postcodesURL <- "https://www.freemaptools.com/download/full-uk-postcodes/ukpostcodes.zip"
-
+postcodesURL <- "https://data.freemaptools.com/download/full-uk-postcodes/ukpostcodes.zip"    ## as of May 2023
 destPostcodesFilename <- "uk_postcodes.zip"
 
 ## use trycatch in case download throws an error
 tryCatch(
     { download.file(url=postcodesURL, destfile = destPostcodesFilename)
-        unzip(zipfile = paste0(getwd(),"/",destPostcodesFilename))
+        unzip(zipfile = normalizePath(destPostcodesFilename))    ## as of May 2023
         
-        
-        ## tested on 16 March 2022, header row missing.... 
         uk_postcodes <- read.csv("ukpostcodes.csv", header = TRUE, stringsAsFactors = FALSE)
-        
-        ## assume no header row
-        # uk_postcodes <- read.csv("ukpostcodes.csv", header = FALSE, stringsAsFactors = FALSE)
-        ## manually assign column names - if no header was present, first line of data will be lost...
-        names(uk_postcodes) <- c( "id","postcode","latitude","longitude")
-        
-        
+
         ## clean up, delete files
         file.remove("uk_postcodes.zip")
         file.remove("ukpostcodes.csv")
