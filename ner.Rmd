@@ -157,59 +157,57 @@ NCIt$synonyms_lower <- tolower(NCIt$synonyms)
 toc()
 ```
   
-```{r test chunking criteria}
-
-criterion <- "Completely resected histologically confirmed adenocarcinoma of the colon"
-chunk_size <- 4
-quanteda::tokens_chunk(x=tokens(criterion), size=chunk_size, overlap = chunk_size-1, use_docvars = TRUE)
-
-
-criteria <- data.frame(criterion = c("Completely resected histologically confirmed adenocarcinoma of the colon", "Adjuvant chemotherapy treatment for colon cancer with a 5-fluorouracil- based regimen received with an intent to provide a complete course of treatment. While one current standard is 24 weeks of treatment, patients who are pre-planned to receive a shorter duration of chemotherapy, including as part of a research study will also be permitted. The actual treatment received may be less than 24 weeks; participants must have received a minimum of one treatment cycle."))
-
-## split into ngrams
-criteria <- tidytext::unnest_tokens(criteria, input = "criterion", output = "ngrams", token = "ngrams", n = chunk_size, drop = FALSE) %>%
-    add_row(
-            tidytext::unnest_tokens(criteria,input = "criterion", output = "ngrams", token = "ngrams", n = 3, drop = FALSE)
-    ) %>%
-        add_row(
-            tidytext::unnest_tokens(criteria,input = "criterion", output = "ngrams", token = "ngrams", n = 2, drop = FALSE)
-        ) %>%
-        add_row(
-            tidytext::unnest_tokens(criteria,input = "criterion", output = "ngrams", token = "ngrams", n = 1, drop = FALSE)
-        )
-
+```{r define stopwords}
 ## define stopwords
 stopwords <- as.data.frame(tidytext::get_stopwords())
 stopwords <- dplyr::rename(stopwords, "ngrams"="word")
 
+```
 
+  
+  
+```{r test chunking criteria}
 
-## anti join stopwords (i.e. remove common stopwords)
-criteria <- anti_join(criteria, stopwords, by="ngrams")
+# criterion <- "Completely resected histologically confirmed adenocarcinoma of the colon"
+# chunk_size <- 4
+# quanteda::tokens_chunk(x=tokens(criterion), size=chunk_size, overlap = chunk_size-1, use_docvars = TRUE)
+# 
+# 
+# criteria <- data.frame(criterion = c("Completely resected histologically confirmed adenocarcinoma of the colon", "Adjuvant chemotherapy treatment for colon cancer with a 5-fluorouracil- based regimen received with an intent to provide a complete course of treatment. While one current standard is 24 weeks of treatment, patients who are pre-planned to receive a shorter duration of chemotherapy, including as part of a research study will also be permitted. The actual treatment received may be less than 24 weeks; participants must have received a minimum of one treatment cycle."))
+# 
+# ## split into ngrams
+# criteria <- tidytext::unnest_tokens(criteria, input = "criterion", output = "ngrams", token = "ngrams", n = chunk_size, drop = FALSE) %>%
+#     add_row(
+#             tidytext::unnest_tokens(criteria,input = "criterion", output = "ngrams", token = "ngrams", n = 3, drop = FALSE)
+#     ) %>%
+#         add_row(
+#             tidytext::unnest_tokens(criteria,input = "criterion", output = "ngrams", token = "ngrams", n = 2, drop = FALSE)
+#         ) %>%
+#         add_row(
+#             tidytext::unnest_tokens(criteria,input = "criterion", output = "ngrams", token = "ngrams", n = 1, drop = FALSE)
+#         )
 
-
-
-
-## join to NCIt
-criteria <- unique(merge(x=criteria, by.x = "ngrams", all.x = FALSE, 
-      y = dplyr::select(NCIt, code, synonyms_lower, display_name, semantic_type), by.y = "synonyms_lower", all.y=FALSE))
-
-
-criteria <- dplyr::select(criteria, criterion, ngrams, code, display_name, semantic_type)
-
-formattable(criteria)
-
-criteria <- unique(dplyr::filter(criteria, semantic_type %in% c("Pharmacologic Substance", "Neoplastic Process", "Therapeutic or Preventive Procedure", "Laboratory Procedure", "Disease or Syndrome", "Body Part, Organ, or Organ Component", "Finding", "Clinical Attribute")))
-
-formattable(criteria)
+# ## anti join stopwords (i.e. remove common stopwords)
+# criteria <- anti_join(criteria, stopwords, by="ngrams")
+# 
+# 
+# 
+# 
+# ## join to NCIt
+# criteria <- unique(merge(x=criteria, by.x = "ngrams", all.x = FALSE, 
+#       y = dplyr::select(NCIt, code, synonyms_lower, display_name, semantic_type), by.y = "synonyms_lower", all.y=FALSE))
+# 
+# 
+# criteria <- dplyr::select(criteria, criterion, ngrams, code, display_name, semantic_type)
+# 
+# formattable(criteria)
+# 
+# criteria <- unique(dplyr::filter(criteria, semantic_type %in% c("Pharmacologic Substance", "Neoplastic Process", "Therapeutic or Preventive Procedure", "Laboratory Procedure", "Disease or Syndrome", "Body Part, Organ, or Organ Component", "Finding", "Clinical Attribute")))
+# 
+# formattable(criteria)
 
 
 ```
-
-
-
-
-
 
 
 ```{r annotate all criteria for all open UK studies}
@@ -247,9 +245,29 @@ nrow(eligibilities_openUK_5May23)
 
 eligibilities_openUK_5May23 <- dplyr::select(eligibilities_openUK_5May23, nct_id, criterion_index, criteria, ngrams, code, display_name, semantic_type)
 
+eligibilities_openUK_5May23 <- eligibilities_openUK_5May23 %>%
+    arrange(criterion_index)
+
+## add a column that will hold eligibility status (to be added manually)
+eligibilities_openUK_5May23$eligibility <- ""
+
+
 formattable(head(eligibilities_openUK_5May23))
 
 # eligibilities_openUK_5May23 <- unique(dplyr::filter(eligibilities_openUK_5May23, semantic_type %in% c("Pharmacologic Substance", "Neoplastic Process", "Therapeutic or Preventive Procedure", "Laboratory Procedure", "Disease or Syndrome", "Body Part, Organ, or Organ Component", "Finding", "Clinical Attribute")))
 # 
 # formattable(head(eligibilities_openUK_5May23))
 ```
+
+
+```{r write to csv}
+
+write.csv(eligibilities_openUK_5May23, file = "eligibilities_openUK_5May23_annotated.csv", row.names = FALSE)
+
+
+```
+
+
+
+
+
