@@ -180,8 +180,12 @@ criteria <- tidytext::unnest_tokens(criteria, input = "criterion", output = "ngr
 
 ## define stopwords
 stopwords <- as.data.frame(tidytext::get_stopwords())
+stopwords <- dplyr::rename(stopwords, "ngrams"="word")
 
 
+
+## anti join stopwords (i.e. remove common stopwords)
+criteria <- anti_join(criteria, stopwords, by="ngrams")
 
 
 
@@ -200,4 +204,52 @@ criteria <- unique(dplyr::filter(criteria, semantic_type %in% c("Pharmacologic S
 formattable(criteria)
 
 
+```
+
+
+
+
+
+
+
+```{r annotate all criteria for all open UK studies}
+
+
+## read in full set of criteria
+eligibilities_openUK_5May23 <- read.csv("eligibilities_openUK_5May23.csv", stringsAsFactors = FALSE)
+
+nrow(eligibilities_openUK_5May23)
+
+## split into ngrams
+eligibilities_openUK_5May23 <- tidytext::unnest_tokens(eligibilities_openUK_5May23, input = "criteria", output = "ngrams", token = "ngrams", n = 4, drop = FALSE) %>%
+    add_row(
+            tidytext::unnest_tokens(eligibilities_openUK_5May23, input = "criteria", output = "ngrams", token = "ngrams", n = 3, drop = FALSE)
+    ) %>%
+        add_row(
+            tidytext::unnest_tokens(eligibilities_openUK_5May23, input = "criteria", output = "ngrams", token = "ngrams", n = 2, drop = FALSE)
+        ) %>%
+        add_row(
+            tidytext::unnest_tokens(eligibilities_openUK_5May23, input = "criteria", output = "ngrams", token = "ngrams", n = 1, drop = FALSE)
+        )
+
+nrow(eligibilities_openUK_5May23)
+
+## anti join stopwords (i.e. remove common stopwords)
+eligibilities_openUK_5May23 <- anti_join(eligibilities_openUK_5May23, stopwords, by="ngrams")
+
+nrow(eligibilities_openUK_5May23)
+
+## join to NCIt
+eligibilities_openUK_5May23 <- unique(merge(x=eligibilities_openUK_5May23, by.x = "ngrams", all.x = FALSE, 
+      y = dplyr::select(NCIt, code, synonyms_lower, display_name, semantic_type), by.y = "synonyms_lower", all.y=FALSE))
+
+nrow(eligibilities_openUK_5May23)
+
+eligibilities_openUK_5May23 <- dplyr::select(eligibilities_openUK_5May23, nct_id, criterion_index, criteria, ngrams, code, display_name, semantic_type)
+
+formattable(head(eligibilities_openUK_5May23))
+
+# eligibilities_openUK_5May23 <- unique(dplyr::filter(eligibilities_openUK_5May23, semantic_type %in% c("Pharmacologic Substance", "Neoplastic Process", "Therapeutic or Preventive Procedure", "Laboratory Procedure", "Disease or Syndrome", "Body Part, Organ, or Organ Component", "Finding", "Clinical Attribute")))
+# 
+# formattable(head(eligibilities_openUK_5May23))
 ```
