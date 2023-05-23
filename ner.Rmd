@@ -178,6 +178,14 @@ criteria <- tidytext::unnest_tokens(criteria, input = "criterion", output = "ngr
             tidytext::unnest_tokens(criteria,input = "criterion", output = "ngrams", token = "ngrams", n = 1, drop = FALSE)
         )
 
+## define stopwords
+stopwords <- as.data.frame(tidytext::get_stopwords())
+
+
+
+
+
+
 ## join to NCIt
 criteria <- unique(merge(x=criteria, by.x = "ngrams", all.x = FALSE, 
       y = dplyr::select(NCIt, code, synonyms_lower, display_name, semantic_type), by.y = "synonyms_lower", all.y=FALSE))
