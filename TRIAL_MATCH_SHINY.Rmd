@@ -980,7 +980,13 @@ Potential matching trials are ranked according to the following order:
 * Trial data are sourced exclusively from clinicaltrials.gov via the Clinical Trials Transformation Initiative (https://www.ctti-clinicaltrials.org/ ).   
 
 * Data regarding mechanisms of trial interventions are sourced from the NCI Thesaurus: https://ncithesaurus.nci.nih.gov/ncitbrowser/  
-
+  
+* Drug-target information is sourced from ChEMBL and The IUPHAR/BPS Guide to PHARMACOLOGY (citations below):  
+  * A. Gaulton, L. Bellis, J. Chambers, M. Davies, A. Hersey, Y. Light, S. McGlinchey, R. Akhtar, A.P. Bento, B. Al-Lazikani, D. Michalovich, & J.P. Overington (2012) *‘ChEMBL: A Large-scale Bioactivity Database For Chemical Biology and Drug Discovery’* Nucleic Acids Res. Database Issue, 40 D1100-1107. DOI:10.1093/nar/gkr777 PMID:21948594  
+  * A.P. Bento, A. Gaulton, A. Hersey, L.J. Bellis, J. Chambers, M. Davies, F.A. Krüger, Y. Light, L. Mak, S. McGlinchey, M. Nowotka, G. Papadatos, R. Santos & J.P. Overington (2014) *‘The ChEMBL bioactivity database: an update’* Nucleic Acids Res. Database Issue, 42 1083-1090. DOI:10.1093/nar/gkt103 PMID: 24214965  
+  * Harding SD, Armstrong JF, Faccenda E, Southan C, Alexander SPH, Davenport AP, Pawson AJ, Spedding M, Davies JA; NC-IUPHAR. (2021) *The IUPHAR/BPS guide to PHARMACOLOGY in 2022: curating pharmacology for COVID-19, malaria and antibacterials.* Nucl. Acids Res. 2022. 50(D1) D1282-D1294. doi: 10.1093/nar/gkab1010. [Full text]. PMID: 34718737.  
+  
+  
 * Data regarding biological pathways are sourced from KEGG (https://www.kegg.jp/kegg/) using the R BioConductor package: https://www.bioconductor.org/  
   
 * Contains Ordnance Survey data © Crown copyright and database right 2021  
