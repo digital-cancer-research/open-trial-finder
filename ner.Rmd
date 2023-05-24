@@ -1,0 +1,273 @@
+---
+title: "Named entity recognition in eligibility criteria"
+author: "dECMT"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+##NOTE: the following packages are required to run this script, but should be installed (e.g. using code snippets below) before runnning the script, NOT as part of the script itself
+# options(repos = "http://cran.us.r-project.org")
+# install.packages("BiocManager")
+# BiocManager::install("AnnotationDbi")
+# BiocManager::install("org.Hs.eg.db")
+# BiocManager::install("KEGGREST")
+# BiocManager::install("KEGGlincs")
+# BiocManager::install("hgu133a.db")
+require(KEGGlincs)        ## GPL-3
+require(KEGGgraph)        ## GPL >= 2
+require(org.Hs.eg.db)     ## Artistic-2.0
+require(KEGGREST)         ## Artistic 2.0
+require(DBI)              ## LGPL-2.1 | LGPL-3 
+require(RODBC)            ## GPL-2 | GPL-3
+require(RPostgres)        ## GPL-3
+require(RSQLite)          ## LGPL-2.1 | LGPL-3
+require(jsonlite)         ## MIT
+require(plyr)             ## MIT + LICENCE file
+require(dplyr)            ## MIT
+require(tidyr)            ## MIT
+require(formattable)      ## MIT
+require(kableExtra)       ## MIT
+require(stringr)          ## MIT
+require(splitstackshape)  ## GPL-3
+require(reshape2)         ## MIT
+require(tictoc)           ## Apache License (== 2.0)
+require(leaflet)          ## GPL-3
+require(PostcodesioR)     ## GPL-3
+require(igraph)           ## GPL-2 | GPL-3
+require(tidygeocoder)     ## MIT
+require(caret)            ## GPL (>= 2)
+require(rpart)            ## GPL-2 | GPL-3
+require(rpart.plot)       ## GPL-3
+## require(textstem)         ## GPL-2
+require(quanteda)         ## GPL-3
+require(corpus)           ## 	Apache License (== 2.0) 
+require(tidytext)         ## MIT
+
+## clean up first
+rm(list=ls())
+
+##get today's date
+today <- format(Sys.Date(), format = "%d %B %Y")
+# 
+# ## load configuration data from JSON file
+# configuration <- jsonlite::fromJSON(txt = "trialMatchConfiguration.json")
+# aact.username <- configuration$aact.username
+# aact.password <- configuration$aact.password
+```
+
+
+### **Download and save NCI thesaurus**  
+  
+```{r download and create NCIthesaurus table}
+## start timer 
+tic("download and create NCIthesaurus table")
+
+## specify URL for NCI thesaurus - this should always be the most recent? 
+NCItURL <- "https://evs.nci.nih.gov/ftp1/NCI_Thesaurus/Thesaurus.FLAT.zip"
+
+destFlatFilename <- "NCIt_FLAT.zip"
+download.file(url=NCItURL,destfile = destFlatFilename)
+unzip(zipfile = paste0(getwd(),"/",destFlatFilename))
+
+NCIt <- read.table("Thesaurus.txt",header = FALSE, sep = "\t", comment.char = "", fill = TRUE, stringsAsFactors = FALSE, quote = "")
+# names(NCIt) <- c("ID","URL","ParentID","Synonyms","Description","PreferredTerm","Type","Class")
+
+## revised names as of 19 Jan 2023
+# names(NCIt) <- c("ID","URL","ParentID","Synonyms","Description","PreferredTerm","Type","Class", "concept_in_subset")
+
+# revised names as of May 2023
+names(NCIt) <- c("code", "concept_IRI", "parents", "synonyms", "definition", "display_name", "concept_status", "semantic_type", "concept_in_subset")
+
+## clean up, remove files
+file.remove("NCIt_FLAT.zip")
+file.remove("Thesaurus.txt")
+
+## an entity may have more than one semantic_type, so need to multiply rows
+## split and unnest the semantic_type column of NCIt
+NCIt$semantic_type <- strsplit(NCIt$semantic_type, split = "\\|")
+NCIt <- unnest(data = NCIt, semantic_type)
+
+## do the same for parents column
+## split parents column on pipe symbol
+NCIt$parents <- strsplit(NCIt$parents, split = "\\|")
+## unnest the parents column to multiply rows
+NCIt <- unnest(data=NCIt,parents)
+
+## drop unnecessary rows
+NCIt <- unique(dplyr::select(NCIt, code, parents, synonyms, display_name, semantic_type))
+
+## join parents column back
+## first, get the synonyms and codes for parents
+NCItParents <- NCIt[which(NCIt$code %in% NCIt$parents), ]
+
+## each parent term may have more than one synonym
+## for simplicity, we will retain only the first synonym for each parent term
+NCItParents$synonyms <- gsub("\\|.*","",NCItParents$synonyms)
+
+NCItParents <- unique(dplyr::select(NCItParents, "ParentID"="code", "Parent_synonym"="synonyms"))
+
+## merge parents on entity ID = parent ID
+NCIt <- merge(x=NCIt,y=NCItParents,by.x="parents",by.y="ParentID",all.x=TRUE)
+
+## split and unnest the synonyms column
+NCIt$synonyms <- strsplit(NCIt$synonyms, split = "\\|")
+NCIt <- unnest(data = NCIt, synonyms)
+
+NCIt <- as.data.frame(NCIt)
+
+## add a column to indicate date downloaded
+NCIt$downloaded <- Sys.Date()
+
+## drop redundant rows, if any
+NCIt <- unique(NCIt)
+
+## stop timer
+toc()
+```
+
+```{r preprocess NCIt}
+## start timer
+tic("preprocess NCIt")
+
+## delete any rows containing the pattern "Retired Concept"
+NCIt <- NCIt[grep(pattern = "Retired Concept", x=NCIt$synonyms, invert = TRUE), ]
+NCIt <- NCIt[grep(pattern = "Retired Concept", x=NCIt$Parent_synonym, invert = TRUE), ]
+
+## delete any rows with Synonyms that map to >1 term within a Class
+NCIt_multiple_terms <- NCIt %>%
+  group_by(synonyms, semantic_type) %>%
+  summarise(
+    number_terms = length(unique(code))
+  ) %>%
+  filter(number_terms >1) %>%
+  as.data.frame()
+## anti join
+NCIt <- anti_join(NCIt, NCIt_multiple_terms, by=c("synonyms", "semantic_type"))
+rm(NCIt_multiple_terms)
+
+## delete any rows that don't contain any letters... 
+NCIt <- NCIt[grep(pattern = "[a-zA-Z]", x=NCIt$synonyms), ]
+
+## add a lowercase column of synonyms
+NCIt$synonyms_lower <- tolower(NCIt$synonyms)
+
+## stop timer
+toc()
+```
+  
+```{r define stopwords}
+## define stopwords
+stopwords <- as.data.frame(tidytext::get_stopwords())
+stopwords <- dplyr::rename(stopwords, "ngrams"="word")
+
+```
+
+  
+  
+```{r test chunking criteria}
+
+# criterion <- "Completely resected histologically confirmed adenocarcinoma of the colon"
+# chunk_size <- 4
+# quanteda::tokens_chunk(x=tokens(criterion), size=chunk_size, overlap = chunk_size-1, use_docvars = TRUE)
+# 
+# 
+# criteria <- data.frame(criterion = c("Completely resected histologically confirmed adenocarcinoma of the colon", "Adjuvant chemotherapy treatment for colon cancer with a 5-fluorouracil- based regimen received with an intent to provide a complete course of treatment. While one current standard is 24 weeks of treatment, patients who are pre-planned to receive a shorter duration of chemotherapy, including as part of a research study will also be permitted. The actual treatment received may be less than 24 weeks; participants must have received a minimum of one treatment cycle."))
+# 
+# ## split into ngrams
+# criteria <- tidytext::unnest_tokens(criteria, input = "criterion", output = "ngrams", token = "ngrams", n = chunk_size, drop = FALSE) %>%
+#     add_row(
+#             tidytext::unnest_tokens(criteria,input = "criterion", output = "ngrams", token = "ngrams", n = 3, drop = FALSE)
+#     ) %>%
+#         add_row(
+#             tidytext::unnest_tokens(criteria,input = "criterion", output = "ngrams", token = "ngrams", n = 2, drop = FALSE)
+#         ) %>%
+#         add_row(
+#             tidytext::unnest_tokens(criteria,input = "criterion", output = "ngrams", token = "ngrams", n = 1, drop = FALSE)
+#         )
+
+# ## anti join stopwords (i.e. remove common stopwords)
+# criteria <- anti_join(criteria, stopwords, by="ngrams")
+# 
+# 
+# 
+# 
+# ## join to NCIt
+# criteria <- unique(merge(x=criteria, by.x = "ngrams", all.x = FALSE, 
+#       y = dplyr::select(NCIt, code, synonyms_lower, display_name, semantic_type), by.y = "synonyms_lower", all.y=FALSE))
+# 
+# 
+# criteria <- dplyr::select(criteria, criterion, ngrams, code, display_name, semantic_type)
+# 
+# formattable(criteria)
+# 
+# criteria <- unique(dplyr::filter(criteria, semantic_type %in% c("Pharmacologic Substance", "Neoplastic Process", "Therapeutic or Preventive Procedure", "Laboratory Procedure", "Disease or Syndrome", "Body Part, Organ, or Organ Component", "Finding", "Clinical Attribute")))
+# 
+# formattable(criteria)
+
+
+```
+
+
+```{r annotate all criteria for all open UK studies}
+
+
+## read in full set of criteria
+eligibilities_openUK_5May23 <- read.csv("eligibilities_openUK_5May23.csv", stringsAsFactors = FALSE)
+
+nrow(eligibilities_openUK_5May23)
+
+## split into ngrams
+eligibilities_openUK_5May23 <- tidytext::unnest_tokens(eligibilities_openUK_5May23, input = "criteria", output = "ngrams", token = "ngrams", n = 4, drop = FALSE) %>%
+    add_row(
+            tidytext::unnest_tokens(eligibilities_openUK_5May23, input = "criteria", output = "ngrams", token = "ngrams", n = 3, drop = FALSE)
+    ) %>%
+        add_row(
+            tidytext::unnest_tokens(eligibilities_openUK_5May23, input = "criteria", output = "ngrams", token = "ngrams", n = 2, drop = FALSE)
+        ) %>%
+        add_row(
+            tidytext::unnest_tokens(eligibilities_openUK_5May23, input = "criteria", output = "ngrams", token = "ngrams", n = 1, drop = FALSE)
+        )
+
+nrow(eligibilities_openUK_5May23)
+
+## anti join stopwords (i.e. remove common stopwords)
+eligibilities_openUK_5May23 <- anti_join(eligibilities_openUK_5May23, stopwords, by="ngrams")
+
+nrow(eligibilities_openUK_5May23)
+
+## join to NCIt
+eligibilities_openUK_5May23 <- unique(merge(x=eligibilities_openUK_5May23, by.x = "ngrams", all.x = FALSE, 
+      y = dplyr::select(NCIt, code, synonyms_lower, display_name, semantic_type), by.y = "synonyms_lower", all.y=FALSE))
+
+nrow(eligibilities_openUK_5May23)
+
+eligibilities_openUK_5May23 <- dplyr::select(eligibilities_openUK_5May23, nct_id, criterion_index, criteria, ngrams, code, display_name, semantic_type)
+
+eligibilities_openUK_5May23 <- eligibilities_openUK_5May23 %>%
+    arrange(criterion_index)
+
+## add a column that will hold eligibility status (to be added manually)
+eligibilities_openUK_5May23$eligibility <- ""
+
+
+formattable(head(eligibilities_openUK_5May23))
+
+# eligibilities_openUK_5May23 <- unique(dplyr::filter(eligibilities_openUK_5May23, semantic_type %in% c("Pharmacologic Substance", "Neoplastic Process", "Therapeutic or Preventive Procedure", "Laboratory Procedure", "Disease or Syndrome", "Body Part, Organ, or Organ Component", "Finding", "Clinical Attribute")))
+# 
+# formattable(head(eligibilities_openUK_5May23))
+```
+
+
+```{r write to csv}
+
+write.csv(eligibilities_openUK_5May23, file = "eligibilities_openUK_5May23_annotated.csv", row.names = FALSE)
+
+
+```
+
+
+
+
+

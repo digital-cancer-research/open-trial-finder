@@ -1,2 +1,6 @@
 
 *.sqlite
+.Rhistory
+chembl_32/chembl_32_sqlite/chembl_32.db
+chembl_32/chembl_32_sqlite/INSTALL_sqlite
+chembl_32_sqlite.tar.gz
