@@ -1,0 +1,313 @@
+---
+title: "Generate eligibility annotations"
+author: "dECMT"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+require(KEGGlincs)        ## GPL-3
+require(KEGGgraph)        ## GPL >= 2
+require(org.Hs.eg.db)     ## Artistic-2.0
+require(KEGGREST)         ## Artistic 2.0
+require(DBI)              ## LGPL-2.1 | LGPL-3 
+require(RODBC)            ## GPL-2 | GPL-3
+require(RPostgres)        ## GPL-3
+require(RSQLite)          ## LGPL-2.1 | LGPL-3
+require(jsonlite)         ## MIT
+require(plyr)             ## MIT + LICENCE file
+require(dplyr)            ## MIT
+require(tidyr)            ## MIT
+require(formattable)      ## MIT
+require(kableExtra)       ## MIT
+require(stringr)          ## MIT
+require(splitstackshape)  ## GPL-3
+require(reshape2)         ## MIT
+require(tictoc)           ## Apache License (== 2.0)
+require(leaflet)          ## GPL-3
+require(PostcodesioR)     ## GPL-3
+require(igraph)           ## GPL-2 | GPL-3
+require(tidygeocoder)     ## MIT
+require(caret)            ## GPL (>= 2)
+require(rpart)            ## GPL-2 | GPL-3
+require(rpart.plot)       ## GPL-3
+## require(textstem)         ## GPL-2
+require(quanteda)         ## GPL-3
+require(corpus)           ## 	Apache License (== 2.0) 
+require(tidytext)         ## MIT
+
+
+## clean up first
+rm(list=ls())
+
+##get today's date
+today <- format(Sys.Date(), format = "%d %B %Y")
+
+## load configuration data from JSON file
+configuration <- jsonlite::fromJSON(txt = "trialMatchConfiguration.json")
+aact.username <- configuration$aact.username
+aact.password <- configuration$aact.password
+```
+
+```{r connect to clinicaltrialsgov, message=FALSE}  
+
+## connect via RPostgres (GPL-3 licence)
+drv = RPostgres::Postgres()
+conn2 <- dbConnect(drv, dbname="aact",host="aact-db.ctti-clinicaltrials.org", port=5432, user=aact.username, password=aact.password )
+```
+
+```{r get eligibility criteria for open UK cancer studies, message=FALSE}
+
+## get data for all cancer studies 
+eligibilitiesQ <- "SELECT DISTINCT e.nct_id, s.overall_status, e.criteria 
+FROM studies s
+INNER JOIN conditions c ON c.nct_id = s.nct_id
+INNER JOIN eligibilities e on e.nct_id = s.nct_id
+INNER JOIN facilities f on f.nct_id = s.nct_id
+WHERE s.study_type LIKE ('Interventional')
+AND s.overall_status = 'Recruiting'
+AND f.status = 'Recruiting'
+AND f.country = 'United Kingdom'
+AND (c.downcase_name LIKE '%cancer%'
+OR c.downcase_name LIKE '%neoplasm%'
+OR c.downcase_name LIKE '%carcinoma%'
+OR c.downcase_name LIKE '%tumo%'
+OR c.downcase_name LIKE '%sarcoma%'
+OR c.downcase_name LIKE '%melanoma%'
+OR c.downcase_name LIKE '%mesothelioma%'
+OR c.downcase_name LIKE '%chordoma%')"
+
+## get data from clinicaltrials.gov
+eligibilities <- dbGetQuery(conn2,eligibilitiesQ)
+
+## add a column to indicate refresh date
+eligibilities$refresh_date <- today
+
+
+```
+
+```{r split into individual eligibility criteria}
+## start timer
+tic("split into individual eligibility criteria")
+
+## split into individual criteria on single line breaks
+eligibilities$criteria <- strsplit(eligibilities$criteria, split = "\n")
+## unnest so each criterion gets its own row
+eligibilities <- as.data.frame(unnest(data = eligibilities, cols = criteria))
+## drop any empty elements
+eligibilities <- eligibilities[eligibilities$criteria != "", ] ## drop empty elements
+
+toc()
+```
+
+```{r add an index column to eligibilities}
+## we will add an index column that uniquely identifies each criterion
+eligibilities <- eligibilities %>% group_by(nct_id) %>% mutate(criterion_index = paste0(nct_id, "_", row_number())) %>% as.data.frame()
+```
+  
+Eligibility criteria are classified as either *INCLUSION* or *EXCLUSION* based on the occurrence of the patterns *inclusion criteria:* and *exclusion criteria:*  
+  
+```{r classify as inclusion exclusion criteria}
+
+## add a column to indicate criterion type
+eligibilities$criterion_type <- NA
+
+## set first value as "INCLUSION"
+eligibilities$criterion_type[1] <- "INCLUSION"
+
+## tag first criterion that equals "inclusion criteria:" (case-insensitive, with or without colon)
+eligibilities$criterion_type[grep(pattern = "inclusion criteria:?$", x=eligibilities$criteria, ignore.case = TRUE)] <- "INCLUSION"
+
+## tag first criterion that equals "exclusion criteria:" (case-insensitive, with or without colon)
+eligibilities$criterion_type[grep(pattern = "exclusion criteria:?$", x=eligibilities$criteria, ignore.case = TRUE)] <- "EXCLUSION"
+
+## fill "down" using the tdiyr::fill() function
+eligibilities <- tidyr::fill(data=eligibilities, criterion_type, .direction="down")
+
+```
+  
+#### **Annotate using indexTrialData.Rmd code**  
+  
+```{r define stopwords}
+stopwords <- as.data.frame(tidytext::get_stopwords())
+```
+  
+```{r download and process a list of all human genes and their synonyms}
+
+## start timer
+tic("download and process a list of all human genes and their synonyms")
+
+humanGenes <- read.table(file = "humanGenes.tsv", header = TRUE, quote = "", sep = "\t", fill = TRUE, stringsAsFactors = FALSE)
+## exclude any entries that are not for Homo Sapiens
+humanGenes <- unique(dplyr::filter(humanGenes, Org_name == "Homo sapiens"))
+## drop everything except GeneID, Symbol and Aliases columns
+humanGenes <- unique(dplyr::select(humanGenes, GeneID, Symbol, Aliases)) 
+## split the aliases on comma
+humanGenes$Aliases <- strsplit(x=humanGenes$Aliases, split = ",") 
+## unnest to multiply rows, keep any rows with no aliases
+humanGenes <- unnest(data = humanGenes, cols = Aliases, keep_empty = TRUE) 
+## convert to data frame
+humanGenes <- as.data.frame(humanGenes) 
+## trim excess whitespace from Aliases values
+humanGenes$Aliases <- str_squish(string = humanGenes$Aliases) 
+
+## Symbol values are not represented among Aliases
+# create a data frame with unique Symbol values
+symbols <- unique(dplyr::select(humanGenes,GeneID,"Symbol"= "Symbol", "Aliases"="Symbol"))
+
+# bind this onto bottom of humanGenes data frame
+humanGenes <- rbind(humanGenes,symbols)
+# remove duplicated values, if any
+humanGenes <- unique(humanGenes)
+# sort on Symbol values
+humanGenes <- humanGenes[order(humanGenes$Symbol), ] 
+
+# drop any rows where Aliases is NA
+humanGenes <- humanGenes[!is.na(humanGenes$Aliases), ]
+
+## drop any rows where Aliases value is only a single character
+humanGenes <- dplyr::filter(humanGenes, nchar(Aliases)>1)
+
+## drop any rows where Aliases is a number
+humanGenes <- humanGenes[is.na(as.numeric(humanGenes$Aliases)), ]
+
+## drop any rows where Aliases is a common false hit (e.g. Roman numerals)
+humanGenes <- humanGenes[!humanGenes$Aliases %in% c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "NA", "B12", "EL", "G6PD", "CAT", "CT", "MRI", "OTC", "polymerase", "G1", "PI", "COPD", "A1", "ARM", "ALS", "AA", "B5", "C1", "C2", "C3", "C5", "C6", "D3", "D4", "A-2", "A3", "1D", "1A", "L1"), ]
+
+## NOW humanGenes TABLE CONTAINS ALL HUMAN GENES AND THEIR SYNONYMS
+
+## delete symbols object to save memory
+rm(symbols)
+
+## stop timer
+toc()
+```
+  
+```{r create tidy table of criteria for indexing}
+
+text_for_indexing <- eligibilities %>% 
+         # mutate(id_type="criterion_index") %>%
+         dplyr::select(nct_id, "id"="criterion_index","id_type"="criterion_type","text"="criteria") %>%
+         unique()
+
+```
+  
+  * Manually replace any whole-word occurrences of " *BRCA* " with *BRCA1, BRCA2*  
+  
+```{r replace instances of BRCA}
+
+
+## replace whole-word matches of "BRCA" with "BRCA1, BRCA2"
+text_for_indexing$text <- gsub(pattern = "\\bBRCA\\b", replacement = "BRCA1, BRCA2", x=text_for_indexing$text )
+
+```
+
+* Second, create a corpus from the tidy table...  
+
+```{r create populations corpus}
+ 
+tic("create populations_corpus")
+populations_corpus <-  quanteda::corpus(x=text_for_indexing,
+                                          text_field = "text", 
+                                          docid_field = "id",
+                                          unique_docnames = FALSE)
+toc()
+
+```
+
+* Third, tokenise the corpus...  
+
+```{r tokenise populations_corpus}
+
+tic("tokenise populations_corpus")
+# populations_tokens <- tokens(populations_corpus, remove_punct=TRUE, padding = FALSE, split_hyphens = TRUE)
+## keep punctuation so can expand forward slashes later... 
+populations_tokens <- tokens(populations_corpus, remove_punct=FALSE, padding = FALSE, split_hyphens = TRUE)
+toc()
+
+```
+
+```{r remove stopwords from populations_tokens}
+tic("remove stopwords from populations_tokens")
+populations_tokens <- tokens_select(x=populations_tokens, pattern = stopwords("en"), selection = "remove", padding = FALSE)
+toc()
+
+```
+
+* We will get a "bag of words" (excluding stopwords) surrounding human gene names (inc synonyms) within a defined window on either side (default=5).  
+  
+* In order to match patterns such as "*BRCA1/2*" to both *BRCA1* and *BRCA2*, we will perform this step twice: 
+  * the first time, using unmodified tokens from *populations_corpus*  
+  * the second time, delete any occurrences of forward slash, plus the immediately preceding character (e.g. in *BRCA1/2*, delete *1/* to get *BRCA2*)  
+    * Note that patterns such as *BRCA1/BRCA2* will be converted to *BRCABRCA2* but these will be lost when we join to *humanGenes* table  
+
+```{r get context words surrounding gene names in populations_tokens}
+
+# tic("get context words surrounding gene names in populations_tokens")
+# kwic_genes_populations <- as.data.frame(kwic(populations_tokens, pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE))
+# toc()
+
+## we will tokenise within the call to kwic, as we need to modify the corpus... 
+## first pass using unmodified tokens... 
+tic("get context words surrounding gene names in text for indexing, first pass")
+## get bag of words around mention gene names
+## ASSUME WE CAN SAFELY REMOVE PUNCTUATION IN THE CALL TO tokens BECAUSE SLASHES HAVE ALREADY BEEN OMITTED... 
+kwic_genes_populations_1 <- as.data.frame(kwic(x = tokens(populations_corpus, remove_punct=TRUE, padding = FALSE, split_hyphens = TRUE), pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE))
+toc()
+
+## second pass sing modified tokens, get stems of words before slash and join to first character after slash 
+tic("get context words surrounding gene names in text for indexing, second pass")
+## ASSUME WE CAN SAFELY REMOVE PUNCTUATION IN THE CALL TO tokens BECAUSE SLASHES HAVE ALREADY BEEN OMITTED... 
+kwic_genes_populations_2 <- as.data.frame(kwic(x = tokens(gsub(pattern='./', replacement = '', x=populations_corpus), remove_punct=TRUE, padding = FALSE, split_hyphens = TRUE), pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE))
+toc()  
+  
+## combine the two bags of words
+kwic_genes_populations <- unique(rbind(kwic_genes_populations_1, kwic_genes_populations_2))
+## delete originals
+rm(kwic_genes_populations_1)
+rm(kwic_genes_populations_2)
+
+
+# tic("get context words surrounding gene names in populations_tokens")
+# kwic_genes_populations <- kwic(populations_tokens, pattern =  unique(humanGenes$Aliases), window = 5, case_insensitive = FALSE)
+# toc()
+#formattable(head(as.data.frame(kw_genes), 30))
+
+## concatenate pre, gene name and post tokens
+kwic_genes_populations <- dplyr::mutate(kwic_genes_populations, context = paste(pre,keyword, post, sep = " "))
+
+## select and rename columns
+kwic_genes_populations <- dplyr::select(kwic_genes_populations, "id"="docname", context, "gene_synonym"=pattern)
+
+```
+  
+* We will join the Entrez symbols from *humanGenes* table...  
+
+```{r join Entrez Symbols to kwic_genes_populations}
+kwic_genes_populations <- merge(x=kwic_genes_populations, by.x="gene_synonym", y=dplyr::select(humanGenes, Symbol, Aliases), by.y = "Aliases")
+```
+  
+
+
+
+
+
+
+
+
+
+  
+  
+  
+  
+
+
+
+
+
+
+
+
+
+
