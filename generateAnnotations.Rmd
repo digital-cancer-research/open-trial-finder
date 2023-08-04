@@ -60,7 +60,7 @@ conn2 <- dbConnect(drv, dbname="aact",host="aact-db.ctti-clinicaltrials.org", po
 ```{r get eligibility criteria for open UK cancer studies, message=FALSE}
 
 ## get data for all cancer studies 
-eligibilitiesQ <- "SELECT DISTINCT e.nct_id, s.overall_status, e.criteria 
+eligibilitiesQ <- "SELECT DISTINCT e.nct_id, e.criteria 
 FROM studies s
 INNER JOIN conditions c ON c.nct_id = s.nct_id
 INNER JOIN eligibilities e on e.nct_id = s.nct_id
@@ -102,8 +102,14 @@ toc()
 ```
 
 ```{r add an index column to eligibilities}
-## we will add an index column that uniquely identifies each criterion
-eligibilities <- eligibilities %>% group_by(nct_id) %>% mutate(criterion_index = paste0(nct_id, "_", row_number())) %>% as.data.frame()
+## we will number criterion per study and add an index column that uniquely identifies each criterion
+# eligibilities <- eligibilities %>% group_by(nct_id) %>% mutate(criterion_index = paste0(nct_id, "_", row_number())) %>% as.data.frame()
+eligibilities <- eligibilities %>% group_by(nct_id) %>% mutate(
+  criterion_number = row_number(), 
+  criterion_index = paste(nct_id, criterion_number, sep = "_")
+  ) %>% as.data.frame()
+
+
 ```
   
 Eligibility criteria are classified as either *INCLUSION* or *EXCLUSION* based on the occurrence of the patterns *inclusion criteria:* and *exclusion criteria:*  
@@ -288,15 +294,122 @@ kwic_genes_populations <- dplyr::select(kwic_genes_populations, "id"="docname", 
 kwic_genes_populations <- merge(x=kwic_genes_populations, by.x="gene_synonym", y=dplyr::select(humanGenes, Symbol, Aliases), by.y = "Aliases")
 ```
   
+```{r join verbatim criteria and nct_id}
+kwic_genes_populations <- merge(x=text_for_indexing, by.x="id", y=kwic_genes_populations, by.y="id", incomparables=NA)
+
+## rename and reorder columns
+kwic_genes_populations <- unique(dplyr::select(kwic_genes_populations, nct_id, id, id_type,text, context, "match"="gene_synonym", "controlled_match"="Symbol"))
+```
+  
+* We will index the populations for genetic features by filtering and retaining only those texts that include a given pattern within the bag of words surrounding the gene name...  
+  
+```{r define function to index on pattern}
+indexOnPattern <- function(dataframe, pattern, featureLabel) {
+  ## get indices with matching pattern
+  indices <- grep(pattern = pattern, x=dataframe$context, ignore.case = TRUE)
+  ## subset dataframe
+  dataframe <- dataframe[indices, ]
+  ## add a column with featurelabel
+  dataframe$feature <- featureLabel
+  return(dataframe)
+}
+
+```
+  
+* We will define different patterns for each different alteration type...  
+  
+##### **Index on mutations**  
+  
+```{r define mutant pattern}
+## define mutant pattern
+mutant_pattern <- "mutat|mutant|defect|deficien|altera|altere|loss of function|loss-of-function|loss function"
+```
+
+* For mutations, we will use the pattern **`r mutant_pattern`**.  
+  
+```{r index populations on mutations}
+
+mutation_populations <- indexOnPattern(dataframe = kwic_genes_populations, pattern = mutant_pattern, featureLabel = "mutation")
+
+## select and reorder columns for consistency with trialMatchDataRefresh
+mutation_populations <- unique(dplyr::select(mutation_populations, match, nct_id, id, id_type, text, feature, controlled_match ))
+
+```
+  
+```{r define rearrangemnts pattern}
+rearrangement_pattern <- " fusion|rearrangement|truncation|truncated|deletion|deleted|lost|duplication|duplicated|transloc"
+```
+
+* For rearrangements, we will use the pattern **`r rearrangement_pattern`**.  
+  
+```{r index populations on rearrangements}
+
+rearrangement_populations <- indexOnPattern(dataframe = kwic_genes_populations, pattern = rearrangement_pattern, featureLabel = "rearrangement")
+
+## select and reorder columns for consistency with trialMatchDataRefresh
+rearrangement_populations <- unique(dplyr::select(rearrangement_populations, match, nct_id, id, id_type, text, feature, controlled_match ))
+
+```
+
+```{r define amplification pattern}
+amplification_pattern <- " amplifi|overexpress"
+```
+
+* For amplifications, we will use the pattern **`r amplification_pattern`**.  
 
 
+```{r index populations on amplifications}
+
+amplification_populations <- indexOnPattern(dataframe = kwic_genes_populations, pattern = amplification_pattern, featureLabel = "amplification")
+
+## select and reorder columns for consistency with trialMatchDataRefresh
+amplification_populations <- unique(dplyr::select(amplification_populations, match, nct_id, id, id_type, text, feature, controlled_match ))
+```
+
+```{r define loss pattern}
+loss_pattern <- " loss"
+```
+
+* For losses, we will use the pattern **`r loss_pattern`**.  
+  
+```{r index populations on losses}
+loss_populations <- indexOnPattern(dataframe = kwic_genes_populations, pattern = loss_pattern, featureLabel = "loss")
+```
+
+  * In order to avoid spurious hits against "loss of function" (which should be indexed as a mutation), we will filter again and exclude those rows where the context contains "loss of function" (or variants thereof)...  
+  
+```{r exclude loss of function pattern}
+loss_populations <- loss_populations[grep(pattern = "loss of function|loss-of-function|loss function", x=loss_populations$context, ignore.case = TRUE, invert = TRUE), ]
+
+## select and reorder columns for consistency with trialMatchDataRefresh
+loss_populations <- unique(dplyr::select(loss_populations, match, nct_id, id, id_type, text, feature, controlled_match ))
+
+```
+
+```{r row bind indexed features into single table}
+
+population_features <- rbind(mutation_populations, rearrangement_populations, amplification_populations, loss_populations)
+
+## keep only inclusion criteria
+population_features <- unique(dplyr::filter(population_features, id_type == "INCLUSION"))
+
+## concatenate gene name and feature
+population_features$gene_variant_type <- paste(population_features$controlled_match, population_features$feature, sep = " ")
+
+```
 
 
+```{r merge indexed criteria with full set of criteria}
 
+eligibilities_original_indexed <- unique(merge(x=eligibilities, by.x = c("nct_id", "criterion_index"), all.x = TRUE, 
+                                       y = population_features, by.y = c("nct_id", "id"), all.y = FALSE))
 
+eligibilities_original_indexed <- eligibilities_original_indexed %>%
+  arrange(nct_id, criterion_number) %>%
+  dplyr::select(refresh_date, nct_id, criterion_index, criteria, gene_variant_type) %>%
+  unique()
 
-
-
+```
   
   
   
