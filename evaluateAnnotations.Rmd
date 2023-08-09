@@ -1,0 +1,148 @@
+---
+title: "Score genetic annotations"
+author: "dECMT"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+require(tidyverse)
+```
+
+```{r read manually annotated criteria into memory}
+
+annotations <- readxl::read_excel(path = "eligibilities_original_indexed_manual.xlsx", sheet = "eligibilities_original_indexed", na = c("NA", "")) %>%
+  as.data.frame()
+
+## how many annotations?
+nrow(annotations)
+
+## how many studies?
+length(unique(annotations$nct_id))
+
+## how many criteria?
+length(unique(annotations$criterion_index))
+
+## how many non-NA manual annotations?
+sum(!is.na(annotations$manual_annotation))
+
+## how many non-NA scripted annotations?
+sum(!is.na(annotations$gene_variant_type))
+
+## what proportion of annotations are NA?
+mean(is.na(annotations$gene_variant_type))
+mean(is.na(annotations$manual_annotation))
+
+
+
+## since the overwhelming majority of annotations are NA, the dataset is highly imbalanced
+## a model that annotated all criteria as NA would have approx 99% accuracy
+## therefore, we need to use evaluation metrics that are suitable for imbalanced datasets
+
+# see https://machinelearningmastery.com/tour-of-evaluation-metrics-for-imbalanced-classification/ for a summary...
+```
+  
+#### **Label annotations as true/false negatives/positive**  
+  
+```{r label annotations}
+
+annotations$label <- NA
+annotations$label[is.na(annotations$gene_variant_type) & is.na(annotations$manual_annotation)] <- "TN"
+annotations$label[annotations$gene_variant_type == annotations$manual_annotation] <- "TP"
+annotations$label[is.na(annotations$gene_variant_type) & !is.na(annotations$manual_annotation)] <- "FN"
+annotations$label[!is.na(annotations$gene_variant_type) & is.na(annotations$manual_annotation)] <- "FP"
+
+
+## get counts in each class
+annotations %>% count(label)
+```
+  
+  
+
+#### **Performance metrics**  
+  
+```{r calculate metrics}
+
+
+FN_count <- sum(annotations$label=="FN")
+FP_count <- sum(annotations$label=="FP")
+TN_count <- sum(annotations$label=="TN")
+TP_count <- sum(annotations$label=="TP")
+
+## sensitivity summarises how well the positive class was predicted
+## sensitivity = number TP / (number TP + number FN)
+sensitivity <- TP_count/(TP_count + FN_count)
+sensitivity
+
+## specificity summarises how well the negative (NA) class was predicted
+## specificity = TN / (FP + TN)
+specificity <- TN_count/(FP_count + TN_count)
+specificity
+
+## Precision summarizes the fraction of examples assigned the positive class that belong to the positive class.
+## Precision = TP / (TP + FP)
+precision <- TP_count/(TP_count + FP_count)
+precision
+
+## Recall summarizes how well the positive class was predicted and is the same calculation as sensitivity.
+## recall = TP / (TP + FN)
+recall <- TP_count/(TP_count + FN_count)
+recall
+
+## Precision and recall can be combined into a single score that seeks to balance both concerns, called the F-score or the F-measure.
+## The F-Measure is a popular metric for imbalanced classification.
+## F score = (2 * precision * recall)/(precision + recall)
+f_score <- (2 * precision * recall) / (precision + recall)
+f_score
+
+
+
+
+## https://machinelearningmastery.com/fbeta-measure-for-machine-learning/#:~:text=The%20F2%2Dmeasure%20is%20calculated,%5E2%20*%20Precision%20%2B%20Recall)
+## It has the effect of lowering the importance of precision and increase the importance of recall.
+## If maximizing precision minimizes false positives, and maximizing recall minimizes false negatives, then the F2-measure puts more attention on minimizing false negatives than minimizing false positives.
+# F2 = ((1 + 2^2) * precision * recall) / (2^2 * precision + recall)
+# F2 = (5 * precision * recall) / (4 * precision + recall)
+f2_score <- (5 * precision * recall)/(4 * precision + recall)
+f2_score
+
+## F1 gain scores
+## https://snorkel.ai/improving-upon-precision-recall-and-f1-with-gain-metrics/#:~:text=Because%20if%20the%20validation%20dataset,0.6%20could%20be%20considered%20good.
+## 
+proportion_pos <- mean(!is.na(annotations$manual_annotation))
+proportion_pos
+
+## apply transform
+precision_gain <- (precision - proportion_pos) / precision * (1 - proportion_pos)
+precision_gain
+
+recall_gain <- (recall - proportion_pos) / recall * (1 - proportion_pos)
+recall_gain
+
+f1_gain <- mean(precision_gain, recall_gain)
+f1_gain
+```
+
+#### **Analysis of annotation errors**  
+  
+```{r analysis of errors}
+
+## which annotations were most commonly missed?
+annotations %>% 
+    dplyr::filter(label == "FN") %>%
+    count(manual_annotation) %>%
+    arrange(desc(n))
+
+
+## which incorrect annotations were most common?
+annotations %>% 
+    dplyr::filter(label == "FP") %>%
+    count(gene_variant_type) %>%
+    arrange(desc(n))
+
+
+```
+
+
+
