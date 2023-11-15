@@ -269,11 +269,11 @@ NCIt <- NCIt[grep(pattern = "Retired Concept", x=NCIt$Parent_synonym, invert = T
 
 ## delete any rows with Synonyms that map to >1 term within a Class
 NCIt_multiple_terms <- NCIt %>%
-  group_by(synonyms, semantic_type) %>%
-  summarise(
+  dplyr::group_by(synonyms, semantic_type) %>%
+  dplyr::summarise(
     number_terms = length(unique(code))
   ) %>%
-  filter(number_terms >1) %>%
+  dplyr::filter(number_terms >1) %>%
   as.data.frame()
 ## anti join
 NCIt <- anti_join(NCIt, NCIt_multiple_terms, by=c("synonyms", "semantic_type"))
@@ -850,7 +850,10 @@ toc()
 
 ```{r add an index column to eligibilities}
 ## we will add an index column that uniquely identifies each criterion
-eligibilities <- eligibilities %>% group_by(nct_id) %>% mutate(criterion_index = paste0(nct_id, "_", row_number())) %>% as.data.frame()
+eligibilities <- eligibilities %>% 
+  dplyr::group_by(nct_id) %>% 
+  dplyr::mutate(criterion_index = paste0(nct_id, "_", row_number())) %>% 
+  as.data.frame()
 ```
   
 Eligibility criteria are classified as either *INCLUSION* or *EXCLUSION* based on the occurrence of the patterns *inclusion criteria:* and *exclusion criteria:*  
@@ -1659,8 +1662,8 @@ scored_matches_study <- unique(dplyr::select(scored_matches_study, "symbol"="con
 
 ## where multiple criteria, aggregate
 scored_matches_study <- scored_matches_study %>%
-                                      group_by(nct_id, symbol, variant_type, eligibility_rationale) %>%
-                                      summarise(
+                                      dplyr::group_by(nct_id, symbol, variant_type, eligibility_rationale) %>%
+                                      dplyr::summarise(
                                         matching_criteria = paste(unique(matching_criteria), collapse = "\n\n")
                 ) %>%
   as.data.frame()
@@ -1695,8 +1698,8 @@ scored_matches_dg <- unique(dplyr::select(scored_matches_dg,nct_id,"symbol"="con
                                           
 ## where multiple criteria, aggregate
 scored_matches_dg <- scored_matches_dg %>%
-                                      group_by(nct_id, symbol, variant_type, eligibility_rationale) %>%
-                                      summarise(
+                                      dplyr::group_by(nct_id, symbol, variant_type, eligibility_rationale) %>%
+                                      dplyr::summarise(
                                         matching_criteria = paste(unique(matching_criteria), collapse = "\n\n")
                 ) %>%
   as.data.frame()
@@ -1714,9 +1717,9 @@ scored_matches_study <- rbind(scored_matches_study, scored_matches_dg)
 ## in order to do so, we will only show the row with the highest eligibility_score (i.e. stratification)...  
 
 scored_matches_study <- scored_matches_study %>%
-  group_by(nct_id, symbol, variant_type) %>%
-  arrange(desc(eligibility_score)) %>%
-  summarise(
+  dplyr::group_by(nct_id, symbol, variant_type) %>%
+  dplyr::arrange(desc(eligibility_score)) %>%
+  dplyr::summarise(
     eligibility_rationale = eligibility_rationale[1],
     matching_criteria = matching_criteria[1],
     eligibility_score = 3 ## reset so stratification and inclusion are scored identically
@@ -1769,8 +1772,8 @@ scored_matches_interventions_pathways <- unique(dplyr::select(scored_matches_int
 
 ## where an intervention targets >1 gene, aggregate
 scored_matches_interventions_pathways <- as.data.frame(scored_matches_interventions_pathways %>%
-                group_by(nct_id, intervention_name, upstream) %>%
-                summarise(
+                dplyr::group_by(nct_id, intervention_name, upstream) %>%
+                dplyr::summarise(
                   downstream = paste(unique(downstream), collapse = ", ")
                 ))
 
@@ -1802,9 +1805,9 @@ scored_matches_interventions_combined <- rbind(scored_matches_interventions, sco
 
 ## where intervention had both direct and pathway matches, just take the highest score
 scored_matches_interventions_combined <- scored_matches_interventions_combined %>%
-  group_by(nct_id, intervention_name, TARGET_SYMBOL) %>%
-  arrange(desc(intervention_score)) %>%
-  summarise(
+  dplyr::group_by(nct_id, intervention_name, TARGET_SYMBOL) %>%
+  dplyr::arrange(desc(intervention_score)) %>%
+  dplyr::summarise(
     intervention_rationale = head(intervention_rationale, 1), 
     intervention_score = head(intervention_score, 1)
   )
