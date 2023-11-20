@@ -125,65 +125,79 @@ con <- dbConnect(RSQLite::SQLite(), "indexedTrialData.sqlite")
   
 ### **Download and save a table of human genes and synonyms**  
   
-```{r download and process a list of all human genes and their synonyms}
+```{r REFACTORED download and process a list of all human genes and their synonyms, warning=FALSE, message=FALSE}  
 
-## start timer
-tic("download and process a list of all human genes and their synonyms")
+## define common false hits among gene aliases
+common_false_hits_gene_aliases <- c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "NA", "B12", "EL", "G6PD", "CAT", "CT", "MRI", "OTC", "polymerase", "G1", "PI", "COPD", "A1", "ARM", "ALS", "AA", "B5", "C1", "C2", "C3", "C5", "C6", "D3", "D4", "A-2", "A3", "1D", "1A", "L1")
 
-humanGenes <- read.table(file = "humanGenes.tsv", header = TRUE, quote = "", sep = "\t", fill = TRUE, stringsAsFactors = FALSE)
-## exclude any entries that are not for Homo Sapiens
-humanGenes <- unique(dplyr::filter(humanGenes, Org_name == "Homo sapiens"))
-## drop everything except GeneID, Symbol and Aliases columns
-humanGenes <- unique(dplyr::select(humanGenes, GeneID, Symbol, Aliases)) 
-## split the aliases on comma
-humanGenes$Aliases <- strsplit(x=humanGenes$Aliases, split = ",") 
-## unnest to multiply rows, keep any rows with no aliases
-humanGenes <- unnest(data = humanGenes, cols = Aliases, keep_empty = TRUE) 
-## convert to data frame
-humanGenes <- as.data.frame(humanGenes) 
-## trim excess whitespace from Aliases values
-humanGenes$Aliases <- str_squish(string = humanGenes$Aliases) 
+## download a list of gene symbols and synonyms
+humanGenes <- AnnotationDbi::select(org.Hs.eg.db, columns=c("ENTREZID", "SYMBOL", "ALIAS"), keys(org.Hs.eg.db, keytype="SYMBOL"), keytype = "SYMBOL") %>%
+  as.data.frame() %>% 
+  dplyr::select( "GeneID" = "ENTREZID", "Symbol"="SYMBOL", "Aliases" = "ALIAS") %>%
+  dplyr::filter(nchar(Aliases)>1) %>%                    ## drop any rows where Aliases value is only a single character
+  dplyr::filter(is.na(as.numeric(Aliases))) %>%          ## drop any rows where Aliases is a number
+  dplyr::filter(!Aliases %in% common_false_hits_gene_aliases) %>%           ## drop any rows where Aliases is a common false hit (e.g. Roman numerals)
+  unique()
 
-## Symbol values are not represented among Aliases
-# create a data frame with unique Symbol values
-symbols <- unique(dplyr::select(humanGenes,GeneID,"Symbol"= "Symbol", "Aliases"="Symbol"))
+## check if there are any Symbol values that don't appear in Aliases column  
+# setdiff(x=humanGenes$Symbol, y=humanGenes$Aliases)  
+```
 
-# bind this onto bottom of humanGenes data frame
-humanGenes <- rbind(humanGenes,symbols)
-# remove duplicated values, if any
-humanGenes <- unique(humanGenes)
-# sort on Symbol values
-humanGenes <- humanGenes[order(humanGenes$Symbol), ] 
+```{r NOT NEEDED download and process a list of all human genes and their synonyms}
 
-# drop any rows where Aliases is NA
-humanGenes <- humanGenes[!is.na(humanGenes$Aliases), ]
-
-## drop any rows where Aliases value is only a single character
-humanGenes <- dplyr::filter(humanGenes, nchar(Aliases)>1)
-
-## drop any rows where Aliases is a number
-humanGenes <- humanGenes[is.na(as.numeric(humanGenes$Aliases)), ]
-
-## drop any rows where Aliases is a common false hit (e.g. Roman numerals)
-humanGenes <- humanGenes[!humanGenes$Aliases %in% c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "NA", "B12", "EL", "G6PD", "CAT", "CT", "MRI", "OTC", "polymerase", "G1", "PI", "COPD", "A1", "ARM", "ALS", "AA", "B5", "C1", "C2", "C3", "C5", "C6", "D3", "D4", "A-2", "A3", "1D", "1A", "L1"), ]
-
-## NOW humanGenes TABLE CONTAINS ALL HUMAN GENES AND THEIR SYNONYMS
-
-## delete symbols object to save memory
-rm(symbols)
-
-## stop timer
-toc()
+# ## start timer
+# tic("download and process a list of all human genes and their synonyms")
+# 
+# humanGenes <- read.table(file = "humanGenes.tsv", header = TRUE, quote = "", sep = "\t", fill = TRUE, stringsAsFactors = FALSE)
+# ## exclude any entries that are not for Homo Sapiens
+# humanGenes <- unique(dplyr::filter(humanGenes, Org_name == "Homo sapiens"))
+# ## drop everything except GeneID, Symbol and Aliases columns
+# humanGenes <- unique(dplyr::select(humanGenes, GeneID, Symbol, Aliases)) 
+# ## split the aliases on comma
+# humanGenes$Aliases <- strsplit(x=humanGenes$Aliases, split = ",") 
+# ## unnest to multiply rows, keep any rows with no aliases
+# humanGenes <- unnest(data = humanGenes, cols = Aliases, keep_empty = TRUE) 
+# ## convert to data frame
+# humanGenes <- as.data.frame(humanGenes) 
+# ## trim excess whitespace from Aliases values
+# humanGenes$Aliases <- str_squish(string = humanGenes$Aliases) 
+# 
+# ## Symbol values are not represented among Aliases
+# # create a data frame with unique Symbol values
+# symbols <- unique(dplyr::select(humanGenes,GeneID,"Symbol"= "Symbol", "Aliases"="Symbol"))
+# 
+# # bind this onto bottom of humanGenes data frame
+# humanGenes <- rbind(humanGenes,symbols)
+# # remove duplicated values, if any
+# humanGenes <- unique(humanGenes)
+# # sort on Symbol values
+# humanGenes <- humanGenes[order(humanGenes$Symbol), ] 
+# 
+# # drop any rows where Aliases is NA
+# humanGenes <- humanGenes[!is.na(humanGenes$Aliases), ]
+# 
+# ## drop any rows where Aliases value is only a single character
+# humanGenes <- dplyr::filter(humanGenes, nchar(Aliases)>1)
+# 
+# ## drop any rows where Aliases is a number
+# humanGenes <- humanGenes[is.na(as.numeric(humanGenes$Aliases)), ]
+# 
+# ## drop any rows where Aliases is a common false hit (e.g. Roman numerals)
+# humanGenes <- humanGenes[!humanGenes$Aliases %in% c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "NA", "B12", "EL", "G6PD", "CAT", "CT", "MRI", "OTC", "polymerase", "G1", "PI", "COPD", "A1", "ARM", "ALS", "AA", "B5", "C1", "C2", "C3", "C5", "C6", "D3", "D4", "A-2", "A3", "1D", "1A", "L1"), ]
+# 
+# ## NOW humanGenes TABLE CONTAINS ALL HUMAN GENES AND THEIR SYNONYMS
+# 
+# ## delete symbols object to save memory
+# rm(symbols)
+# 
+# ## stop timer
+# toc()
 ```
   
-* A list of human genes and their synonyms is saved in the *humanGenes* table:  
-  
-`r formattable(head(humanGenes))`  
-  
-```{r save table of human genes to DB}
+```{r NOT NEEDED save table of human genes to DB}
 
 ## create as a table in database
-dbWriteTable(conn = con,name = "humanGenes", value = humanGenes, overwrite=TRUE)
+# dbWriteTable(conn = con,name = "humanGenes", value = humanGenes, overwrite=TRUE)
 
 ## check it has saved
 # dbListTables(con)
@@ -192,11 +206,9 @@ dbWriteTable(conn = con,name = "humanGenes", value = humanGenes, overwrite=TRUE)
     
 ### **Download and save NCI thesaurus**  
   
-```{r download and create NCIthesaurus table}
-## start timer 
-tic("download and create NCIthesaurus table")
+```{r REFACTORED download NCI thesaurus, message=FALSE}
 
-## specify URL for NCI thesaurus - this should always be the most recent? 
+## latest version should always be at this url...
 NCItURL <- "https://evs.nci.nih.gov/ftp1/NCI_Thesaurus/Thesaurus.FLAT.zip"
 
 destFlatFilename <- "NCIt_FLAT.zip"
@@ -204,70 +216,64 @@ download.file(url=NCItURL,destfile = destFlatFilename)
 unzip(zipfile = paste0(getwd(),"/",destFlatFilename))
 
 NCIt <- read.table("Thesaurus.txt",header = FALSE, sep = "\t", comment.char = "", fill = TRUE, stringsAsFactors = FALSE, quote = "")
-# names(NCIt) <- c("ID","URL","ParentID","Synonyms","Description","PreferredTerm","Type","Class")
 
-## revised names as of 19 Jan 2023
-# names(NCIt) <- c("ID","URL","ParentID","Synonyms","Description","PreferredTerm","Type","Class", "concept_in_subset")
-
-# revised names as of May 2023
 names(NCIt) <- c("code", "concept_IRI", "parents", "synonyms", "definition", "display_name", "concept_status", "semantic_type", "concept_in_subset")
 
 ## clean up, remove files
 file.remove("NCIt_FLAT.zip")
 file.remove("Thesaurus.txt")
-
-## an entity may have more than one semantic_type, so need to multiply rows
-## split and unnest the semantic_type column of NCIt
-NCIt$semantic_type <- strsplit(NCIt$semantic_type, split = "\\|")
-NCIt <- unnest(data = NCIt, semantic_type)
-
-## do the same for parents column
-## split parents column on pipe symbol
-NCIt$parents <- strsplit(NCIt$parents, split = "\\|")
-## unnest the parents column to multiply rows
-NCIt <- unnest(data=NCIt,parents)
-
-## drop unnecessary rows
-NCIt <- unique(dplyr::select(NCIt, code, parents, synonyms, display_name, semantic_type))
-
-## join parents column back
-## first, get the synonyms and codes for parents
-NCItParents <- NCIt[which(NCIt$code %in% NCIt$parents), ]
-
-## each parent term may have more than one synonym
-## for simplicity, we will retain only the first synonym for each parent term
-NCItParents$synonyms <- gsub("\\|.*","",NCItParents$synonyms)
-
-NCItParents <- unique(dplyr::select(NCItParents, "ParentID"="code", "Parent_synonym"="synonyms"))
-
-## merge parents on entity ID = parent ID
-NCIt <- merge(x=NCIt,y=NCItParents,by.x="parents",by.y="ParentID",all.x=TRUE)
-
-## split and unnest the synonyms column
-NCIt$synonyms <- strsplit(NCIt$synonyms, split = "\\|")
-NCIt <- unnest(data = NCIt, synonyms)
-
-NCIt <- as.data.frame(NCIt)
-
-## add a column to indicate date downloaded
-NCIt$downloaded <- Sys.Date()
-
-## drop redundant rows, if any
-NCIt <- unique(NCIt)
-
-## stop timer
-toc()
 ```
 
-```{r preprocess NCIt}
-## start timer
-tic("preprocess NCIt")
+```{r REFACTORED normalise NCI thesaurus}
+## normalise columns with concatenated values
+NCIt <- NCIt %>%
+  dplyr::mutate(semantic_type = str_split(semantic_type, pattern = "\\|")) %>%    ## an entity may have more than one semantic_type - split and unnest...
+  unnest(semantic_type) %>%
+  dplyr::mutate(parents = str_split(parents, pattern = "\\|")) %>%     ## idem parents...
+  unnest(parents) %>%
+  dplyr::mutate(synonyms = str_split(synonyms, pattern = "\\|")) %>%     ## idem synonyms...
+  unnest(synonyms) %>%
+  dplyr::mutate(concept_status = str_split(concept_status, pattern = "\\|")) %>%     ## idem concept_status...
+  unnest(concept_status) %>%
+  as.data.frame() %>%
+  dplyr::select(code, parents, synonyms, display_name, semantic_type, concept_status) %>%
+  dplyr::mutate(downloaded = Sys.Date()) %>%
+  unique()
 
-## delete any rows containing the pattern "Retired Concept"
-NCIt <- NCIt[grep(pattern = "Retired Concept", x=NCIt$synonyms, invert = TRUE), ]
-NCIt <- NCIt[grep(pattern = "Retired Concept", x=NCIt$Parent_synonym, invert = TRUE), ]
+```
 
-## delete any rows with Synonyms that map to >1 term within a Class
+```{r REFACTORED join parent synonyms}
+## parent synonym will be used for mechanism search in UI (e.g. MTOR inhibitor is a parent of Everolimus)
+
+## create a temporary table that will hold a synonym for each parent
+NCItParents <- NCIt %>%
+  dplyr::filter(code %in% parents)  %>%     ## keep ony entities that have at least one child term
+  dplyr::select("ParentID"="code", "Parent_synonym"="synonyms") %>%
+  unique() %>%
+  dplyr::group_by(ParentID) %>% 
+  dplyr::slice_head(n=1) %>%                ## just keep first synonym for each parent term
+  as.data.frame()
+
+
+## join to NCIt
+NCIt <- merge(x=NCIt,y=NCItParents,by.x="parents",by.y="ParentID",all.x=TRUE)
+
+## delete temp table
+rm(NCItParents)
+
+## see example for Everolimus... 
+# dplyr::filter(NCIt, synonyms == "Everolimus")
+
+```
+
+```{r REFACTORED exclude uninformative entities from NCIt}
+
+NCIt <- NCIt %>%
+  dplyr::filter(!(concept_status %in% c("Retired_Concept", "Obsolete_Concept", "Provisional_Concept", "Header_Concept", "Concept_Pending_Approval"))) %>% 
+  dplyr::filter(grepl(pattern = "[a-zA-Z]", x = synonyms))                 ## delete any rows that don't contain any letters... (e.g. "0" for ECOG PS 0)
+
+## delete any synonyms that map to >1 entities within a semantic_type   
+# create a temp table with synonyms that map to multiple entities
 NCIt_multiple_terms <- NCIt %>%
   dplyr::group_by(synonyms, semantic_type) %>%
   dplyr::summarise(
@@ -276,23 +282,108 @@ NCIt_multiple_terms <- NCIt %>%
   dplyr::filter(number_terms >1) %>%
   as.data.frame()
 ## anti join
-NCIt <- anti_join(NCIt, NCIt_multiple_terms, by=c("synonyms", "semantic_type"))
+NCIt <- dplyr::anti_join(NCIt, NCIt_multiple_terms, by=c("synonyms", "semantic_type"))
 rm(NCIt_multiple_terms)
 
-## delete any rows that don't contain any letters... 
-NCIt <- NCIt[grep(pattern = "[a-zA-Z]", x=NCIt$synonyms), ]
+```
 
-## stop timer
-toc()
+```{r NOT NEEDED download and create NCIthesaurus table}
+# ## start timer 
+# #tic("download and create NCIthesaurus table")
+# 
+# ## specify URL for NCI thesaurus - this should always be the most recent? 
+# NCItURL <- "https://evs.nci.nih.gov/ftp1/NCI_Thesaurus/Thesaurus.FLAT.zip"
+# 
+# destFlatFilename <- "NCIt_FLAT.zip"
+# download.file(url=NCItURL,destfile = destFlatFilename)
+# unzip(zipfile = paste0(getwd(),"/",destFlatFilename))
+# 
+# NCIt <- read.table("Thesaurus.txt",header = FALSE, sep = "\t", comment.char = "", fill = TRUE, stringsAsFactors = FALSE, quote = "")
+# # names(NCIt) <- c("ID","URL","ParentID","Synonyms","Description","PreferredTerm","Type","Class")
+# 
+# ## revised names as of 19 Jan 2023
+# # names(NCIt) <- c("ID","URL","ParentID","Synonyms","Description","PreferredTerm","Type","Class", "concept_in_subset")
+# 
+# # revised names as of May 2023
+# names(NCIt) <- c("code", "concept_IRI", "parents", "synonyms", "definition", "display_name", "concept_status", "semantic_type", "concept_in_subset")
+# 
+# ## clean up, remove files
+# file.remove("NCIt_FLAT.zip")
+# file.remove("Thesaurus.txt")
+# 
+# ## an entity may have more than one semantic_type, so need to multiply rows
+# ## split and unnest the semantic_type column of NCIt
+# NCIt$semantic_type <- strsplit(NCIt$semantic_type, split = "\\|")
+# NCIt <- unnest(data = NCIt, semantic_type)
+# 
+# ## do the same for parents column
+# ## split parents column on pipe symbol
+# NCIt$parents <- strsplit(NCIt$parents, split = "\\|")
+# ## unnest the parents column to multiply rows
+# NCIt <- unnest(data=NCIt,parents)
+# 
+# ## drop unnecessary rows
+# NCIt <- unique(dplyr::select(NCIt, code, parents, synonyms, display_name, semantic_type))
+# 
+# ## join parents column back
+# ## first, get the synonyms and codes for parents
+# NCItParents <- NCIt[which(NCIt$code %in% NCIt$parents), ]
+# 
+# ## each parent term may have more than one synonym
+# ## for simplicity, we will retain only the first synonym for each parent term
+# NCItParents$synonyms <- gsub("\\|.*","",NCItParents$synonyms)
+# 
+# NCItParents <- unique(dplyr::select(NCItParents, "ParentID"="code", "Parent_synonym"="synonyms"))
+# 
+# ## merge parents on entity ID = parent ID
+# NCIt <- merge(x=NCIt,y=NCItParents,by.x="parents",by.y="ParentID",all.x=TRUE)
+# 
+# ## split and unnest the synonyms column
+# NCIt$synonyms <- strsplit(NCIt$synonyms, split = "\\|")
+# NCIt <- unnest(data = NCIt, synonyms)
+# 
+# NCIt <- as.data.frame(NCIt)
+# 
+# ## add a column to indicate date downloaded
+# NCIt$downloaded <- Sys.Date()
+# 
+# ## drop redundant rows, if any
+# NCIt <- unique(NCIt)
+# 
+# ## stop timer
+# # toc()
+```
+
+```{r NOT NEEDED preprocess NCIt}
+## start timer
+# tic("preprocess NCIt")
+# 
+# ## delete any rows containing the pattern "Retired Concept"
+# NCIt <- NCIt[grep(pattern = "Retired Concept", x=NCIt$synonyms, invert = TRUE), ]
+# NCIt <- NCIt[grep(pattern = "Retired Concept", x=NCIt$Parent_synonym, invert = TRUE), ]
+
+# ## delete any rows with Synonyms that map to >1 term within a Class
+# NCIt_multiple_terms <- NCIt %>%
+#   dplyr::group_by(synonyms, semantic_type) %>%
+#   dplyr::summarise(
+#     number_terms = length(unique(code))
+#   ) %>%
+#   dplyr::filter(number_terms >1) %>%
+#   as.data.frame()
+# ## anti join
+# NCIt <- anti_join(NCIt, NCIt_multiple_terms, by=c("synonyms", "semantic_type"))
+# rm(NCIt_multiple_terms)
+# 
+# ## delete any rows that don't contain any letters... 
+# NCIt <- NCIt[grep(pattern = "[a-zA-Z]", x=NCIt$synonyms), ]
+# 
+# ## stop timer
+# toc()
 ```
   
-* Preprocessed NCI thesaurus is saved in the *NCIt* table:  
-  
-`r formattable(head(NCIt))`  
-  
-```{r write NCIt to database}
+```{r NOT NEEDED write NCIt to database}
 ## create as a table in database
-dbWriteTable(conn = con,name = "NCIt", value = NCIt, overwrite=TRUE)
+# dbWriteTable(conn = con,name = "NCIt", value = NCIt, overwrite=TRUE)
 
 ```
   
@@ -301,9 +392,6 @@ dbWriteTable(conn = con,name = "NCIt", value = NCIt, overwrite=TRUE)
 ```{r subset NCIt for Pharmacologic Substance}
 
 NCIt_Pharmacologics <- unique(dplyr::filter(NCIt, semantic_type %in% c("Immunologic Factor", "Pharmacologic Substance")))
-
-## delete NCItParents to save memory
-rm(NCItParents)
 
 ```
   
@@ -421,6 +509,10 @@ NCIt_to_CHEMBL <- unique(NCIt_to_CHEMBL)
 drugs_targets <- unique(dplyr::select(NCIt_to_CHEMBL, "NCIt_code"="code", TARGET_SYMBOL, action_type))
 
 ```
+
+### **Map NCIt drugs to their targets via IUPHAR**  
+  
+
 
 * Although CHEMBL is comprehensive, it does not include MTOR as a target for Everolimus (only FKBP1A)  
 * There are likely to be other examples  
