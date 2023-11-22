@@ -401,7 +401,7 @@ rm(iuphar_uniprot_ids)
 drugs_targets <- unique(rbind(drugs_targets, iuphar_processed))
 
 ## check e.g. for Everolimus (C48387)
-dplyr::filter(drugs_targets, NCIt_code == "C48387")
+#dplyr::filter(drugs_targets, NCIt_code == "C48387")
 ```
 
 ```{r NOT NEEDED write drugs_targets to database}
@@ -485,9 +485,9 @@ OR c.downcase_name LIKE '%neoplasm%'
 OR c.downcase_name LIKE '%carcinoma%'
 OR c.downcase_name LIKE '%tumo%'
 OR c.downcase_name LIKE '%sarcoma%'
-OR c.downcase_name LIKE '%melanoma%')
+OR c.downcase_name LIKE '%melanoma%'
 OR c.downcase_name LIKE '%mesothelioma%'
-OR c.downcase_name LIKE '%chordoma%'")
+OR c.downcase_name LIKE '%chordoma%')")
 
 ## get data from clinicaltrials.gov
 cancerStudies <- dbGetQuery(conn2,cancerStudiesQ)
@@ -495,8 +495,6 @@ cancerStudies <- dbGetQuery(conn2,cancerStudiesQ)
 cancerStudies <- cancerStudies %>%
   dplyr::mutate(refresh_date = today) %>%                                                 ## add a column to indicate refresh date
   dplyr::mutate(Link = paste0("https://clinicaltrials.gov/ct2/show/", nct_id))            ## add a column to hold link
-
-
 
 ```
   
@@ -514,7 +512,7 @@ cancer_type_dictionary <- conditionSynonyms %>%
   quanteda::dictionary()                                                  ## convert to dictionary
 
 # ## for example
-cancer_type_dictionary[["Colorectal"]]
+#cancer_type_dictionary[["Colorectal"]]
 
 ```
   
@@ -676,19 +674,18 @@ interventions <- interventions %>%
 * We retain all interventions at this stage, including those that have not mapped to either NCI thesaurus or KEGG drug target...  
 
 ```{r join interventions to design groups}
-## join to design groups
-interventions <- unique(merge(x=dplyr::select(dgi, nct_id, design_group_id, intervention_id), by.x = c("nct_id", "intervention_id"), y= interventions, by.y = c("nct_id", "intervention_id"), all.y = TRUE))
-
+interventions <- interventions %>%
+    merge(by.x = c("nct_id", "intervention_id"), all.x = TRUE, y = dplyr::select(dgi, nct_id, design_group_id, intervention_id), by.y = c("nct_id", "intervention_id")) %>%
+    unique()
+  
 ```
 
 #### **write indexed cancer studies to database**  
   
 * Cancer study information is saved to the *cancerStudies* table:  
   
-  
 `r formattable(head(cancerStudies))`  
     
-  
 ```{r write cancerStudies to database}
 ## create as a table in database
 dbWriteTable(conn = con,name = "cancerStudies", value = cancerStudies, overwrite=TRUE)
@@ -700,21 +697,42 @@ dbWriteTable(conn = con,name = "cancerStudies", value = cancerStudies, overwrite
 ```
 
 
-#### **Write indexed interventions to database**  
-  
-* Study interventions (including mapping to NCIt entities and KEGG target genes where applicable) are saved to the *interventions* table:  
-  
-`r formattable(head(interventions))`
 
 
-```{r write interventions to database}
-## create as a table in database
-dbWriteTable(conn = con,name = "interventions", value = interventions, overwrite=TRUE)
 
-## check it has saved
-# dbListTables(con)
 
-```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 #### **Get eligibility criteria**  
