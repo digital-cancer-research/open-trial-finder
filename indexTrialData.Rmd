@@ -624,8 +624,7 @@ local_open_studies <- dbGetQuery(conn2, local_open_studiesQ)
 
 ```
 
-        
-### **Get study interventions**  
+### **Index study interventions**  
 
 * Interventions are stored as follows in clinicaltrials.gov 
   * each intervention_id value is unique, i.e. same intervention in different studies is given different *intervention_id* values:
@@ -696,69 +695,22 @@ dbWriteTable(conn = con,name = "cancerStudies", value = cancerStudies, overwrite
 
 ```
 
+#### **Index eligibility criteria**  
 
+```{r preprocess eligibility criteria}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#### **Get eligibility criteria**  
-
-```{r split into individual eligibility criteria}
-## start timer
-tic("split into individual eligibility criteria")
-
-## split into individual criteria on single line breaks
-eligibilities$criteria <- strsplit(eligibilities$criteria, split = "\n")
-## unnest so each criterion gets its own row
-eligibilities <- as.data.frame(unnest(data = eligibilities, cols = criteria))
-## drop any empty elements
-eligibilities <- eligibilities[eligibilities$criteria != "", ] ## drop empty elements
-
-toc()
+eligibilities <- eligibilities %>%
+    dplyr::mutate(criteria = str_split(string = criteria, pattern = "\n")) %>%      ## split into individual criteria on single line break
+    unnest(cols = "criteria", keep_empty = FALSE) %>%
+    as.data.frame() %>%
+    dplyr::filter(criteria != "") %>%
+    dplyr::group_by(nct_id) %>% 
+    dplyr::mutate(criterion_index = paste0(nct_id, "_", row_number())) %>%         ## add an index column that uniquely identifies each criterion
+    as.data.frame() %>%
+    dplyr::select(nct_id, criterion_index, criteria ) %>%
+    unique()
 ```
 
-```{r add an index column to eligibilities}
-## we will add an index column that uniquely identifies each criterion
-eligibilities <- eligibilities %>% 
-  dplyr::group_by(nct_id) %>% 
-  dplyr::mutate(criterion_index = paste0(nct_id, "_", row_number())) %>% 
-  as.data.frame()
-```
-  
 Eligibility criteria are classified as either *INCLUSION* or *EXCLUSION* based on the occurrence of the patterns *inclusion criteria:* and *exclusion criteria:*  
   
 ```{r classify as inclusion exclusion criteria}
@@ -769,10 +721,10 @@ eligibilities$criterion_type <- NA
 ## set first value as "INCLUSION"
 eligibilities$criterion_type[1] <- "INCLUSION"
 
-## tag first criterion that equals "inclusion criteria:" (case-insensitive, with or without colon)
+## tag each criterion that contains "inclusion criteria:" (case-insensitive, with or without colon)
 eligibilities$criterion_type[grep(pattern = "inclusion criteria:?$", x=eligibilities$criteria, ignore.case = TRUE)] <- "INCLUSION"
 
-## tag first criterion that equals "exclusion criteria:" (case-insensitive, with or without colon)
+## tag each criterion that contains "exclusion criteria:" (case-insensitive, with or without colon)
 eligibilities$criterion_type[grep(pattern = "exclusion criteria:?$", x=eligibilities$criteria, ignore.case = TRUE)] <- "EXCLUSION"
 
 ## fill "down" using the tdiyr::fill() function
@@ -780,82 +732,164 @@ eligibilities <- tidyr::fill(data=eligibilities, criterion_type, .direction="dow
 
 ```
   
-Missing values for gender, minimum and maximum age are imputed.  
+* There are some common patterns observed in criteria that are complicate named entity recognition, for example:  
+ * The string *BRCA1/2* is shorthand for *BRCA1 or BRCA2* and *RAD51C/D* is shorthand for *RAD51C or RAD51D*  
+ * Likewise, the string *BRCA* is shorthand for *BRCA1 or BRCA2*  
+* Expand these so that e.g. *BRCA1/2* is converted to *BRCA1 or BRCA2*  
   
-```{r impute missing values for gender}
-## for gender, replace "All" with "Male|Female"
-eligibilities$gender[eligibilities$gender=="All"] <- "Male|Female"
-## do the same for missing values
-eligibilities$gender[is.na(eligibilities$gender)] <- "Male|Female"
+```{r expand gene abbreviations in eligibility criteria text}
+## create a copy of criterion text for processing
+eligibilities$criteria_processed <- eligibilities$criteria %>%
+  gsub(pattern = "\\bBRCAm\\b", replacement = "BRCA1 or BRCA2 mutation")   %>%              ## replace whole-word matches of "BRCAm" with "BRCA1 or BRCA2 mutation"
+  gsub(pattern = "\\bBRCA\\b", replacement = "BRCA1 or BRCA2")                        ## replace whole-word matches of "BRCA" with "BRCA1 or BRCA2"
+  
+
+## processing of patterns such as BRCA1/2 or RAD51C/D
+# first, create a table with all substrings in criteria that contain a forward slash
+replacements <- data.frame(verbatim = stringr::str_extract_all(string = eligibilities$criteria_processed, pattern = "\\w*/.\\b") %>% unlist()) %>% 
+    unique() %>%
+    dplyr::mutate(pre = stringr::str_extract(verbatim, pattern = "[^ ]*(?=/)")) %>%        ## get the substring BEFORE the slash
+    dplyr::mutate(stem = stringr::str_sub(pre, end = -2))                       %>%        ## nibble the last character off the pre substring
+    dplyr::mutate(post = stringr::str_extract(verbatim, pattern = "(?<=/)."))   %>%        ## get the substring AFTER the slash
+    dplyr::mutate(post_expanded = paste0(stem, post))                           %>%        ## expand the text after the abbreviation
+    dplyr::filter(pre %in% humanGenes$Aliases & post_expanded  %in% humanGenes$Aliases ) %>%        ## only keep rows where both pre and post_expanded are valid gene alias
+    dplyr::mutate(expanded = paste0(pre, " or ", post_expanded))
+
+
+## create a named vector to use with str_replace_all
+replacement_strings <- as.character(replacements$expanded)
+names(replacement_strings) <- replacements$verbatim
+# replacement_strings
+
+## replace all occurrences of the verbatim string with the expanded string
+eligibilities$criteria_processed <- eligibilities$criteria_processed %>%
+  stringr::str_replace_all(pattern = replacement_strings)
+
+
+ ########################################################################
+
+
+## do similar for the pattern <GENE NAME>m
+replacements2 <- data.frame(verbatim = str_extract_all(string = eligibilities$criteria_processed, pattern = "\\b[A-Z|0-9]+m") %>% unlist()) %>%
+  dplyr::mutate(stem = verbatim %>% str_sub( end = -2)) %>%
+  dplyr::filter(stem %in% humanGenes$Aliases) %>%
+  dplyr::mutate(expanded = paste(stem, "mutation", sep = " ")) %>%
+  unique()
+
+## create a named vector to use with str_replace_all
+replacement_strings2 <- as.character(replacements2$expanded)
+names(replacement_strings2) <- replacements2$verbatim
+replacement_strings2
+
+## replace all occurrences of the verbatim string with the expanded string
+eligibilities$criteria_processed <- eligibilities$criteria_processed %>%
+  stringr::str_replace_all(pattern = replacement_strings2)
 
 ```
 
-```{r impute missing values for minimum age}
+```{r create dictionary of genetic alteration types}
+## create named list of alteration types
+alteration_types <- list(
+  "mutation" = c("mutant", "mutants", "mutation", "mutations", "mutated", "loss of function", "loss-of-function", "alteration", "alterations", "altered", "deficient", "deficiency", "variant", "variants"), 
+  "amplification" = c("amplified", "amplification", "amplifications", "overexpress", "overexpression", "overexpressing", "overexpressed"),
+  "loss" = c("deletion", "deletions", "deleted", "loss", "lost"),
+  "rearrangement" = c("fusion", "fusions", "fusion-positive", "rearranged", "gene fusion", "truncation", "truncations", "truncated", "truncating", "duplication", "duplications", "duplicated", "translocation", "translocations", "translocated", "rearranged", "rearrangement", "rearrangements")
+ )
 
-## for minimum ages are all either "xxx months", "1 year", "xxx years" or "N/A"
-## convert all values to years...
-min_age_month_indices <- grep(pattern = "month", x=eligibilities$minimum_age, ignore.case = TRUE)
-## trim off first space and everything after
-eligibilities$minimum_age[min_age_month_indices] <- gsub(pattern = " .*", replacement = "", x=eligibilities$minimum_age[min_age_month_indices])
-## convert to numeric
-# eligibilities$minimum_age[min_age_month_indices] <- as.numeric(eligibilities$minimum_age[min_age_month_indices])
-## divide by 12 to get min age in years
-eligibilities$minimum_age[min_age_month_indices] <- round(as.numeric(eligibilities$minimum_age[min_age_month_indices])/12, digits = 1)
+## convert to a dictionary for use by quanteda
+alterations_dictionary <- quanteda::dictionary(alteration_types)
 
-## just trim off " years" from min ages in years
-min_age_year_indices <- grep(pattern = "year", x=eligibilities$minimum_age, ignore.case = TRUE)
-eligibilities$minimum_age[min_age_year_indices] <- gsub(pattern = " .*", replacement = "", x=eligibilities$minimum_age[min_age_year_indices])
+## for example... 
+# alterations_dictionary[["mutation"]]
+```
 
-## impute missing values with zero
-eligibilities$minimum_age[is.na(eligibilities$minimum_age)] <- 0
-eligibilities$minimum_age[eligibilities$minimum_age == "N/A"] <- 0
+```{r create dictionary of gene name tokens}
 
-## convert to numeric
-eligibilities$minimum_age <- as.numeric(eligibilities$minimum_age)
+## filter out genes not included as synonyms in NCIt
+humanGenes_dictionary <- humanGenes %>%
+    dplyr::filter(Symbol %in% NCIt$synonyms) %>%
+    unstack(form = Aliases ~ Symbol)   %>%                                   ## convert to named list, Entrez symbol are keys, values are Aliases
+    quanteda::dictionary(tolower = FALSE)
+
+## look up HER2 as an example
+# humanGenes_dictionary[["ERBB2"]]
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r lookup alteration types in criterion text}
+
+
+
+
+
+
+# ## map intervention names to NCIt codes
+# interventions$NCIt_code <- interventions$intervention_name %>%
+#   tokens( remove_punct = T) %>%
+#   tokens_lookup( dictionary = drug_dictionary, nested_scope = "dictionary") %>%
+#   as.list()
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# interventions <- interventions %>%
+#   unnest( cols = "NCIt_code", keep_empty = TRUE) %>%           ## keep all rows including those that don't find a match... 
+#   as.data.frame() %>% 
+#   merge(by.x = "NCIt_code", all.x = TRUE, y = dplyr::select(NCIt, code, display_name), by.y = "code") %>%         ## get PT for intervention from NCIt
+#   dplyr::rename("intervention_pt" = "display_name") %>%
+#   merge(by.x="NCIt_code", all.x=TRUE, y=drugs_targets, by.y = "NCIt_code", incomparables = NA) %>%    ## get targets and mechanisms
+#   dplyr::rename("Mechanism"="action_type") %>%
+#   dplyr::select(nct_id, intervention_id, intervention_name, NCIt_code, intervention_pt,TARGET_SYMBOL, Mechanism) %>%
+#   unique()
 
 ```
 
-```{r impute missing values for maximum age}
 
 
-## for maximum age, all values are in years, or NA or "N/A"
-# to test... 
-## unique(grep(pattern = "year", x=eligibilities$maximum_age, ignore.case = TRUE, value = TRUE, invert = TRUE))
 
-## trim off first space and everything after
-eligibilities$maximum_age <- gsub(pattern = " .*", replacement = "", x=eligibilities$maximum_age)
 
-## impute missing values with 120
-eligibilities$maximum_age[is.na(eligibilities$maximum_age)] <- 120
-eligibilities$maximum_age[eligibilities$maximum_age == "N/A"] <- 120
 
-## convert to numeric
-eligibilities$maximum_age <- as.numeric(eligibilities$maximum_age)
 
-```
 
-##### **Write eligibility criteria to database**  
-  
-  
-```{r write eligibilities to database}
-## create as a table in database
-dbWriteTable(conn = con,name = "eligibilities", value = eligibilities, overwrite=TRUE)
 
-## check it has saved
-# dbListTables(con)
 
-## delete indices
-rm(min_age_year_indices)
-rm(min_age_month_indices)
 
-```
-  
-Individual eligibility criteria for all cancer studies have been written to the *eligibilities* table:  
-  
-`r formattable(head(eligibilities))`  
-  
 
-  
+
+
+
+
+
+
+
+
+
 
 ### **Index trial populations**  
   
