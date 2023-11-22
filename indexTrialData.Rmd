@@ -143,67 +143,6 @@ humanGenes <- AnnotationDbi::select(org.Hs.eg.db, columns=c("ENTREZID", "SYMBOL"
 # setdiff(x=humanGenes$Symbol, y=humanGenes$Aliases)  
 ```
 
-```{r NOT NEEDED download and process a list of all human genes and their synonyms}
-
-# ## start timer
-# tic("download and process a list of all human genes and their synonyms")
-# 
-# humanGenes <- read.table(file = "humanGenes.tsv", header = TRUE, quote = "", sep = "\t", fill = TRUE, stringsAsFactors = FALSE)
-# ## exclude any entries that are not for Homo Sapiens
-# humanGenes <- unique(dplyr::filter(humanGenes, Org_name == "Homo sapiens"))
-# ## drop everything except GeneID, Symbol and Aliases columns
-# humanGenes <- unique(dplyr::select(humanGenes, GeneID, Symbol, Aliases)) 
-# ## split the aliases on comma
-# humanGenes$Aliases <- strsplit(x=humanGenes$Aliases, split = ",") 
-# ## unnest to multiply rows, keep any rows with no aliases
-# humanGenes <- unnest(data = humanGenes, cols = Aliases, keep_empty = TRUE) 
-# ## convert to data frame
-# humanGenes <- as.data.frame(humanGenes) 
-# ## trim excess whitespace from Aliases values
-# humanGenes$Aliases <- str_squish(string = humanGenes$Aliases) 
-# 
-# ## Symbol values are not represented among Aliases
-# # create a data frame with unique Symbol values
-# symbols <- unique(dplyr::select(humanGenes,GeneID,"Symbol"= "Symbol", "Aliases"="Symbol"))
-# 
-# # bind this onto bottom of humanGenes data frame
-# humanGenes <- rbind(humanGenes,symbols)
-# # remove duplicated values, if any
-# humanGenes <- unique(humanGenes)
-# # sort on Symbol values
-# humanGenes <- humanGenes[order(humanGenes$Symbol), ] 
-# 
-# # drop any rows where Aliases is NA
-# humanGenes <- humanGenes[!is.na(humanGenes$Aliases), ]
-# 
-# ## drop any rows where Aliases value is only a single character
-# humanGenes <- dplyr::filter(humanGenes, nchar(Aliases)>1)
-# 
-# ## drop any rows where Aliases is a number
-# humanGenes <- humanGenes[is.na(as.numeric(humanGenes$Aliases)), ]
-# 
-# ## drop any rows where Aliases is a common false hit (e.g. Roman numerals)
-# humanGenes <- humanGenes[!humanGenes$Aliases %in% c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "NA", "B12", "EL", "G6PD", "CAT", "CT", "MRI", "OTC", "polymerase", "G1", "PI", "COPD", "A1", "ARM", "ALS", "AA", "B5", "C1", "C2", "C3", "C5", "C6", "D3", "D4", "A-2", "A3", "1D", "1A", "L1"), ]
-# 
-# ## NOW humanGenes TABLE CONTAINS ALL HUMAN GENES AND THEIR SYNONYMS
-# 
-# ## delete symbols object to save memory
-# rm(symbols)
-# 
-# ## stop timer
-# toc()
-```
-  
-```{r NOT NEEDED save table of human genes to DB}
-
-## create as a table in database
-# dbWriteTable(conn = con,name = "humanGenes", value = humanGenes, overwrite=TRUE)
-
-## check it has saved
-# dbListTables(con)
-
-```
-    
 ### **Download and save NCI thesaurus**  
   
 ```{r REFACTORED download NCI thesaurus, message=FALSE}
@@ -287,106 +226,6 @@ rm(NCIt_multiple_terms)
 
 ```
 
-```{r NOT NEEDED download and create NCIthesaurus table}
-# ## start timer 
-# #tic("download and create NCIthesaurus table")
-# 
-# ## specify URL for NCI thesaurus - this should always be the most recent? 
-# NCItURL <- "https://evs.nci.nih.gov/ftp1/NCI_Thesaurus/Thesaurus.FLAT.zip"
-# 
-# destFlatFilename <- "NCIt_FLAT.zip"
-# download.file(url=NCItURL,destfile = destFlatFilename)
-# unzip(zipfile = paste0(getwd(),"/",destFlatFilename))
-# 
-# NCIt <- read.table("Thesaurus.txt",header = FALSE, sep = "\t", comment.char = "", fill = TRUE, stringsAsFactors = FALSE, quote = "")
-# # names(NCIt) <- c("ID","URL","ParentID","Synonyms","Description","PreferredTerm","Type","Class")
-# 
-# ## revised names as of 19 Jan 2023
-# # names(NCIt) <- c("ID","URL","ParentID","Synonyms","Description","PreferredTerm","Type","Class", "concept_in_subset")
-# 
-# # revised names as of May 2023
-# names(NCIt) <- c("code", "concept_IRI", "parents", "synonyms", "definition", "display_name", "concept_status", "semantic_type", "concept_in_subset")
-# 
-# ## clean up, remove files
-# file.remove("NCIt_FLAT.zip")
-# file.remove("Thesaurus.txt")
-# 
-# ## an entity may have more than one semantic_type, so need to multiply rows
-# ## split and unnest the semantic_type column of NCIt
-# NCIt$semantic_type <- strsplit(NCIt$semantic_type, split = "\\|")
-# NCIt <- unnest(data = NCIt, semantic_type)
-# 
-# ## do the same for parents column
-# ## split parents column on pipe symbol
-# NCIt$parents <- strsplit(NCIt$parents, split = "\\|")
-# ## unnest the parents column to multiply rows
-# NCIt <- unnest(data=NCIt,parents)
-# 
-# ## drop unnecessary rows
-# NCIt <- unique(dplyr::select(NCIt, code, parents, synonyms, display_name, semantic_type))
-# 
-# ## join parents column back
-# ## first, get the synonyms and codes for parents
-# NCItParents <- NCIt[which(NCIt$code %in% NCIt$parents), ]
-# 
-# ## each parent term may have more than one synonym
-# ## for simplicity, we will retain only the first synonym for each parent term
-# NCItParents$synonyms <- gsub("\\|.*","",NCItParents$synonyms)
-# 
-# NCItParents <- unique(dplyr::select(NCItParents, "ParentID"="code", "Parent_synonym"="synonyms"))
-# 
-# ## merge parents on entity ID = parent ID
-# NCIt <- merge(x=NCIt,y=NCItParents,by.x="parents",by.y="ParentID",all.x=TRUE)
-# 
-# ## split and unnest the synonyms column
-# NCIt$synonyms <- strsplit(NCIt$synonyms, split = "\\|")
-# NCIt <- unnest(data = NCIt, synonyms)
-# 
-# NCIt <- as.data.frame(NCIt)
-# 
-# ## add a column to indicate date downloaded
-# NCIt$downloaded <- Sys.Date()
-# 
-# ## drop redundant rows, if any
-# NCIt <- unique(NCIt)
-# 
-# ## stop timer
-# # toc()
-```
-
-```{r NOT NEEDED preprocess NCIt}
-## start timer
-# tic("preprocess NCIt")
-# 
-# ## delete any rows containing the pattern "Retired Concept"
-# NCIt <- NCIt[grep(pattern = "Retired Concept", x=NCIt$synonyms, invert = TRUE), ]
-# NCIt <- NCIt[grep(pattern = "Retired Concept", x=NCIt$Parent_synonym, invert = TRUE), ]
-
-# ## delete any rows with Synonyms that map to >1 term within a Class
-# NCIt_multiple_terms <- NCIt %>%
-#   dplyr::group_by(synonyms, semantic_type) %>%
-#   dplyr::summarise(
-#     number_terms = length(unique(code))
-#   ) %>%
-#   dplyr::filter(number_terms >1) %>%
-#   as.data.frame()
-# ## anti join
-# NCIt <- anti_join(NCIt, NCIt_multiple_terms, by=c("synonyms", "semantic_type"))
-# rm(NCIt_multiple_terms)
-# 
-# ## delete any rows that don't contain any letters... 
-# NCIt <- NCIt[grep(pattern = "[a-zA-Z]", x=NCIt$synonyms), ]
-# 
-# ## stop timer
-# toc()
-```
-  
-```{r NOT NEEDED write NCIt to database}
-## create as a table in database
-# dbWriteTable(conn = con,name = "NCIt", value = NCIt, overwrite=TRUE)
-
-```
-  
 * A subset of the preprocessed NCI thesaurus (semantic_type==*Pharmacologic Substance* is saved in memory in the NCIt_Pharmacologics table (not saved to DB).  
 
 ```{r subset NCIt for Pharmacologic Substance}
@@ -397,7 +236,6 @@ NCIt_Pharmacologics <- unique(dplyr::filter(NCIt, semantic_type %in% c("Immunolo
   
 ### **Map NCIt drugs to their targets via CHEMBL**  
   
-
 ```{r read data from tables}
 # COMPONENT_SYNONYMS <- dbGetQuery(con, "SELECT * FROM COMPONENT_SYNONYMS")         ## Table storing synonyms for the components of molecular targets
 # dim(COMPONENT_SYNONYMS)       ## 104,000 rows
@@ -425,28 +263,28 @@ TARGET_COMPONENTS  <- dbGetQuery(chemblDB_con, "SELECT * FROM target_components"
 ## NOTE: for a given NCIt entity, some synonyms can map to one CHEMBL ID, but not to others 
 ## this causes issues later, we end up with 2 rows for the same NCIt_code
 
-## join to molregno (Internal Primary Key for the molecule)
-NCIt_Pharmacologics$synonyms_lower <- tolower(NCIt_Pharmacologics$synonyms)
-MOLECULE_SYNONYMS$synonyms_lower <- tolower(MOLECULE_SYNONYMS$synonyms)
+NCIt_Pharmacologics <- NCIt_Pharmacologics %>%
+  dplyr::mutate(synonyms_lower = tolower(synonyms))
+
+MOLECULE_SYNONYMS <- MOLECULE_SYNONYMS %>%
+  dplyr::mutate(synonyms_lower = tolower(synonyms))
 
 
-
-NCIt_to_CHEMBL <- unique(merge(x=dplyr::select(NCIt_Pharmacologics, code, synonyms_lower), 
-                               by.x = "synonyms_lower", all.x = FALSE, 
-                    y=dplyr::select(MOLECULE_SYNONYMS, molregno, synonyms_lower), 
-                    by.y = "synonyms_lower"))
-
-NCIt_to_CHEMBL <- unique(dplyr::select(NCIt_to_CHEMBL, -synonyms_lower))
-
+## get mapppings between NCIt codes and ChEMBL molregno (Internal Primary Key for the molecule)
+NCIt_to_CHEMBL <- NCIt_Pharmacologics %>%
+  dplyr::select(code, synonyms_lower) %>%
+  unique() %>%
+  merge(by.x = "synonyms_lower", all.x = FALSE, y=dplyr::select(MOLECULE_SYNONYMS, molregno, synonyms_lower)) %>%
+  dplyr::select(-synonyms_lower) %>%
+  unique()
+  
 ## join to CHEMBL_ID (ChEMBL identifier for this compound (for use on web interface etc))
 ## also: 
 # MAX_PHASE: Maximum phase of development reached for the compound across all indications (4 = Approved, 3 = Phase 3 Clinical Trials, 2 = Phase 2 Clinical Trials, 1 = Phase 1 Clinical Trials, 0.5 = Early Phase 1 Clinical Trials, -1 = Clinical Phase unknown for drug or clinical candidate drug ie where ChEMBL cannot assign a clinical phase, NULL = preclinical compounds with bioactivity data)
 # BLACK_BOX_WARNING: 	Indicates that the drug has a black box warning (1 = yes, 0 = default value)
-NCIt_to_CHEMBL <- merge(x=NCIt_to_CHEMBL, by.x = "molregno", all.x = TRUE, 
-                    y=dplyr::select(MOLECULE_DICTIONARY, molregno, chembl_id, max_phase, black_box_warning), 
-                    by.y = "molregno")
-
-NCIt_to_CHEMBL$black_box_warning <- as.logical(NCIt_to_CHEMBL$black_box_warning)
+NCIt_to_CHEMBL <- NCIt_to_CHEMBL %>% 
+  merge(by.x = "molregno", all.x = TRUE, y=dplyr::select(MOLECULE_DICTIONARY, molregno, chembl_id, max_phase, black_box_warning), by.y = "molregno") %>%
+  dplyr::mutate(black_box_warning = as.logical(black_box_warning))
 
 ```
   
@@ -456,126 +294,108 @@ NCIt_to_CHEMBL$black_box_warning <- as.logical(NCIt_to_CHEMBL$black_box_warning)
 # DISEASE_EFFICACY: Flag to show whether the target assigned is believed to play a role in the efficacy of the drug in the indication(s) for which it is approved (1 = yes, 0 = no)
 # SELECTIVITY_COMMENT: Additional comments regarding the selectivity of the drug
 # TID: Target associated with this mechanism of action (foreign key to target_dictionary table)
-NCIt_to_CHEMBL <- unique(merge(x=NCIt_to_CHEMBL, by.x = "molregno", all.x = TRUE, 
-                    y=dplyr::select(DRUG_MECHANISM, molregno, mechanism_of_action, action_type, disease_efficacy, selectivity_comment, tid), 
-                    by.y = "molregno"))
-
-NCIt_to_CHEMBL$disease_efficacy <- as.logical(NCIt_to_CHEMBL$disease_efficacy)
+NCIt_to_CHEMBL <- NCIt_to_CHEMBL %>%
+  merge(by.x = "molregno", all.x = TRUE, y=dplyr::select(DRUG_MECHANISM, molregno, mechanism_of_action, action_type, disease_efficacy, selectivity_comment, tid), by.y = "molregno") %>%
+  unique() %>%
+  dplyr::mutate(disease_efficacy = as.logical(disease_efficacy))
+  
 
 # PARENT_TYPE: Higher-level grouping of action types e.g., positive vs negative action
-NCIt_to_CHEMBL <- unique(merge(x=NCIt_to_CHEMBL, by.x = "action_type", all.x = TRUE, 
-                    y=dplyr::select(ACTION_TYPE, action_type, "parent_action_type"="parent_type"), 
-                    by.y = "action_type"))
-
+NCIt_to_CHEMBL <- NCIt_to_CHEMBL %>%
+  merge(by.x = "action_type", all.x = TRUE, y=dplyr::select(ACTION_TYPE, action_type, "parent_action_type"="parent_type"), by.y = "action_type") %>%
+  unique()
 
 ```
   
 ```{r join drugs to their targets}
+## join drugs to targets (UniProt accession numbers)
+NCIt_to_CHEMBL <- NCIt_to_CHEMBL %>%
+  merge(by.x = "tid", all.x = TRUE, y=dplyr::select(TARGET_DICTIONARY, tid, "target_chembl_id"="chembl_id"), by.y = "tid") %>%
+  merge(by.x = "tid", all.x = TRUE, y=dplyr::select(TARGET_COMPONENTS, tid, component_id), by.y = "tid") %>%
+  merge(by.x = "component_id", all.x = TRUE, y=dplyr::select(COMPONENT_SEQUENCES, component_id, organism, accession), by.y = "component_id") %>%
+  dplyr::filter(organism == "Homo sapiens") %>%             ## drop rows related to non-human targets
+  unique()
+```
 
+```{r map from target UniProt IDs to Entrez Symbols}
 
-NCIt_to_CHEMBL <- merge(x=NCIt_to_CHEMBL, by.x = "tid", all.x = TRUE,
-                    y=dplyr::select(TARGET_DICTIONARY, tid, "target_chembl_id"="chembl_id"),
-                    by.y = "tid")
-
-
-NCIt_to_CHEMBL <- merge(x=NCIt_to_CHEMBL, by.x = "tid", all.x = TRUE,
-                    y=dplyr::select(TARGET_COMPONENTS, tid, component_id),
-                    by.y = "tid")
-
-
-NCIt_to_CHEMBL <- merge(x=NCIt_to_CHEMBL, by.x = "component_id", all.x = TRUE,
-                    y=dplyr::select(COMPONENT_SEQUENCES, component_id, organism, accession),
-                    by.y = "component_id")
-
-
-## drop rows related to non-human targets
-NCIt_to_CHEMBL <- dplyr::filter(NCIt_to_CHEMBL, organism == "Homo sapiens" )
-
-
-
-
-## map from UniProt accession numbers to Entrez Symbols
+## create a temp table with mappings between UniProt accession numbers to Entrez Symbols
 uniprot_entrez_cols <- c("SYMBOL", "UNIPROT" )
-uniprot_ids <- as.data.frame(AnnotationDbi::select(org.Hs.eg.db, keys=NCIt_to_CHEMBL$accession, columns=uniprot_entrez_cols, keytype="UNIPROT"))
-## merge with mechanisms table
-NCIt_to_CHEMBL <- merge(x=NCIt_to_CHEMBL, by.x = "accession", all.x=TRUE, y=uniprot_ids, by.y = "UNIPROT")
-NCIt_to_CHEMBL <- dplyr::rename(NCIt_to_CHEMBL,"TARGET_SYMBOL"= "SYMBOL")
+uniprot_ids <- AnnotationDbi::select(org.Hs.eg.db, keys=NCIt_to_CHEMBL$accession, columns=uniprot_entrez_cols, keytype="UNIPROT") %>%
+  as.data.frame()
 
-NCIt_to_CHEMBL <- unique(NCIt_to_CHEMBL)
+## merge with mechanisms table
+NCIt_to_CHEMBL <- NCIt_to_CHEMBL %>%
+  merge(by.x = "accession", all.x=TRUE, y=uniprot_ids, by.y = "UNIPROT") %>%
+  dplyr::rename("TARGET_SYMBOL"= "SYMBOL") %>%
+  unique()
+
+## delete temp table
+rm(uniprot_ids)
 ```
   
 ```{r select desired columns from NCIt_to_CHEMBL}
-## select and reorder columns
-drugs_targets <- unique(dplyr::select(NCIt_to_CHEMBL, "NCIt_code"="code", TARGET_SYMBOL, action_type))
-
+drugs_targets <- NCIt_to_CHEMBL %>%
+  dplyr::select(code, TARGET_SYMBOL, action_type) %>%
+  dplyr::rename("NCIt_code"="code") %>%
+  unique()
+  
 ```
 
 ### **Map NCIt drugs to their targets via IUPHAR**  
   
-
-
 * Although CHEMBL is comprehensive, it does not include MTOR as a target for Everolimus (only FKBP1A)  
 * There are likely to be other examples  
 * Therefore, supplement drug->target edges from CHEMBL with data from other sources - this case, IUPHAR  
   * See descriptions for downloads here: https://www.guidetopharmacology.org/DATA/file_descriptions.txt  
   
-```{r download interactions from IUPHAR }
-IUPHAR_interactions_url <- "https://www.guidetopharmacology.org/DATA/interactions.csv"
-iuphar_interactions <- read.csv(IUPHAR_interactions_url, skip = 1:1, stringsAsFactors = FALSE)      ## first row is date refreshed, not a header
+```{r download tables from IUPHAR }
+iuphar_interactions <- read.csv("https://www.guidetopharmacology.org/DATA/interactions.csv", 
+                                skip = 1:1, stringsAsFactors = FALSE)      ## first row is date refreshed, not a header
 
-
-## manually download the file from above URL and add to public repo on GitHub where neo4j can access it... 
-# IUPHAR_interactions_url <- "https://raw.githubusercontent.com/digital-ECMT/network_data/main/interactions.csv"
-
-## get ligand id mappings
-iuphar_ligand_id_mappings <- read.csv("https://www.guidetopharmacology.org/DATA/ligand_id_mapping.csv", skip = 1:1, stringsAsFactors = FALSE)      ## first row is date refreshed, not a header
+iuphar_ligand_id_mappings <- read.csv("https://www.guidetopharmacology.org/DATA/ligand_id_mapping.csv", 
+                                      skip = 1:1, stringsAsFactors = FALSE)      ## first row is date refreshed, not a header
 
 ```
  
 ```{r process iuphar interactions}
 
-iuphar_processed <- dplyr::select(iuphar_interactions, "drug_name"=Ligand, Ligand.ID, Target.UniProt.ID, "action_type"="Type", Selectivity, Primary.Target)
+iuphar_processed <- iuphar_interactions %>%
+  dplyr::select( Ligand, Ligand.ID, Target.UniProt.ID, Type, Selectivity, Primary.Target) %>%
+  dplyr::rename("drug_name"="Ligand") %>%
+  dplyr::rename("action_type"="Type") %>%
+  merge(by.x = "Ligand.ID", y = dplyr::select(iuphar_ligand_id_mappings, ChEMBl.ID, Ligand.id), by.y = "Ligand.id") %>%        ## join to molecule ChEMBL IDs
+  dplyr::select(ChEMBl.ID, Target.UniProt.ID, action_type) %>%
+  dplyr::rename("drug_chembl_id"="ChEMBl.ID") %>%
+  dplyr::rename("target_uniprot_id"="Target.UniProt.ID") %>%
+  dplyr::filter(drug_chembl_id != "") %>%                        ## drop rows where there is no chembl id
+  dplyr::filter(target_uniprot_id != "") %>%                     ## drop rows where there is no target uniprot id
+  dplyr::mutate(target_uniprot_id = strsplit(target_uniprot_id, split = "\\|")) %>%        ## some entries have >1 uniprot id, pipe-delimited, split and unnest....
+  tidyr::unnest(target_uniprot_id) %>% 
+  as.data.frame() %>%  
+  merge(by.x = "drug_chembl_id", y = dplyr::select(NCIt_to_CHEMBL,"NCIt_code"="code", chembl_id), by.y = "chembl_id") %>%           ## join to NCIt ID's on CHEMBL ID
+  unique()
 
-## join to molecule ChEMBL IDs 
-iuphar_processed <- merge(x=dplyr::select(iuphar_ligand_id_mappings, ChEMBl.ID, Ligand.id), by.x = "Ligand.id", 
-                          y=iuphar_processed, by.y = "Ligand.ID")
+```
 
-
-# ## join parent_action_type values
-# iuphar_processed <- merge(x=iuphar_processed, by.x = "action_type", 
-#                           y=action_types, by.y = "action_type")
-
-## select and reorder columns
-iuphar_processed <- unique(dplyr::select(iuphar_processed, "drug_chembl_id"="ChEMBl.ID", "target_uniprot_id"="Target.UniProt.ID", action_type))
-
-## drop rows where there is no chembl id
-iuphar_processed <- iuphar_processed[iuphar_processed$drug_chembl_id != "", ]
-## drop rows where there is no target uniprot id
-iuphar_processed <- iuphar_processed[iuphar_processed$target_uniprot_id != "", ]
-
-## some entries have >1 uniprot id, pipe-delimited
-# split and unnest
-iuphar_processed$target_uniprot_id <- strsplit(iuphar_processed$target_uniprot_id, split = "\\|")
-iuphar_processed <- tidyr::unnest(data = iuphar_processed, target_uniprot_id)
-iuphar_processed <- as.data.frame(iuphar_processed)
-
-## join to NCIt ID's on CHEMBL ID
-iuphar_processed <- unique(merge(x=unique(dplyr::select(NCIt_to_CHEMBL,"NCIt_code"="code", chembl_id)), 
-                                 by.x = "chembl_id", 
-                                 y = iuphar_processed,
-                                 by.y = "drug_chembl_id"
-                                 ))
+```{r map from IUPHAR target accession numbers to Entrez Symbols}
 
 ## map from UniProt accession numbers to Entrez Symbols
-iuphar_uniprot_ids <- as.data.frame(AnnotationDbi::select(org.Hs.eg.db, keys=iuphar_processed$target_uniprot_id, columns=uniprot_entrez_cols, keytype="UNIPROT"))
+iuphar_uniprot_ids <- AnnotationDbi::select(org.Hs.eg.db, keys=iuphar_processed$target_uniprot_id, columns=uniprot_entrez_cols, keytype="UNIPROT") %>% 
+  as.data.frame()
 
-## join to iuphar_processed on target_uniprot_id
-iuphar_processed <- merge(x=iuphar_processed, by.x = "target_uniprot_id", y=uniprot_ids, by.y = "UNIPROT")
-iuphar_processed <- dplyr::rename(iuphar_processed,"TARGET_SYMBOL"= "SYMBOL")
+## join to iuphar_processed
+iuphar_processed <- iuphar_processed %>% 
+  merge( by.x = "target_uniprot_id", y=iuphar_uniprot_ids, by.y = "UNIPROT") %>%
+  dplyr::rename("TARGET_SYMBOL"= "SYMBOL") %>%
+  dplyr::select(names(drugs_targets) )     %>%         ## harmonise column names with drugs_targets table
+  unique()
 
-## harmonise columns with drugs_targets table
-iuphar_processed <- unique(dplyr::select(iuphar_processed, NCIt_code, TARGET_SYMBOL, action_type ))
-iuphar_processed$action_type <- toupper(iuphar_processed$action_type)
+
+rm(iuphar_uniprot_ids)
+```
+
+```{r add IUPHAR drug target data to ChEMBL data}
 
 ## bind as new rows to drugs_targets table
 drugs_targets <- unique(rbind(drugs_targets, iuphar_processed))
@@ -584,9 +404,9 @@ drugs_targets <- unique(rbind(drugs_targets, iuphar_processed))
 dplyr::filter(drugs_targets, NCIt_code == "C48387")
 ```
 
-```{r write drugs_targets to database}
+```{r NOT NEEDED write drugs_targets to database}
 ## create as a table in database
-dbWriteTable(conn = con,name = "drugs_targets", value = drugs_targets, overwrite=TRUE)
+#dbWriteTable(conn = con,name = "drugs_targets", value = drugs_targets, overwrite=TRUE)
 ```
 
 ### **Define controlled terms and synonyms for cancer types**  
@@ -637,7 +457,7 @@ dbWriteTable(conn = con,name = "conditionSynonyms", value = conditionSynonyms, o
 * A user name and password for an AACT account is required.  
 * see https://aact.ctti-clinicaltrials.org/ for how to create an account  
   
-```{r connect to clinicaltrialsgov}  
+```{r connect to clinicaltrialsgov, message=FALSE}  
 
 ## connect via RPostgres (GPL-3 licence)
 drv = RPostgres::Postgres()
@@ -649,14 +469,17 @@ conn2 <- dbConnect(drv, dbname="aact",host="aact-db.ctti-clinicaltrials.org", po
 * We will download, index and store data (including results) for all interventional cancer studies (globally, ever)  
 * For now, only data for studies with sites open in the specified country will be used by the trial finder  
   
-```{r get study data}
+```{r get data for open cancer studies in configured country}
 
 ## get data for all cancer studies that have reported results
-cancerStudiesQ <- "SELECT s.nct_id, s.brief_title, s.primary_completion_date, s.last_update_posted_date, s.phase, s.acronym, s.number_of_arms, s.number_of_groups,  s.overall_status, s.last_update_posted_date, c.name AS condition
+cancerStudiesQ <- paste0("SELECT s.nct_id, s.brief_title, s.primary_completion_date, s.last_update_posted_date, s.phase, s.acronym, s.number_of_arms, s.number_of_groups,  s.overall_status, s.last_update_posted_date, c.name AS condition
 FROM studies s
 INNER JOIN conditions c ON c.nct_id = s.nct_id
 INNER JOIN calculated_values cv ON cv.nct_id = s.nct_id
+INNER JOIN facilities f on s.nct_id = f.nct_id
 WHERE s.study_type LIKE ('Interventional')
+AND s.overall_status IN ('Recruiting', 'Not yet recruiting')
+AND lower(f.country) = '", tolower(configuration$country), "'
 AND (c.downcase_name LIKE '%cancer%'
 OR c.downcase_name LIKE '%neoplasm%'
 OR c.downcase_name LIKE '%carcinoma%'
@@ -664,16 +487,17 @@ OR c.downcase_name LIKE '%tumo%'
 OR c.downcase_name LIKE '%sarcoma%'
 OR c.downcase_name LIKE '%melanoma%')
 OR c.downcase_name LIKE '%mesothelioma%'
-OR c.downcase_name LIKE '%chordoma%'"
+OR c.downcase_name LIKE '%chordoma%'")
 
 ## get data from clinicaltrials.gov
 cancerStudies <- dbGetQuery(conn2,cancerStudiesQ)
 
-## add a column to indicate refresh date
-cancerStudies$refresh_date <- today
+cancerStudies <- cancerStudies %>%
+  dplyr::mutate(refresh_date = today) %>%                                                 ## add a column to indicate refresh date
+  dplyr::mutate(Link = paste0("https://clinicaltrials.gov/ct2/show/", nct_id))            ## add a column to hold link
 
-## add a column to hold link
-cancerStudies$Link <- paste0("https://clinicaltrials.gov/ct2/show/", cancerStudies$nct_id)
+
+
 ```
   
 * As of `r today`, there are a total of **`r length(unique(cancerStudies$nct_id))` cancer studies** listed in clinicaltrials.gov and included in this analysis.  
@@ -682,45 +506,46 @@ cancerStudies$Link <- paste0("https://clinicaltrials.gov/ct2/show/", cancerStudi
     
 #### **Map verbatim condition names to controlled set of cancer types**  
   
-* We will map these to cancer types of interest by tokenising, providing cancer type synonyms from *conditionSynonyms* as custom tokens  
-  
-```{r tokenise and join to condition synonyms}
-## start timer
-tic("tokenise and join to condition synonyms")
+```{r create dictionary of cancer types}
 
-## we can't just join to condition synonyms as condition may include extra words
-## such as "Stage IV Lung Cancer AJCC v8" and "Metastatic Lung Non-Small Cell Carcinoma"
+## create a dictionary to use for finding matches among study condition.name values
+cancer_type_dictionary <- conditionSynonyms %>%
+  unstack(form = condition_synonyms ~ controlled_cancer_type)   %>%       ## convert to named list
+  quanteda::dictionary()                                                  ## convert to dictionary
 
-## we will provide condition synonyms as custom tokens, then tokenise, unnest and perform the join
-custom_tokens <- unique(conditionSynonyms$condition_synonyms)
+# ## for example
+cancer_type_dictionary[["Colorectal"]]
 
-## include the controlled cancer types themselves, in order to pick up matches such as study NCT02264678 has a single value listed for condition: Adv Solid Malig - H&N SCC, ATM Pro / Def NSCLC, Gastric, Breast and Ovarian Cancer
-# custom_tokens <- unique(c(conditionSynonyms$condition_synonyms, conditionSynonyms$controlled_cancer_type))
-
-## tokenise the condition names
-cancerStudies$word <- as.list(corpus::text_tokens(x=cancerStudies$condition,                                                filter= corpus::text_filter(combine = custom_tokens, map_case=TRUE, connector="_", drop_punct=TRUE )))
-
-## unnest
-cancerStudies <- as.data.frame(unnest(data = cancerStudies, word)) 
-## this function does insist on replacing whitespace with a character (here, underscore), so need to swap that back to whitespace
-cancerStudies$word <- gsub(pattern = "_", replacement = " ", x=cancerStudies$word)
-
-## convert to lowercase for joining
-cancerStudies$word <- tolower(cancerStudies$word)
-conditionSynonyms$condition_synonyms <- tolower(conditionSynonyms$condition_synonyms)
-
-## join on word = conditionSynonyms$condition_synonyms
-cancerStudies <- unique(merge(x=cancerStudies, by.x = "word", y=conditionSynonyms, by.y="condition_synonyms"))
-
-## NOTE: ANY STUDY-CONDITION COMBINATIONS NOT REPRESENTED IN THE CONTROLLED TERMS WILL BE LOST AT THIS STAGE
-
-## drop the word column
-cancerStudies <- unique(dplyr::select(cancerStudies, -c(word)))
-
-toc()
 ```
   
-* **Studies with condition names that have not mapped to controlled terms are lost at this stage**.  
+```{r lookup condition names using dictionary}
+
+## match condition names for study to preferred terms in dictionary
+# ensure no punctutation (e.g. commas) present in condition_name when tokenising
+cancerStudies$cancertype_pt <- cancerStudies$condition %>%
+  tokens( remove_punct = T) %>%
+  tokens_lookup( dictionary = cancer_type_dictionary, nested_scope = "dictionary") %>%
+  as.list()
+
+
+
+## drop any rows that don't find a match... 
+cancerStudies <- cancerStudies %>%
+  unnest( cols = "cancertype_pt", keep_empty = TRUE) %>% 
+  as.data.frame()
+
+## keep detail of unmapped condition names... 
+unmapped_condition_names <- unique(cancerStudies$condition[is.na(cancerStudies$cancertype_pt) ])
+
+## now delete rows that haven't been mapped
+cancerStudies <- cancerStudies %>%
+  dplyr::filter(!is.na(cancertype_pt))
+
+```
+
+* **The following condition names have not mapped to controlled terms and are lost at this stage**:  
+  
+**`r unmapped_condition_names`**  
   
 * After mapping to controlled terms for cancer types, **`r length(unique(cancerStudies$nct_id))` studies remain**  
   
@@ -811,75 +636,43 @@ local_open_studies <- dbGetQuery(conn2, local_open_studiesQ)
   
 * We will map study interventions (as listed in clinicaltrials.gov) to drug entities in the NCI thesaurus (provides preferred terms, mechanism and other info)...  
   
-```{r create corpus from intervention names}
-tic("create corpus from intervention names")
-interventions_corpus <-  quanteda::corpus(x=unique(dplyr::select(interventions, nct_id, intervention_id, intervention_name)),
-                                          text_field = "intervention_name", 
-                                          docid_field = "intervention_id",
-                                          unique_docnames = FALSE)
-toc()
+```{r create dictionary of drug names}
+## define semantic types to be included
+## include "Therapeutic or Preventive Procedure" to get chemotherapy regimens (e.g. FOLFOX)
+semantic_types_drug <- c("Pharmacologic Substance", "Biologically Active Substance", "Clinical Drug", "Steroid", "Immunologic Factor")
 
-```
+drug_dictionary <- NCIt %>%
+  dplyr::filter(semantic_type %in% semantic_types_drug) %>%
+  dplyr::select(code, synonyms) %>%
+  dplyr::filter(str_detect(string = synonyms, pattern = "\\(|\\)", negate = TRUE)) %>%           ## omit any rows where synonyms value contains parentheses, as these cause issues with lookup
+  unique() %>%
+  unstack(form = synonyms ~ code)   %>%                                   ## convert to named list
+  quanteda::dictionary()                                                  ## convert to dictionary
 
-```{r tokenise interventions corpus}
-tic("tokenise interventions corpus")
-interventions_tokens <- tokens(interventions_corpus, remove_punct=TRUE, padding = FALSE, split_hyphens = FALSE)
-## delete interventions_corpus from memory
-rm(interventions_corpus)
-toc()
-```
-
-```{r get context words surrounding intervention names}
-tic("get context words surrounding intervention names")
-
-## we can specify any window size, since we just want to pick out drug synonyms from surrounding text
-kwic_interventions <- as.data.frame(kwic(interventions_tokens, pattern =  unique(NCIt_Pharmacologics$synonyms), window = 1, valuetype = "fixed", case_insensitive = TRUE))
-
-#formattable(head(as.data.frame(kw_genes), 30))
-
-## we just want the intervention ID and the matching pattern
-kwic_interventions <- unique(dplyr::select(kwic_interventions, "intervention_id"="docname", "intervention_synonym"=pattern))
-
-## delete interventions_tokens object from memory
-rm(interventions_tokens)
-toc()
-```
-  
-```{r join intervention_id to intervention name}
-
-kwic_interventions <- unique(merge(x=interventions, by.x="intervention_id", all.x=TRUE, y=kwic_interventions, by.y = "intervention_id", incomparables = NA))
-
-
-```
-
-```{r join NCIt IDs to kwic interventions}
-kwic_interventions <- unique(merge(x=kwic_interventions, by.x="intervention_synonym", all.x=TRUE, y=NCIt_Pharmacologics, by.y = "synonyms", incomparables = NA))
-
-```
-
-```{r drop redundant rows in kwic interventions}
-kwic_interventions <- unique(dplyr::select(kwic_interventions, nct_id, intervention_id, intervention_name, "NCIt_code"="code", "PreferredTerm"="display_name", "Mechanism"="Parent_synonym"))
+## check for e.g. everolimus
+#drug_dictionary[["C48387"]]
 
 ```
   
-* We will also map interventions to their molecular targets (where possible), based on the *drugs_targets* table  
-  
-```{r join drugs_targets to kwic interventions}
+```{r lookup intervention names in drug dictionary}
+## map intervention names to NCIt codes
+interventions$NCIt_code <- interventions$intervention_name %>%
+  tokens( remove_punct = T) %>%
+  tokens_lookup( dictionary = drug_dictionary, nested_scope = "dictionary") %>%
+  as.list()
 
-## use "incomparables = NA" to avoid joining on NA values ?!...
-## see https://community.rstudio.com/t/why-does-na-match-na-when-joining-two-dataframes/28785/2
+interventions <- interventions %>%
+  unnest( cols = "NCIt_code", keep_empty = TRUE) %>%           ## keep all rows including those that don't find a match... 
+  as.data.frame() %>% 
+  merge(by.x = "NCIt_code", all.x = TRUE, y = dplyr::select(NCIt, code, display_name), by.y = "code") %>%         ## get PT for intervention from NCIt
+  dplyr::rename("intervention_pt" = "display_name") %>%
+  merge(by.x="NCIt_code", all.x=TRUE, y=drugs_targets, by.y = "NCIt_code", incomparables = NA) %>%    ## get targets and mechanisms
+  dplyr::rename("Mechanism"="action_type") %>%
+  dplyr::select(nct_id, intervention_id, intervention_name, NCIt_code, intervention_pt,TARGET_SYMBOL, Mechanism) %>%
+  unique()
 
-kwic_interventions <- unique(merge(x=kwic_interventions, by.x="NCIt_code", all.x=TRUE, y=unique(dplyr::select(drugs_targets, NCIt_code, TARGET_SYMBOL)), by.y = "NCIt_code", incomparables = NA))
-
-## select and reorder columns
-kwic_interventions <- unique(dplyr::select(kwic_interventions, nct_id, intervention_id, intervention_name, NCIt_code, PreferredTerm,TARGET_SYMBOL, Mechanism))
-
-interventions <- kwic_interventions
-
-## delete kwic_interventions object from memory
-rm(kwic_interventions)
 ```
-  
+
 * We retain all interventions at this stage, including those that have not mapped to either NCI thesaurus or KEGG drug target...  
 
 ```{r join interventions to design groups}
