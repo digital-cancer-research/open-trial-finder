@@ -779,7 +779,7 @@ replacements2 <- data.frame(verbatim = str_extract_all(string = eligibilities$cr
 ## create a named vector to use with str_replace_all
 replacement_strings2 <- as.character(replacements2$expanded)
 names(replacement_strings2) <- replacements2$verbatim
-replacement_strings2
+#replacement_strings2
 
 ## replace all occurrences of the verbatim string with the expanded string
 eligibilities$criteria_processed <- eligibilities$criteria_processed %>%
@@ -815,60 +815,44 @@ humanGenes_dictionary <- humanGenes %>%
 # humanGenes_dictionary[["ERBB2"]]
 ```
 
+```{r look for co occurrence of gene name and alteration pattern in processed criterion text}
+
+## define size of window (either side) for co occurrence
+window_size <- 6
+
+eligibilities_alterations_genes <- eligibilities %>%
+    corpus(docid_field = "criterion_index",  text_field = "criteria_processed") %>% 
+    tokens() %>%
+    kwic(pattern =  alterations_dictionary, window = window_size) %>% as.data.frame() %>% 
+    dplyr::mutate(window = paste0(pre, " ", keyword, " ", post)) %>% 
+    dplyr::mutate(geneSymbol = as.list(tokens_lookup(x=tokens(window), dictionary = humanGenes_dictionary, case_insensitive = FALSE))) %>%
+    unnest(cols = "geneSymbol") %>%
+    as.data.frame() %>%
+    dplyr::select(docname, window, geneSymbol, pattern) %>%
+    dplyr::rename("criterion_index"="docname") %>%
+    dplyr::rename("alteration_type"="pattern") %>%
+    unique()
 
 
+eligibilities <- eligibilities %>%
+  merge(by.x = "criterion_index", all.x = TRUE, y = eligibilities_alterations_genes, by.y = "criterion_index") %>%
+  dplyr::select(nct_id, criterion_index, criteria, criteria_processed, geneSymbol, alteration_type) %>%
+  unique()
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-```{r lookup alteration types in criterion text}
-
-
-
-
-
-
-# ## map intervention names to NCIt codes
-# interventions$NCIt_code <- interventions$intervention_name %>%
-#   tokens( remove_punct = T) %>%
-#   tokens_lookup( dictionary = drug_dictionary, nested_scope = "dictionary") %>%
-#   as.list()
-# 
-# 
-# 
-# 
-# 
-# 
-# 
-# interventions <- interventions %>%
-#   unnest( cols = "NCIt_code", keep_empty = TRUE) %>%           ## keep all rows including those that don't find a match... 
-#   as.data.frame() %>% 
-#   merge(by.x = "NCIt_code", all.x = TRUE, y = dplyr::select(NCIt, code, display_name), by.y = "code") %>%         ## get PT for intervention from NCIt
-#   dplyr::rename("intervention_pt" = "display_name") %>%
-#   merge(by.x="NCIt_code", all.x=TRUE, y=drugs_targets, by.y = "NCIt_code", incomparables = NA) %>%    ## get targets and mechanisms
-#   dplyr::rename("Mechanism"="action_type") %>%
-#   dplyr::select(nct_id, intervention_id, intervention_name, NCIt_code, intervention_pt,TARGET_SYMBOL, Mechanism) %>%
-#   unique()
 
 ```
+
+
+
+
+
+
+
+
+
+
+
 
 
 
