@@ -675,7 +675,7 @@ interventions <- interventions %>%
   dplyr::rename("intervention_pt" = "display_name") %>%
   merge(by.x="NCIt_code", all.x=TRUE, y=drugs_targets, by.y = "NCIt_code", incomparables = NA) %>%    ## get targets and mechanisms
   #dplyr::rename("Mechanism"="action_type") %>%
-  dplyr::select(nct_id, intervention_id, intervention_name, NCIt_code, intervention_pt,TARGET_SYMBOL, Mechanism) %>%
+  dplyr::select(nct_id, intervention_id, intervention_name, NCIt_code, intervention_pt,TARGET_SYMBOL, action_type) %>%
   unique()
 
 ```
@@ -887,15 +887,38 @@ eligibilities %>%
     corpus(docid_field = "criterion_index",  text_field = "criteria") %>% 
     tokens() %>%
     kwic(pattern =  "previous|prior", window = window_size, valuetype = "regex") %>% 
-    #dplyr::mutate(window = paste0(pre, " ", keyword, " ", post)) %>% 
-    #dplyr::mutate(therapy_code = as.list(tokens_lookup(x=tokens(window), dictionary = therapy_dictionary))) %>%
-    #unnest(cols = "therapy_code") %>%
+    dplyr::mutate(window = paste0(pre, " ", keyword, " ", post)) %>% 
+    dplyr::mutate(therapy_code = as.list(tokens_lookup(x=tokens(window), dictionary = therapy_dictionary, nested_scope = "dictionary"))) %>%
+    unnest(cols = "therapy_code") %>%
     as.data.frame() %>%
-    #dplyr::select(docname, window, therapy_code) %>%
-    #dplyr::rename("criterion_index"="docname") %>%
-    unique() %>%
-    head(20)
+    dplyr::select(docname, window, therapy_code) %>%
+    dplyr::rename("criterion_index"="docname") %>%
+    merge(by.x = "therapy_code", y = NCIt, by.y = "code") %>%
+    merge(by.x = "criterion_index", y = eligibilities, by.y = "criterion_index") %>%
+    dplyr::select(nct_id, criterion_index, criteria, therapy_code, display_name) %>%
+    unique() 
 
+
+## only 4 exclusion criteria identified (and one of them is wrong) - pattern is too stringent?
+
+## use list instead of regex -> case-insensitive kwic... 
+eligibilities %>%
+    dplyr::filter(criterion_type == "EXCLUSION") %>%
+    dplyr::select(nct_id, criterion_index, criteria) %>%
+    unique() %>%
+    corpus(docid_field = "criterion_index",  text_field = "criteria") %>% 
+    tokens() %>%
+    kwic(pattern =  list("previous", "prior"), window = window_size) %>% 
+    dplyr::mutate(window = paste0(pre, " ", keyword, " ", post)) %>% 
+    dplyr::mutate(therapy_code = as.list(tokens_lookup(x=tokens(window), dictionary = therapy_dictionary, nested_scope = "dictionary"))) %>%
+    unnest(cols = "therapy_code") %>%
+    as.data.frame() %>%
+    dplyr::select(docname, window, therapy_code) %>%
+    dplyr::rename("criterion_index"="docname") %>%
+    merge(by.x = "therapy_code", y = NCIt, by.y = "code") %>%
+    merge(by.x = "criterion_index", y = eligibilities, by.y = "criterion_index") %>%
+    #dplyr::select(nct_id, criterion_index, criteria, therapy_code, display_name) %>%
+    unique() 
 
 
 ```
