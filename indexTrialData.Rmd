@@ -846,7 +846,7 @@ eligibilities <- eligibilities %>%
 ```{r create a dictionary of therapies and procedures}
 
 ## include "Therapeutic or Preventive Procedure" to get chemotherapy regimens (e.g. FOLFOX)
-semantic_types_therapy <- c("Therapeutic or Preventive Procedure")
+semantic_types_therapy <- c("Therapeutic or Preventive Procedure", "Pharmacologic Substance")
 
 therapy_dictionary <- NCIt %>%
   dplyr::filter(semantic_type %in% semantic_types_therapy) %>%
@@ -887,6 +887,7 @@ eligibilities %>%
     corpus(docid_field = "criterion_index",  text_field = "criteria") %>% 
     tokens() %>%
     kwic(pattern =  "previous|prior", window = window_size, valuetype = "regex") %>% 
+    #kwic(pattern =  "previous|prior", window = window_size, valuetype = "regex") %>% 
     dplyr::mutate(window = paste0(pre, " ", keyword, " ", post)) %>% 
     dplyr::mutate(therapy_code = as.list(tokens_lookup(x=tokens(window), dictionary = therapy_dictionary, nested_scope = "dictionary"))) %>%
     unnest(cols = "therapy_code") %>%
@@ -917,8 +918,26 @@ eligibilities %>%
     dplyr::rename("criterion_index"="docname") %>%
     merge(by.x = "therapy_code", y = NCIt, by.y = "code") %>%
     merge(by.x = "criterion_index", y = eligibilities, by.y = "criterion_index") %>%
-    #dplyr::select(nct_id, criterion_index, criteria, therapy_code, display_name) %>%
+    dplyr::select(nct_id, criterion_index, criteria, therapy_code, display_name) %>%
     unique() 
+
+
+
+
+## consider omitting requirement for "prior", to include concomitant therapy exclusions... 
+## use list instead of regex -> case-insensitive kwic... 
+# eligibilities %>%
+#     dplyr::filter(criterion_type == "EXCLUSION") %>%
+#     dplyr::mutate(therapy_code = as.list(tokens_lookup(x=tokens(criteria), dictionary = therapy_dictionary, nested_scope = "dictionary"))) %>%
+#     unnest(cols = "therapy_code", keep_empty = FALSE) %>%
+#     as.data.frame() %>%
+#   dplyr::select(nct_id, criteria) %>%
+#   unique() %>%
+#   head()
+
+## NOT SPECIFIC ENOUGH... 
+
+prior_tx_pattern = list("prior", "previous", "concurrent", "concomitant")
 
 
 ```
