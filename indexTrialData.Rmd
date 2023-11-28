@@ -151,9 +151,21 @@ humanGenes <- AnnotationDbi::select(org.Hs.eg.db, columns=c("ENTREZID", "SYMBOL"
 NCItURL <- "https://evs.nci.nih.gov/ftp1/NCI_Thesaurus/Thesaurus.FLAT.zip"
 
 destFlatFilename <- "NCIt_FLAT.zip"
-download.file(url=NCItURL,destfile = destFlatFilename)
-unzip(zipfile = paste0(getwd(),"/",destFlatFilename))
 
+# download.file(url=NCItURL,destfile = destFlatFilename)
+# unzip(zipfile = paste0(getwd(),"/",destFlatFilename))
+
+## try to download, if not available, fall back to last downloaded version
+tryCatch(
+  expr = {
+    download.file(url=NCItURL,destfile = destFlatFilename)
+    unzip(zipfile = paste0(getwd(),"/",destFlatFilename))
+  }, error = function(e) {
+    print("NCIt download failed")
+  }
+)
+
+## if download fails, fall back to using last downloaded version
 NCIt <- read.table("Thesaurus.txt",header = FALSE, sep = "\t", comment.char = "", fill = TRUE, stringsAsFactors = FALSE, quote = "")
 
 names(NCIt) <- c("code", "concept_IRI", "parents", "synonyms", "definition", "display_name", "concept_status", "semantic_type", "concept_in_subset")
@@ -846,6 +858,19 @@ therapy_dictionary <- NCIt %>%
 
 
 ```
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```{r look for co occurrence of prior therapy terms with treatment terms}
 
