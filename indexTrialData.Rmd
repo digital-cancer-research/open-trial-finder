@@ -119,7 +119,7 @@ chemblDB_con <- dbConnect(RSQLite::SQLite(), chembl_db_filename)
  
 ```{r connect to SQLite DB} 
 # Create an RSQLite database
-con <- dbConnect(RSQLite::SQLite(), "indexedTrialData.sqlite")
+sqlite_con <- dbConnect(RSQLite::SQLite(), "indexedTrialData.sqlite")
 
 ```
   
@@ -453,10 +453,10 @@ conditionSynonyms$condition_synonyms <- str_squish(string = conditionSynonyms$co
 conditionSynonyms <- unique(conditionSynonyms)
 
 ## create as a table in database
-dbWriteTable(conn = con,name = "conditionSynonyms", value = conditionSynonyms, overwrite=TRUE)
+dbWriteTable(conn = sqlite_con,name = "conditionSynonyms", value = conditionSynonyms, overwrite=TRUE)
 
 ## check it has saved
-# dbListTables(con)
+# dbListTables(sqlite_con)
 
 ```
   
@@ -473,7 +473,7 @@ dbWriteTable(conn = con,name = "conditionSynonyms", value = conditionSynonyms, o
 
 ## connect via RPostgres (GPL-3 licence)
 drv = RPostgres::Postgres()
-conn2 <- dbConnect(drv, dbname="aact",host="aact-db.ctti-clinicaltrials.org", port=5432, user=aact.username, password=aact.password )
+ctgov_con <- dbConnect(drv, dbname="aact",host="aact-db.ctti-clinicaltrials.org", port=5432, user=aact.username, password=aact.password )
 ```
  
 ### **Get study info for all interventional cancer studies**  
@@ -484,7 +484,7 @@ conn2 <- dbConnect(drv, dbname="aact",host="aact-db.ctti-clinicaltrials.org", po
 ```{r get data for open cancer studies in configured country}
 
 ## get data for all cancer studies that have reported results
-cancerStudiesQ <- paste0("SELECT s.nct_id, s.brief_title, s.primary_completion_date, s.last_update_posted_date, s.phase, s.acronym, s.number_of_arms, s.number_of_groups,  s.overall_status, s.last_update_posted_date, c.name AS condition, f.city, f.status AS site_status, fc.email AS site_contacts, cc.email AS central_contacts
+cancerStudiesQ <- paste0("SELECT s.nct_id, s.brief_title, s.primary_completion_date, s.last_update_posted_date, s.phase, s.acronym, s.number_of_arms, s.number_of_groups,  s.overall_status,  c.name AS condition, f.city, f.status AS site_status, fc.email AS site_contacts, cc.email AS central_contacts
 FROM studies s
 INNER JOIN conditions c ON c.nct_id = s.nct_id
 INNER JOIN calculated_values cv ON cv.nct_id = s.nct_id
@@ -505,7 +505,7 @@ OR c.downcase_name LIKE '%mesothelioma%'
 OR c.downcase_name LIKE '%chordoma%')")
 
 ## get data from clinicaltrials.gov
-cancerStudies <- dbGetQuery(conn2,cancerStudiesQ)
+cancerStudies <- dbGetQuery(ctgov_con,cancerStudiesQ)
 
 cancerStudies <- cancerStudies %>%
   dplyr::mutate(refresh_date = today) %>%                                                 ## add a column to indicate refresh date
@@ -591,7 +591,7 @@ where i.nct_id in (",
 ")")
 
 ## get interventions from clinicaltrials.gov
-interventions <- dbGetQuery(conn2,getInterventionsQ)
+interventions <- dbGetQuery(ctgov_con,getInterventionsQ)
 
 ```
   
@@ -605,7 +605,7 @@ where nct_id in (",
 ")")
 
 ## get data from clinicaltrials.gov
-dgi <- dbGetQuery(conn2,get_dgi)
+dgi <- dbGetQuery(ctgov_con,get_dgi)
 
 ```
 
@@ -617,7 +617,7 @@ where nct_id in (",
 ")")
 
 ## get criteria from clinicaltrials.gov
-eligibilities <- dbGetQuery(conn2,getEligibilities)
+eligibilities <- dbGetQuery(ctgov_con,getEligibilities)
 ```
 
 ```{r get design groups from ct}
@@ -629,7 +629,7 @@ where dg.nct_id in (",
 ")")
 
 ## get criteria from clinicaltrials.gov
-design_groups <- dbGetQuery(conn2,getDesignGroupsQ)
+design_groups <- dbGetQuery(ctgov_con,getDesignGroupsQ)
 
 ## NOTE, SOME STUDIES HAVE NO DESIGN GROUPS SPECIFIED, BUT MAY HAVE RESULT GROUPS SPECIFIED
 ```
@@ -821,7 +821,8 @@ window_size <- 6
 eligibilities_alterations_genes <- eligibilities %>%
     corpus(docid_field = "criterion_index",  text_field = "criteria_processed") %>% 
     tokens() %>%
-    kwic(pattern =  alterations_dictionary, window = window_size) %>% as.data.frame() %>% 
+    kwic(pattern =  alterations_dictionary, window = window_size) %>% 
+    as.data.frame() %>%
     dplyr::mutate(window = paste0(pre, " ", keyword, " ", post)) %>% 
     dplyr::mutate(geneSymbol = as.list(tokens_lookup(x=tokens(window), dictionary = humanGenes_dictionary, case_insensitive = FALSE))) %>%
     unnest(cols = "geneSymbol") %>%
@@ -859,19 +860,6 @@ therapy_dictionary <- NCIt %>%
 
 ```
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```{r look for co occurrence of prior therapy terms with treatment terms}
 
 ## we are looking specifically within exclusion criteria
@@ -880,13 +868,14 @@ therapy_dictionary <- NCIt %>%
 ## and mention of a therapy within a defined window
 ## then we just keep the entire verbatim criterion
 
-eligibilities %>%
+prior_tx_exclusions <- eligibilities %>%
     dplyr::filter(criterion_type == "EXCLUSION") %>%
     dplyr::select(nct_id, criterion_index, criteria) %>%
     unique() %>%
     corpus(docid_field = "criterion_index",  text_field = "criteria") %>% 
     tokens() %>%
     kwic(pattern =  "previous|prior", window = window_size, valuetype = "regex") %>% 
+    as.data.frame() %>%
     #kwic(pattern =  "previous|prior", window = window_size, valuetype = "regex") %>% 
     dplyr::mutate(window = paste0(pre, " ", keyword, " ", post)) %>% 
     dplyr::mutate(therapy_code = as.list(tokens_lookup(x=tokens(window), dictionary = therapy_dictionary, nested_scope = "dictionary"))) %>%
@@ -897,51 +886,21 @@ eligibilities %>%
     merge(by.x = "therapy_code", y = NCIt, by.y = "code") %>%
     merge(by.x = "criterion_index", y = eligibilities, by.y = "criterion_index") %>%
     dplyr::select(nct_id, criterion_index, criteria, therapy_code, display_name) %>%
-    unique() 
-
-
-## only 4 exclusion criteria identified (and one of them is wrong) - pattern is too stringent?
-
-## use list instead of regex -> case-insensitive kwic... 
-eligibilities %>%
-    dplyr::filter(criterion_type == "EXCLUSION") %>%
-    dplyr::select(nct_id, criterion_index, criteria) %>%
-    unique() %>%
-    corpus(docid_field = "criterion_index",  text_field = "criteria") %>% 
-    tokens() %>%
-    kwic(pattern =  list("previous", "prior"), window = window_size) %>% 
-    dplyr::mutate(window = paste0(pre, " ", keyword, " ", post)) %>% 
-    dplyr::mutate(therapy_code = as.list(tokens_lookup(x=tokens(window), dictionary = therapy_dictionary, nested_scope = "dictionary"))) %>%
-    unnest(cols = "therapy_code") %>%
+    dplyr::group_by(nct_id) %>%
+    dplyr::summarise(
+        tx_exclusions = paste(unique(criteria), collapse = ";\n")
+    ) %>%
     as.data.frame() %>%
-    dplyr::select(docname, window, therapy_code) %>%
-    dplyr::rename("criterion_index"="docname") %>%
-    merge(by.x = "therapy_code", y = NCIt, by.y = "code") %>%
-    merge(by.x = "criterion_index", y = eligibilities, by.y = "criterion_index") %>%
-    dplyr::select(nct_id, criterion_index, criteria, therapy_code, display_name) %>%
-    unique() 
-
-
-
-
-## consider omitting requirement for "prior", to include concomitant therapy exclusions... 
-## use list instead of regex -> case-insensitive kwic... 
-# eligibilities %>%
-#     dplyr::filter(criterion_type == "EXCLUSION") %>%
-#     dplyr::mutate(therapy_code = as.list(tokens_lookup(x=tokens(criteria), dictionary = therapy_dictionary, nested_scope = "dictionary"))) %>%
-#     unnest(cols = "therapy_code", keep_empty = FALSE) %>%
-#     as.data.frame() %>%
-#   dplyr::select(nct_id, criteria) %>%
-#   unique() %>%
-#   head()
-
-## NOT SPECIFIC ENOUGH... 
-
-prior_tx_pattern = list("prior", "previous", "concurrent", "concomitant")
-
+    unique()
 
 ```
 
+```{r join prior therapy exclusions to cancerStudies table}
+
+cancerStudies <- cancerStudies %>%
+  merge(by.x = "nct_id", all.x = TRUE, y = prior_tx_exclusions, by.y = "nct_id")
+
+```
 
 
 
@@ -1089,10 +1048,10 @@ population_features <- rbind(mutation_populations, rearrangement_populations, am
 
 ```{r write population_features to database}
 ## create as a table in database
-dbWriteTable(conn = con,name = "population_features", value = population_features, overwrite=TRUE)
+dbWriteTable(conn = sqlite_con,name = "population_features", value = population_features, overwrite=TRUE)
 
 ## check it has saved
-# dbListTables(con)
+# dbListTables(sqlite_con)
 ```
   
 ### **Get pathway graph data from KEGG**  
@@ -1162,10 +1121,10 @@ edges <- unique(dplyr::select(pathwaysInCancer_edges, "from"="entry1symbol", "to
 formattable(head(edges))
 
 ## create as a table in database
-dbWriteTable(conn = con,name = "edges", value = edges, overwrite=TRUE)
+dbWriteTable(conn = sqlite_con,name = "edges", value = edges, overwrite=TRUE)
 
 ## check it has saved
-# dbListTables(con)
+# dbListTables(sqlite_con)
 
 ```
   
@@ -1203,13 +1162,13 @@ tryCatch(
         file.remove("ukpostcodes.csv")
         
         ## create as a table in database
-        dbWriteTable(conn = con,name = "uk_postcodes", value = uk_postcodes, overwrite=TRUE)
+        dbWriteTable(conn = sqlite_con,name = "uk_postcodes", value = uk_postcodes, overwrite=TRUE)
     }, error=function(cond) {
       print("Unable to download postcodes, reverting to last saved version from database...")             }) 
 
 ## if download has thrown an error, last downloaded postcodes table will be used
 if(!exists("uk_postcodes")) {
-  uk_postcodes <- dbGetQuery(con, "SELECT * FROM uk_postcodes")
+  uk_postcodes <- dbGetQuery(sqlite_con, "SELECT * FROM uk_postcodes")
 }
 toc()
 
@@ -1274,10 +1233,10 @@ toc()
   
 ```{r write uk local_open_studies to database}
 ## create as a table in database
-dbWriteTable(conn = con,name = "local_open_studies", value = local_open_studies, overwrite=TRUE)
+dbWriteTable(conn = sqlite_con,name = "local_open_studies", value = local_open_studies, overwrite=TRUE)
 
 ## check it has saved
-# dbListTables(con)
+# dbListTables(sqlite_con)
 
 ```
 
@@ -1374,10 +1333,10 @@ indexed_eligibilities_view <- dplyr::select(indexed_eligibilities_view, nct_id, 
 formattable(head(indexed_eligibilities_view))
 
 ## create as a table in database
-dbWriteTable(conn = con,name = "indexed_eligibilities_view", indexed_eligibilities_view , overwrite=TRUE)
+dbWriteTable(conn = sqlite_con,name = "indexed_eligibilities_view", indexed_eligibilities_view , overwrite=TRUE)
 
 ## check it has saved
-# dbListTables(con)
+# dbListTables(sqlite_con)
 
 ```
     
@@ -1418,10 +1377,10 @@ open_cancerStudies_view <- plyr::join(x=open_cancerStudies_view, y=excludedTX, b
 
 ````{r write studies view to DB}
 ## create as a table in database
-dbWriteTable(conn = con,name = "open_cancerStudies_view", open_cancerStudies_view, overwrite=TRUE)
+dbWriteTable(conn = sqlite_con,name = "open_cancerStudies_view", open_cancerStudies_view, overwrite=TRUE)
 
 ## check it has saved
-# dbListTables(con)
+# dbListTables(sqlite_con)
 
 ``` 
 
@@ -1645,20 +1604,20 @@ scoredMatches_view <- scoredMatches_view[order(scoredMatches_view$combined_score
 formattable(head(scoredMatches_view))
 
 ## create as a table in database
-dbWriteTable(conn = con,name = "scoredMatches_view", scoredMatches_view , overwrite=TRUE)
+dbWriteTable(conn = sqlite_con,name = "scoredMatches_view", scoredMatches_view , overwrite=TRUE)
 
 ## check it has saved
-# dbListTables(con)
+# dbListTables(sqlite_con)
 
 ```
 
 ```{r disconnect from  database}
 
 # disconnect from clinicaltrials.gov
-dbDisconnect(conn2)
+dbDisconnect(ctgov_con)
 
 # Disconnect from SQLite database
-dbDisconnect(con)
+dbDisconnect(sqlite_con)
 
 # disconnect from CHEMBL DB
 dbDisconnect(chemblDB_con)
@@ -2027,7 +1986,7 @@ Predicted mappings from result groups to design groups are stored in the *predic
   
 ```{r write predictions to database}
 ## create as a table in database
-# dbWriteTable(conn = con,name = "predictions", value = predictions, overwrite=TRUE)
+# dbWriteTable(conn = sqlite_con,name = "predictions", value = predictions, overwrite=TRUE)
 # 
 # ## check it has saved
 # # dbListTables(con)
