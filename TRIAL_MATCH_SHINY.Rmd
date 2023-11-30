@@ -243,7 +243,8 @@ reactiveCancerStudies <- shiny::reactive({
                  conditions = toString(sort(unique(na.omit(condition)))),
                  central_contacts = toString(sort(unique(na.omit(central_contacts)))),
                  contacts = toString(sort(unique(na.omit(site_contacts))))) %>%
-       as.data.frame()
+       as.data.frame() %>%
+     dplyr::select(nct_id, brief_title, primary_completion_date, last_update_posted_date, phase, acronym, number_of_arms, number_of_groups, overall_status, Link, condition_PT, tx_exclusions, locations, conditions, central_contacts, contacts)      ## included here as record of columns included in reactiveCancerStudies()
    
 
    ## print to console to aid development... 
@@ -392,7 +393,8 @@ reactivescored_matches <- shiny::reactive({
    ## filter based on selectedAlterations
    ## if null, a table with no rows is returned
    ## if selectedAlterations not in gene_alteration_type, get a table with header but no rows
-   table <- dplyr::filter(table, gene_alteration_type %in% selectedAlterations())
+   table <- dplyr::filter(table, gene_alteration_type %in% selectedAlterations()) %>%
+     dplyr::select(nct_id, gene_alteration_type, eligibility_rationale, intervention_rationale, matching_criteria, combined_score)    ## for reference
    
    ## return table
    return(unique(table))
@@ -407,7 +409,9 @@ mergedStudyTable <-  shiny::reactive({
   ## get scored_matches filtered on alterations
   ## left join, i.e. keep matches on cancer type alone
   ## if scored_matches is empty, will just get empty columns
-  table <- plyr::join(x=reactiveCancerStudies(), y=reactivescored_matches(), by = "nct_id", type = "left")   ## join is faster than merge
+  table <- plyr::join(x=reactiveCancerStudies(), y=reactivescored_matches(), by = "nct_id", type = "left") %>%  ## join is faster than merge
+    dplyr::select(nct_id, brief_title, primary_completion_date, last_update_posted_date, phase, acronym, number_of_arms, number_of_groups, overall_status, Link, condition_PT, tx_exclusions, locations, conditions, central_contacts, contacts, gene_alteration_type, eligibility_rationale, intervention_rationale, matching_criteria, combined_score)    ### for reference
+    
   
 
   ## display error message if table is empty 
@@ -424,15 +428,16 @@ mergedStudyTable <-  shiny::reactive({
        dplyr::select(nct_id, intervention_name, Parent_synonym) %>%
        unique()
      
-     tryCatch({
-       table <- plyr::join(x=reactiveCancerStudies(), y=scored_matches, by = "nct_id", type = "left") %>%
+     #tryCatch({
+       table <- plyr::join(x=reactiveCancerStudies(), y=reactivescored_matches(), by = "nct_id", type = "left") %>%  
          merge(by.x = "nct_id", y = filtered_interventions, by.y = "nct_id") %>%
          dplyr::mutate(intervention_rationale = paste0( "Match on selected mechanism (", intervention_name, "; ", Parent_synonym, ")")) %>%
-         dplyr::select(table, -c(intervention_name, Parent_synonym)) %>% 
+         #dplyr::select( -c(intervention_name, Parent_synonym)) %>% 
+         dplyr::select(nct_id, brief_title, primary_completion_date, last_update_posted_date, phase, acronym, number_of_arms, number_of_groups, overall_status, Link, condition_PT, tx_exclusions, locations, conditions, central_contacts, contacts, gene_alteration_type, eligibility_rationale, intervention_rationale, matching_criteria, combined_score)  %>%
          dplyr::mutate(combined_score = 1)   %>%     ## set confidence score so these matches are retained even if excluding matches on cancer type alone
          unique()
 
-       },error=function(cond) {return(NA)})
+       #},error=function(cond) {return(NA)})
    }
    ## if excluding matches on cancer type alone, filter table
    if(input$confidenceFilter==TRUE) {table <- filter(table, combined_score >0)}
@@ -685,8 +690,12 @@ output$report <- shiny::downloadHandler(
 
 
 #shortlistNames <- unique(c(names(scored_matches), names(cancerStudies)))
-shortlistNames <- c("nct_id", "brief_title", "condition_PT", "gene_alteration_type", "eligibility_rationale", "intervention_rationale", "primary_completion_date", "last_update_posted_date", "matching_criteria", "tx_exclusions", "locations", "contacts")
+#shortlistNames <- c("nct_id", "brief_title", "condition_PT", "gene_alteration_type", "eligibility_rationale", "intervention_rationale", "primary_completion_date", "last_update_posted_date", "matching_criteria", "tx_exclusions", "locations", "contacts")
 #shortlistNames <- formattedTable() %>% names()
+
+
+shortlistNames <- c("nct_id", "brief_title", "primary_completion_date", "last_update_posted_date", "phase", "acronym", "number_of_arms", "number_of_groups", "overall_status", "Link", "condition_PT", "tx_exclusions", "locations", "conditions", "central_contacts", "contacts", "gene_alteration_type", "eligibility_rationale", "intervention_rationale", "matching_criteria", "combined_score")
+
 
 ## next, create an empty dataframe with correct number of columns, no rows
 shortlist <- data.frame(matrix(ncol=length(shortlistNames),nrow=0))
