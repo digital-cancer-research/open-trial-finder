@@ -8,10 +8,8 @@ This repository contains R files to derive data for cancer clinical trials, plus
   
 The following files are required to derive data and deploy web viewer:  
 * **trialMatchConfiguration.json:**	configuration file, defines values for country, contact information, "about us" description and privacy policy  
-* **conditionSynonyms5.csv:**  	defines mappings between cancer types of interest and condition names (as used by clinicaltrials.gov)  
+* **conditionSynonyms6.csv:**  	defines mappings between cancer types of interest and condition names (as used by clinicaltrials.gov)  
 * **digitalECMTlogo48px.PNG:**	icon for digital Experimental Cancer Medicine Team (creators of this tool)  
-* **humanGenes.tsv:**		tab-separated table of human gene names and synonyms  
-	* downloaded from https://www.ncbi.nlm.nih.gov/gene  
 * **indexTrialData.Rmd:**		R script to download and store data required by user interface  
 	* a username and password for a Clinical Trials Transformation Initiative account
 	* see https://aact.ctti-clinicaltrials.org/ for how to create an account  
