@@ -1,0 +1,673 @@
+controlled_cancer_type,condition_synonyms
+Adenoid cystic,Adenoid cystic carcinoma
+Adenoid cystic,Adenocystic carcinoma
+Adenoid cystic,Cylindroma
+Adrenocortical,Adrenocortical carcinoma
+Adrenocortical,adrenal cortex carcinoma
+Adrenocortical,Adrenal carcinoma
+Adrenocortical,Adrenal cortical carcinoma
+Adrenocortical,cancer of the adrenal cortex
+Ampullary,ampullary cancer
+Ampullary,ampulla of Vater cancer
+Ampullary,Ampullary carcinoma
+Ampullary,Carcinoma of ampulla of Vater
+Anal,anal cancer
+Anal,Anus Neoplasm
+Anal,Anal carcinoma
+Anal,Carcinoma of the Anus
+Anal,Cancer of the anus
+Anal,Anal Neoplasm
+Anal,anal tumor
+Anal,anus cancer
+Anal,Cancer of Anus
+Anal,Carcinoma of Anus
+Anaplastic,thyroid cancer
+Anaplastic,thyroid neoplasm
+Anaplastic,thyroid carcinoma
+Anaplastic,thyroid gland carcinoma
+Anaplastic,thyroid tumor
+Anaplastic,neoplasm of thyroid
+Anaplastic,cancer of the thyroid
+Anaplastic,carcinoma of the thyroid
+Appendiceal,appendiceal cancer
+Appendiceal,"carcinoma of the appendix	"
+Appendiceal,appendix cancer
+Appendiceal,appendix carcinoma
+Basal cell,Basal cell carcinoma
+Basal cell,Basal cell skin cancer
+Basal cell,Basal Cell Epithelioma
+B-cell leukemia,"Leukemia, B-cell"
+B-cell leukemia,b cell leukemia
+B-cell leukemia,B Lymphocytic Leukemia
+B-cell leukemia,B-Cell Lymphocytic Leukemia
+Bladder,bladder cancer
+Bladder,Bladder Neoplasms
+Bladder,carcinoma of the bladder
+Bladder,bladder tumors
+Bladder,bladder carcinoma
+Bladder,cancer of the bladder
+Bladder,CARCINOMA OF BLADDER
+Bladder,Carcinoma of the Urinary Bladder
+Bladder,cancer of bladder
+Bladder,Carcinoma of Urinary Bladder
+Bladder,Tumor of urinary bladder
+Bladder,Neoplasm of Urinary Bladder
+Bladder,Tumor of Bladder
+Bladder,Urinary Tract Cancer
+Bladder,Tumor of the Bladder
+Bladder,Tumor of the Urinary Bladder
+Bladder,Urothelial
+Bladder,Urothelial Neoplasms
+Brain,brain cancer
+Brain,brain neoplasms
+Brain,brain neoplasm
+Brain,brain tumor
+Brain,brain tumour
+Brain,brain tumours
+Brain,brain tumors
+Brain,Tumor of the Brain
+Brain,tumour of the brain
+Brain,cancer of brain
+Brain,cancer of the brain
+Brain,Neoplasm of brain
+Brain,Tumor of Brain
+Brain,Neoplasm of the Brain
+Breast,breast cancer
+Breast,Breast Neoplasms
+Breast,breast carcinomas
+Breast,Breast tumor
+Breast,cancer of the breast
+Breast,Neoplasm of breast
+Breast,cancer of breast
+Breast,CARCINOMA OF BREAST
+Breast,Carcinoma of the Breast
+Breast,Mammary Carcinoma
+Breast,Mammary Cancer
+Breast,Mammary Neoplasms
+Breast,Tumor of breast
+Breast,Tumours of the breast
+Breast,Neoplasm of the breast
+Breast,mammary tumor
+Breast,Neoplasia of the breast
+Breast,breast malignant tumors
+Breast,breast
+Cervical,cervical cancer
+Cervical,Cervical Neoplasm
+Cervical,cervical carcinoma
+Cervical,Cervix Cancer
+Cervical,Carcinoma of the Cervix
+Cervical,Cancer of the Cervix
+Cervical,Cervix Neoplasms
+Cervical,cancer of cervix
+Cervical,cervix carcinoma
+Cervical,Carcinoma of Uterine Cervix
+Cervical,Carcinoma of the Uterine Cervix
+Cervical,Cancer of the uterine cervix
+Cervical,CARCINOMA OF CERVIX
+Cervical,Cervical tumor
+Cervical,Neoplasm of Cervix
+Cervical,Tumor of cervix
+Cervical,cervix tumors
+Cervical,Tumor of the Cervix
+Cervical,carcinoma cervical
+Cervical,carcinoma cervix uterine
+Cervical,Cervix uteri cancer
+Cholangiocarcinoma,Cholangiocarcinoma
+Cholangiocarcinoma,Bile duct cancer
+Cholangiocarcinoma,Cholangiocellular carcinoma
+Chronic leukemia,"Leukemia, Chronic"
+Chronic leukemia,Chronic leukemia
+Chronic leukemia,Leukaemia chronic
+Colorectal,Colorectal cancer
+Colorectal,Colon Cancer
+Colorectal,Cancer Colon
+Colorectal,Colorectal Neoplasm
+Colorectal,colorectal neoplasms
+Colorectal,colo-rectal cancer
+Colorectal,Colorectal Carcinoma
+Colorectal,rectal cancer
+Colorectal,Colorectal Tumor
+Colorectal,colon rectal cancer
+Colorectal,Neoplasm of large intestine
+Colorectal,Large Bowel Cancer
+Colorectal,Carcinoma of the Large Intestine
+Colorectal,Cancer of the Large Bowel
+Colorectal,Large Intestine Cancer
+Colorectal,colon cancer
+Colorectal,colorectal
+Colorectal,bowel
+Colorectal,rectum
+CUP,Cancer of Unknown Primary Site
+CUP,unknown primary cancer
+CUP,Unknown Primary Neoplasm
+CUP,cancer of unknown primary origin
+CUP,Metastatic Malignant Neoplasm of Unknown Primary
+CUP,metastatic carcinoma of unknown primary
+Duodenal,duodenal cancer
+Duodenal,Duodenal Neoplasm
+Duodenal,Duodenum--Cancer
+Duodenal,Tumor of duodenum
+Duodenal,cancer of duodenum
+Duodenal,"Cancer of the Duodenum	"
+Duodenal,duodenal tumor
+Duodenal,Tumor of the Duodenum
+Endometrial,ENDOMETRIAL CARCINOMA
+Endometrial,Uterine Carcinosarcoma
+Endometrial,endometrium cancer
+Endometrial,cancer of the endometrium
+Endometrial,cancer of endometrium
+Endometrial,carcinoma of the endometrium
+Endometrial,CARCINOMA OF ENDOMETRIUM
+Endometrial,endometrium carcinoma
+Endometrial,Endometrioid
+Endometrial,Endometrial
+Gall Bladder,gall bladder cancer
+Gall Bladder,Gallbladder Cancer
+Gall Bladder,Gallbladder Neoplasms
+Gall Bladder,gall bladder carcinoma
+Gall Bladder,Carcinoma of the Gallbladder
+Gall Bladder,cancer of the gallbladder
+Gall Bladder,cancer of gallbladder
+Gall Bladder,carcinoma gallbladder
+Gall Bladder,Carcinoma of gallbladder
+Gall Bladder,cancer gallbladder
+Gall Bladder,Gallbladder neoplasms malignant
+Gall Bladder,"Malignant neoplasm of gallbladder	"
+Gastroesophageal junction,Gastroesophageal junction cancer
+Gastroesophageal junction,Gastroesophageal Junction Adenocarcinoma
+Gastroesophageal junction,adenocarcinoma of the gastroesophageal junction
+Gastroesophageal junction,Adenocarcinoma of the Esophagogastric Junction
+Gastroesophageal junction,Adenocarcinoma of Gastroesophageal Junction
+Gastroesophageal junction,Adenocarcinoma of the gastrooesophageal junction
+Gastroesophageal junction,Adenocarcinoma - GEJ
+Gastroesophageal junction,Adenocarcinoma of the GE Junction
+Leukemia,Leukemia
+Liver,liver cancer
+Liver,Liver Neoplasm
+Liver,liver tumors
+Liver,Hepatocellular Cancers
+Liver,Hepatocellular Carcinoma
+Liver,Hepatoma
+Liver,Liver Carcinoma
+Liver,Hepatic tumor
+Liver,Hepatic cancer
+Liver,hepatic carcinoma
+Liver,"Cancer of Liver	"
+Liver,cancer of the liver
+Liver,hepatic neoplasms
+Liver,Neoplasm of liver
+Liver,liver and intrahepatic bile duct carcinoma
+Liver,"liver and intrahepatic biliary tract cancer	"
+Liver,Tumor of liver
+Liver,liver malignant tumors
+Liver,Neoplasm of the liver
+Liver,Hepatocellular
+Lung,NSCLC
+Lung,non-small cell lung cancer
+Lung,nonsmall cell lung cancer
+Lung,"lung cancer, non-small cell"
+Lung,Non Small Cell Lung Carcinoma
+Lung,Lung Non-Small Cell Carcinoma
+Lung,lung cancer non small cell
+Lung,Non-Small Cell Carcinoma of Lung
+Lung,SCLC
+Lung,Small cell lung cancer
+Lung,small cell lung carcinoma
+Lung,small cell carcinoma
+Lung,Oat cell carcinoma of lung
+Lung,Oat cell lung cancer
+Lung,Small Cell Cancer Of The Lung
+Lung,Mesothelioma
+Lung,Mesotheliomas
+Lung,Lung Neoplasm
+Lung,Lung carcinoma
+Lung,Lung cancer
+Lung,lung tumors
+Lung,Carcinoma of the Lung
+Lung,Cancer of the Lung
+Lung,Neoplasm of lung
+Lung,Pulmonary Neoplasm
+Lung,CARCINOMA OF LUNG
+Lung,pulmonary cancer
+Lung,Cancer of Lung
+Lung,lung malignancies
+Lung,Tumor of the Lung
+Lung,cancers lungs
+Lung,Tumor of lung
+Lung,lung malignant tumors
+Lung,Neoplasm of the lung
+Lung,pulmonary carcinoma
+Lung,Pulmonary neoplasia
+Lung,lung
+Lymphoma,Lymphoma
+Lymphoma,Lymphomatous
+Lymphoma,Lymphosarcoma
+Medullary,thyroid cancer
+Medullary,thyroid neoplasm
+Medullary,thyroid carcinoma
+Medullary,thyroid gland carcinoma
+Medullary,thyroid tumor
+Medullary,neoplasm of thyroid
+Medullary,cancer of the thyroid
+Medullary,carcinoma of the thyroid
+Melanoma,melanoma
+Mesothelioma,Mesothelioma
+Mesothelioma,Mesotheliomas
+Myeloid leukemia,"Leukemia, Myeloid"
+Myeloid leukemia,Myeloid leukemia
+Myeloid leukemia,Myelogenous Leukemia
+Myeloid leukemia,Myelocytic Leukemia
+Myeloid leukemia,Non-lymphocytic Leukemia
+Myeloid leukemia,Granulocytic Leukemia
+Myeloid leukemia,Non-lymphoblastic Leukemia
+Myeloid leukemia,"Leukemia, Myeloid"
+Myeloid leukemia,Myeloid leukemia
+Myeloid leukemia,Myelogenous Leukemia
+Myeloid leukemia,Myelocytic Leukemia
+Myeloid leukemia,Non-lymphocytic Leukemia
+Myeloid leukemia,Granulocytic Leukemia
+Myeloid leukemia,Non-lymphoblastic Leukemia
+Neuroendocrine: Appendix,Neuroendocrine tumor
+Neuroendocrine: Appendix,Neuroendocrine tumors
+Neuroendocrine: Appendix,Neuroendocrine neoplasm
+Neuroendocrine: Appendix,Neuroendocrine neoplasia
+Neuroendocrine: Appendix,neuroendocrine carcinoma
+Neuroendocrine: Appendix,Neuroendocrine Cancer
+Neuroendocrine: Appendix,gastrointestinal neuroendocrine tumour
+Neuroendocrine: Appendix,"Gastro-enteropancreatic neuroendocrine tumor	"
+Neuroendocrine: Appendix,GEP NET
+Neuroendocrine: Appendix,Digestive System Neuroendocrine Tumor
+Neuroendocrine: Appendix,Gastroenteropancreatic NET
+Neuroendocrine: Brain,Neuroendocrine tumor
+Neuroendocrine: Brain,Neuroendocrine tumors
+Neuroendocrine: Brain,Neuroendocrine neoplasm
+Neuroendocrine: Brain,Neuroendocrine neoplasia
+Neuroendocrine: Brain,neuroendocrine carcinoma
+Neuroendocrine: Brain,Neuroendocrine Cancer
+Neuroendocrine: Liver,Neuroendocrine tumor
+Neuroendocrine: Liver,Neuroendocrine tumors
+Neuroendocrine: Liver,Neuroendocrine neoplasm
+Neuroendocrine: Liver,Neuroendocrine neoplasia
+Neuroendocrine: Liver,neuroendocrine carcinoma
+Neuroendocrine: Liver,Neuroendocrine Cancer
+Neuroendocrine: Lower GI,Neuroendocrine tumor
+Neuroendocrine: Lower GI,Neuroendocrine tumors
+Neuroendocrine: Lower GI,Neuroendocrine neoplasm
+Neuroendocrine: Lower GI,Neuroendocrine neoplasia
+Neuroendocrine: Lower GI,gastrointestinal neuroendocrine tumour
+Neuroendocrine: Lower GI,"Gastro-enteropancreatic neuroendocrine tumor	"
+Neuroendocrine: Lower GI,GEP NET
+Neuroendocrine: Lower GI,Digestive System Neuroendocrine Tumor
+Neuroendocrine: Lower GI,Gastroenteropancreatic NET
+Neuroendocrine: Lung,Neuroendocrine tumor
+Neuroendocrine: Lung,Neuroendocrine tumors
+Neuroendocrine: Lung,Neuroendocrine neoplasm
+Neuroendocrine: Lung,Neuroendocrine neoplasia
+Neuroendocrine: Lung,neuroendocrine carcinoma
+Neuroendocrine: Lung,Neuroendocrine Cancer
+Neuroendocrine: Lung,"Pulmonary Neuroendocrine Neoplasm	"
+Neuroendocrine: Lung,lung neuroendocrine neoplasm
+Neuroendocrine: Lung,Neuroendocrine neoplasm of lung
+Neuroendocrine: Lung,Bronchial neuroendocrine tumor
+Neuroendocrine: Ovary,Neuroendocrine tumor
+Neuroendocrine: Ovary,Neuroendocrine tumors
+Neuroendocrine: Ovary,Neuroendocrine neoplasm
+Neuroendocrine: Ovary,Neuroendocrine neoplasia
+Neuroendocrine: Ovary,neuroendocrine carcinoma
+Neuroendocrine: Ovary,Neuroendocrine Cancer
+Neuroendocrine: Pancreas,Neuroendocrine tumor
+Neuroendocrine: Pancreas,Neuroendocrine tumors
+Neuroendocrine: Pancreas,Neuroendocrine neoplasm
+Neuroendocrine: Pancreas,Neuroendocrine neoplasia
+Neuroendocrine: Pancreas,neuroendocrine carcinoma
+Neuroendocrine: Pancreas,Neuroendocrine Cancer
+Neuroendocrine: Pancreas,Pancreatic neuroendocrine tumors
+Neuroendocrine: Pancreas,Islet cell tumor
+Neuroendocrine: Pancreas,Pancreatic endocrine tumor
+Neuroendocrine: Pancreas,Pancreatic NET
+Neuroendocrine: Pancreas,Pancreatic neuroendocrine neoplasm
+Neuroendocrine: Pancreas,PanNET
+Neuroendocrine: Pancreas,Islet cell adenoma
+Neuroendocrine: Pancreas,Pancreatic Endocrine Neoplasm
+Neuroendocrine: Pancreas,Islet cell neoplasm
+Neuroendocrine: Pancreas,endocrine pancreatic tumors
+Neuroendocrine: Pancreas,Neuroendocrine tumor of pancreas
+Neuroendocrine: Pheochromocytoma,Neuroendocrine tumor
+Neuroendocrine: Pheochromocytoma,Neuroendocrine tumors
+Neuroendocrine: Pheochromocytoma,Neuroendocrine neoplasm
+Neuroendocrine: Pheochromocytoma,Neuroendocrine neoplasia
+Neuroendocrine: Pheochromocytoma,neuroendocrine carcinoma
+Neuroendocrine: Pheochromocytoma,Neuroendocrine Cancer
+Neuroendocrine: Pheochromocytoma,pheochromocytoma 
+Neuroendocrine: Pheochromocytoma,paraganglioma
+Neuroendocrine: Pituitary,Neuroendocrine tumor
+Neuroendocrine: Pituitary,Neuroendocrine tumors
+Neuroendocrine: Pituitary,Neuroendocrine neoplasia
+Neuroendocrine: Pituitary,neuroendocrine carcinoma
+Neuroendocrine: Pituitary,Neuroendocrine Cancer
+Neuroendocrine: Pituitary,Neuroendocrine neoplasm
+Neuroendocrine: Pituitary,Pituitary neuroendocrine tumors
+Neuroendocrine: Prostate,Neuroendocrine tumor
+Neuroendocrine: Prostate,Neuroendocrine tumors
+Neuroendocrine: Prostate,Neuroendocrine neoplasm
+Neuroendocrine: Prostate,Neuroendocrine neoplasia
+Neuroendocrine: Prostate,neuroendocrine carcinoma
+Neuroendocrine: Prostate,Neuroendocrine Cancer
+Neuroendocrine: Renal,Neuroendocrine tumor
+Neuroendocrine: Renal,Neuroendocrine tumors
+Neuroendocrine: Renal,Neuroendocrine neoplasm
+Neuroendocrine: Renal,Neuroendocrine neoplasia
+Neuroendocrine: Renal,neuroendocrine carcinoma
+Neuroendocrine: Renal,Neuroendocrine Cancer
+Neuroendocrine: Skin,Neuroendocrine tumor
+Neuroendocrine: Skin,Neuroendocrine tumors
+Neuroendocrine: Skin,Neuroendocrine neoplasm
+Neuroendocrine: Skin,Neuroendocrine neoplasia
+Neuroendocrine: Skin,neuroendocrine carcinoma
+Neuroendocrine: Skin,Neuroendocrine Cancer
+Neuroendocrine: Skin,Merkel cell carcinoma
+Neuroendocrine: Skin,"Carcinoma, merkel cell"
+Neuroendocrine: Skin,Merkel cell cancer
+Neuroendocrine: Skin,"neuroendocrine carcinoma of the skin	"
+Neuroendocrine: Skin,Merkel Cell Tumor
+Neuroendocrine: Skin,carcinoma neuroendocrine skin
+Neuroendocrine: Skin,Neuroendocrine Skin Carcinoma
+Neuroendocrine: Skin,trabecular carcinoma of the skin
+Neuroendocrine: Testes,Neuroendocrine tumor
+Neuroendocrine: Testes,Neuroendocrine tumors
+Neuroendocrine: Testes,Neuroendocrine neoplasm
+Neuroendocrine: Testes,Neuroendocrine neoplasia
+Neuroendocrine: Testes,neuroendocrine carcinoma
+Neuroendocrine: Testes,Neuroendocrine Cancer
+Neuroendocrine: Thymus,Neuroendocrine tumor
+Neuroendocrine: Thymus,Neuroendocrine tumors
+Neuroendocrine: Thymus,Neuroendocrine neoplasm
+Neuroendocrine: Thymus,Neuroendocrine neoplasia
+Neuroendocrine: Thymus,neuroendocrine carcinoma
+Neuroendocrine: Thymus,Neuroendocrine Cancer
+Neuroendocrine: Thymus,Thymus Neoplasm
+Neuroendocrine: Thymus,Thymoma
+Neuroendocrine: Thymus,Thymic Neoplasm
+Neuroendocrine: Thymus,thymus tumors
+Neuroendocrine: Thymus,Thymic Tumor
+Neuroendocrine: Upper GI,Neuroendocrine tumor
+Neuroendocrine: Upper GI,Neuroendocrine tumors
+Neuroendocrine: Upper GI,Neuroendocrine neoplasm
+Neuroendocrine: Upper GI,Neuroendocrine neoplasia
+Neuroendocrine: Upper GI,neuroendocrine carcinoma
+Neuroendocrine: Upper GI,Neuroendocrine Cancer
+Neuroendocrine: Upper GI,gastrointestinal neuroendocrine tumour
+Neuroendocrine: Upper GI,"Gastro-enteropancreatic neuroendocrine tumor	"
+Neuroendocrine: Upper GI,GEP NET
+Neuroendocrine: Upper GI,Digestive System Neuroendocrine Tumor
+Neuroendocrine: Upper GI,Gastroenteropancreatic NET
+NSCLC,NSCLC
+NSCLC,non-small cell lung cancer
+NSCLC,nonsmall cell lung cancer
+NSCLC,"lung cancer, non-small cell"
+NSCLC,Non Small Cell Lung Carcinoma
+NSCLC,Lung Non-Small Cell Carcinoma
+NSCLC,lung cancer non small cell
+NSCLC,Non-Small Cell Carcinoma of Lung
+NSCLC,lung cancer
+NSCLC,"Carcinoma, Non-Small-Cell Lung"
+NSCLC,Non-Small-Cell
+Oesophageal,Oesophageal Cancer
+Oesophageal,Adenocarcinoma of the Oesophagus
+Oesophageal,Esophageal cancer
+Oesophageal,Esophageal Adenocarcinoma
+Oesophageal,Esophagus cancer
+Oesophageal,Cancer of the Esophagus
+Oesophageal,Cancer of Esophagus
+Oesophageal,Esophageal neoplasms malignant
+Oesophageal,Malignant Esophagus Tumor
+Oesophageal,Malignant neoplasm of esophagus
+Oesophageal,Oropharyngeal
+Oesophageal,Gastro-oesophageal
+Oesophageal,Esophageal Adenocarcinoma
+Oesophageal,Oesophagus
+Oesophageal,Esophageal
+Oesophageal,Gastroesophageal-junction
+Ovarian,ovarian cancer
+Ovarian,Ovarian Neoplasm
+Ovarian,Ovarian epithelial cancer
+Ovarian,Ovarian carcinoma
+Ovarian,Ovarian tumor
+Ovarian,ovary cancer
+Ovarian,cancer of the ovary
+Ovarian,Carcinoma of the Ovary
+Ovarian,Cancer of ovary
+Ovarian,ovary neoplasm
+Ovarian,Tumor of ovary
+Ovarian,Tumor of the Ovary
+Ovarian,Ovarian epithelial carcinoma
+Ovarian,Neoplasm of ovary
+Ovarian,carcinoma of ovary
+Ovarian,cancer ovaries
+Ovarian,carcinoma ovaries
+Ovarian,cancer ovarian
+Ovarian,ovary carcinoma
+Ovarian,fallopian
+Ovarian,Ovarian
+Pancreatic,pancreatic cancer
+Pancreatic,Pancreatic Neoplasm
+Pancreatic,Pancreas cancer
+Pancreatic,Pancreatic carcinoma
+Pancreatic,pancreatic adenocarcinoma
+Pancreatic,pancreatic tumors
+Pancreatic,Cancer of the pancreas
+Pancreatic,Cancer of Pancreas
+Pancreatic,Tumor of the Pancreas
+Pancreatic,Carcinoma of the Pancreas
+Pancreatic,Neoplasm of the pancreas
+Pancreatic,Pancreas carcinoma
+Pancreatic,Neoplasm of Pancreas
+Pancreatic,Tumor of pancreas
+Pancreatic,Carcinoma of pancreas
+Pancreatic,carcinoma pancreas
+Pancreatic,Neoplasia of the pancreas
+Pancreatic,Pancreatic Acinar Carcinoma
+Pancreatic,Pancreatic
+Papillary,thyroid cancer
+Papillary,thyroid neoplasm
+Papillary,thyroid carcinoma
+Papillary,thyroid gland carcinoma
+Papillary,thyroid tumor
+Papillary,neoplasm of thyroid
+Papillary,cancer of the thyroid
+Papillary,carcinoma of the thyroid
+Penile,penile cancer
+Penile,penis cancer
+Penile,cancer of the penis
+Penile,carcinoma of the penis
+Penile,penile carcinoma
+Penile,penile neoplasms
+Prostate,prostate cancer
+Prostate,Prostatic Neoplasm
+Prostate,prostate carcinoma
+Prostate,Prostate Neoplasms
+Prostate,prostatic cancer
+Prostate,cancer of the prostate
+Prostate,Cancer of prostate
+Prostate,Carcinoma of the Prostate
+Prostate,prostate tumors
+Prostate,prostatic carcinoma
+Prostate,Neoplasm of prostate
+Prostate,carcinoma prostate
+Prostate,CARCINOMA OF PROSTATE
+Prostate,Prostate neoplasia
+Prostate,neoplasm of the prostate
+Prostate,Tumor of the Prostate
+Prostate,Prostatic Neoplasms
+Prostate,neoplasia prostate
+Prostate,Tumor of prostate
+Prostate,prostate
+Prostate,prostatic
+Pseudomyxoma peritonei,Pseudomyxoma Peritonei
+Pseudomyxoma peritonei,Adenomucinosis
+Pseudomyxoma peritonei,Mucinous adenocarcinoma
+Pseudomyxoma peritonei,Mucinous carcinoma
+Renal,Kidney Neoplasm
+Renal,Renal cell carcinoma
+Renal,kidney cancer
+Renal,renal cell cancer
+Renal,kidney tumor
+Renal,Renal carcinoma
+Renal,renal tumors
+Renal,Tumors of the kidney
+Renal,Renal Neoplasm
+Renal,kidney carcinoma
+Renal,cancer of kidney
+Renal,Renal adenocarcinoma
+Renal,cancer of the kidney
+Renal,Renal malignant tumor
+Renal,Hypernephroma
+Renal,Adenocarcinoma of Kidney
+Renal,carcinoma renal
+Renal,Grawitz tumor
+Renal,kidney adenocarcinoma
+Renal,Nephroid Carcinoma
+Renal,"Renal Cell Adenocarcinoma	"
+Renal,Tumor of kidney
+Renal,renal
+Salivary Gland,salivary gland cancer
+Salivary Gland,salivary gland carcinoma
+Salivary Gland,Malignant Salivary Gland Tumor
+Salivary Gland,Carcinoma of the Salivary Gland
+Salivary Gland,Cancer of the Salivary Gland
+Salivary Gland,Malignant neoplasm of salivary gland
+Salivary Gland,Malignant salivary gland neoplasm
+Sarcoma: Bone,bone sarcoma
+Sarcoma: Bone,Osteosarcoma
+Sarcoma: Bone,Sarcoma of bone
+Sarcoma: Bone,Osteogenic sarcoma
+Sarcoma: Bone,osteoid sarcoma
+Sarcoma: Bone,Osseous Sarcoma
+Sarcoma: Soft Tissue,sarcoma
+Sarcoma: Soft Tissue,Sarcomas
+Sarcoma: Soft Tissue,Malignant tumor of soft tissue
+Sarcoma: Soft Tissue,Malignant soft tissue neoplasm
+Sarcoma: Soft Tissue,Malignant mesenchymal tumor
+Sarcoma: Soft Tissue,Malignant Soft Tissue Tumor
+Sarcoma: Soft Tissue,Soft tissue cancer
+Sarcoma: Soft Tissue,soft tissue sarcoma
+SCCHN,squamous cell carcinoma of head and neck
+SCCHN,"Squamous cell carcinoma of the head and neck	"
+SCCHN,Head and Neck Neoplasms
+SCLC,SCLC
+SCLC,Small cell lung cancer
+SCLC,small cell lung carcinoma
+SCLC,small cell carcinoma
+SCLC,Oat cell carcinoma of lung
+SCLC,Oat cell lung cancer
+SCLC,Small Cell Cancer Of The Lung
+SCLC,lung cancer
+Skin,melanoma
+Skin,Squamous cell carcinoma
+Skin,Squamous carcinoma
+Skin,cancer squamous cell
+Skin,Epidermoid carcinoma
+Skin,Basal cell carcinoma
+Skin,Basal cell skin cancer
+Skin,Basal Cell Epithelioma
+Skin,skin cancer
+Skin,Skin Neoplasm
+Skin,Skin Neoplasm
+Skin,skin tumor
+Skin,Cutaneous tumor
+Skin,Neoplasm of skin
+Skin,cancer of skin
+Skin,cancer of the skin
+Skin,cancer skin
+Skin,tumor skin
+Skin,Cutaneous neoplasm
+Skin,Tumor of skin
+Skin,Tumor of the skin
+Skin,squamous
+Small bowel,small bowel cancer
+Small bowel,Small intestine cancer
+Small bowel,Small Intestinal Cancer
+Small bowel,Small Intestinal Carcinoma
+Small bowel,Carcinoma of the Small Intestine
+Small bowel,"Malignant neoplasm of small intestine	"
+Small bowel,Malignant tumor of small intestine
+Small bowel,Small Bowel Carcinoma
+Solid,solid tumor
+Solid,solid tumors
+Solid,solid tumour
+Solid,solid tumours
+Solid,malignant neoplasms
+Solid,malignant neoplasm
+Solid,Neoplasm Metastasis
+Solid,solid neoplasms
+Solid,solid neoplasm
+Squamous cell,Squamous cell carcinoma
+Squamous cell,Squamous carcinoma
+Squamous cell,cancer squamous cell
+Squamous cell,Epidermoid carcinoma
+Stomach,Stomach Cancer
+Stomach,Gastric cancer
+Stomach,Stomach Neoplasm
+Stomach,gastric carcinoma
+Stomach,gastric
+Stomach,gastric neoplasms
+Stomach,Cancer of stomach
+Stomach,cancer of the stomach
+Stomach,Neoplasm of stomach
+Stomach,gastric tumors
+Stomach,stomach neoplasms
+Stomach,stomach neoplasm
+Stomach,Tumor of stomach
+Stomach,stomach tumors
+Stomach,Gastric malignancy
+Stomach,Carcinoma of stomach
+Stomach,tumor gastric
+Stomach,Carcinoma of the Stomach
+Stomach,gastric mass
+Stomach,Stomach
+Stomach,Gastroesophageal-junction
+T-cell leukemia,"Leukemia, T Cell"
+T-cell leukemia,T-cell leukemia
+T-cell leukemia,T Lymphocytic Leukemia
+T-cell leukemia,leukemia t cell
+T-cell leukemia,T-Cell Lymphocytic Leukemia
+Testis,malignant testicular germ cell tumor
+Testis,Testicular Neoplasm
+Testis,testicular neoplasms
+Testis,testicular cancer
+Testis,testis cancer
+Testis,cancer testis
+Testis,Testicular germ cell cancer
+Testis,Testicular tumor
+Testis,testicle cancer
+Testis,Cancer of Testis
+Testis,testis tumors
+Testis,Tumor of testis
+Testis,Tumor of the Testis
+Testis,Testicular
+Thymic Carcinoma,thymic cancer
+Thymic Carcinoma,thymus-cancer
+Thymic Carcinoma,thymus cancer
+Thymoma,thymic cancer
+Thymoma,thymus-cancer
+Thymoma,thymus cancer
+Thyroid,thyroid cancer
+Thyroid,thyroid neoplasm
+Thyroid,thyroid carcinoma
+Thyroid,thyroid gland carcinoma
+Thyroid,thyroid tumor
+Thyroid,neoplasm of thyroid
+Thyroid,cancer of the thyroid
+Thyroid,carcinoma of the thyroid
+Vaginal,vaginal cancer
+Vaginal,vaginal neoplasm
+Vaginal,vaginal carcinoma
+Vaginal,carcinoma of the vagina
+Vulval,Vulvar Neoplasm
+Vulval,Vulvar cancer
+Vulval,vulvar carcinoma
+Vulval,"carcinoma of the vulva	"
+Vulval,cancer of the vulva
+Vulval,vulva cancer
+Vulval,cancer of vulva
+Vulval,vulva carcinoma
