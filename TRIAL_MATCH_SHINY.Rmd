@@ -2,7 +2,6 @@
 title: "digital ECMT cancer trial matching tool"
 output: 
   flexdashboard::flex_dashboard:
-    #source_code: embed
     orientation: rows
     logo: digitalECMTlogo48px.PNG
     theme: spacelab
@@ -15,7 +14,7 @@ runtime: shiny
 ```{r copyright notice}
  # 
  # This file is part of the cancer-trial-match distribution (https://github.com/digital-ECMT/cancer-trial-match).
- # Copyright (C) 2021 digital ECMT
+ # Copyright (C) 2021-2023 digital ECMT
  # 
  # This program is free software: you can redistribute it and/or modify  
  # it under the terms of the GNU General Public License as published by  
@@ -67,29 +66,30 @@ conditionSynonyms <- DBI::dbGetQuery(sqlite_con, "SELECT * FROM conditionSynonym
 scored_matches <- DBI::dbGetQuery(sqlite_con, "SELECT * FROM scored_matches")
 interventions <- DBI::dbGetQuery(sqlite_con, "SELECT * FROM interventions") 
     
-    
-
-
 ```
 
 ```{r preprocess tables}
 
 cancerStudies <- cancerStudies %>%
-  dplyr::mutate(last_update_posted_date = as.numeric(last_update_posted_date)) %>%
-  dplyr::mutate(primary_completion_date = as.numeric(primary_completion_date)) %>%
-  dplyr::mutate(last_update_posted_date = as.Date(last_update_posted_date, origin = "1970-01-01")) %>%
-  dplyr::mutate(primary_completion_date = as.Date(primary_completion_date, origin = "1970-01-01")) %>%
-  dplyr::mutate(last_update_posted_date = format(last_update_posted_date, format = "%d %b %Y")) %>%
-  dplyr::mutate(primary_completion_date = format(primary_completion_date, format = "%d %b %Y")) %>%
+  # dplyr::mutate(last_update_posted_date = as.numeric(last_update_posted_date)) %>%
+  # dplyr::mutate(primary_completion_date = as.numeric(primary_completion_date)) %>%
+  # dplyr::mutate(last_update_posted_date = as.Date(last_update_posted_date, origin = "1970-01-01")) %>%
+  # dplyr::mutate(primary_completion_date = as.Date(primary_completion_date, origin = "1970-01-01")) %>%
+  # dplyr::mutate(last_update_posted_date = format(last_update_posted_date, format = "%d %b %Y")) %>%
+  # dplyr::mutate(primary_completion_date = format(primary_completion_date, format = "%d %b %Y")) %>%
   dplyr::filter( overall_status == "Recruiting") %>%
-  dplyr::mutate(latitude = as.numeric(latitude)) %>%
-  dplyr::mutate(longitude = as.numeric(longitude)) %>%
-  dplyr::mutate(condition_PT = stringr::str_squish(condition_PT)) %>%
-  dplyr::mutate(city = ifelse(test = site_status == "Not yet recruiting", 
-                                     yes = paste0(city, " (in setup)"),
-                                     no = city))           %>%                 ## add flag for sites not yet recruiting
-  dplyr::select(nct_id, brief_title, primary_completion_date, last_update_posted_date, condition, city, site_status, site_contacts, central_contacts, refresh_date, Link, condition_PT, latitude, longitude, tx_exclusions) %>%
+  # dplyr::mutate(latitude = as.numeric(latitude)) %>%
+  # dplyr::mutate(longitude = as.numeric(longitude)) %>%
+  # dplyr::mutate(condition_PT = stringr::str_squish(condition_PT)) %>%
+  # dplyr::mutate(city = ifelse(test = site_status == "Not yet recruiting", 
+  #                                    yes = paste0(city, " (in setup)"),
+  #                                    no = city))           %>%                 ## add flag for sites not yet recruiting
+  # dplyr::select(nct_id, brief_title, primary_completion_date, last_update_posted_date, condition, city, site_status, site_contacts, central_contacts, refresh_date, Link, condition_PT, latitude, longitude, tx_exclusions) %>%
+  # dplyr::mutate(brief_title = paste0('<a href="',Link,'" target="_blank">',brief_title ,  " </a>")) %>%         ## add some html code to brief_title value with relevant link
   unique()
+
+
+
 
 
 ## get refresh date
@@ -105,10 +105,6 @@ interventions <- interventions %>%
 
 
 ```
-
-
-
-
 
 ```{r get a full set of all study locations}
 cancer_study_locations <- unique(dplyr::select(cancerStudies, nct_id, latitude, longitude))
@@ -169,12 +165,8 @@ shiny::checkboxInput(inputId="solidTumourFilter", label="Include matches on soli
 selectedCancerTypes <- shiny::reactive({
   if(input$solidTumourFilter==FALSE) {cancer_types <- input$cancerTypeFilter}
   else {cancer_types <- c(input$cancerTypeFilter, "Solid")}
-  
-  ## print to console to aid development... 
-  #print(paste0("selectedCancerTypes value: ", cancer_types))
-  
-  ## return value
-  cancer_types
+
+  return(cancer_types)
 })
 
 ```
@@ -199,16 +191,11 @@ reactiveCancerStudies <- shiny::reactive({
      dplyr::select(nct_id, brief_title, primary_completion_date, last_update_posted_date, Link, condition_PT, tx_exclusions, locations, conditions, central_contacts, contacts)      ## included here as record of columns included in reactiveCancerStudies()
    
 
-   ## print to console to aid development... 
-   #print(paste0("head of reactiveCancerStudies1: ", head(table)))
-   
    ## append central contacts to front of site contact
    table$contacts <- paste(na.omit(table$central_contacts), na.omit(table$contacts))
-   ## return table
+
    return(unique(table))
 })
-
-
 
 ```
  
@@ -380,7 +367,7 @@ mergedStudyTable <-  shiny::reactive({
        dplyr::select(nct_id, intervention_name, Parent_synonym) %>%
        unique()
      
-     #tryCatch({
+     tryCatch({
        table <- plyr::join(x=reactiveCancerStudies(), y=reactivescored_matches(), by = "nct_id", type = "left") %>%  
          merge(by.x = "nct_id", y = filtered_interventions, by.y = "nct_id") %>%
          dplyr::mutate(intervention_rationale = paste0( "Match on selected mechanism (", intervention_name, "; ", Parent_synonym, ")")) %>%
@@ -389,7 +376,7 @@ mergedStudyTable <-  shiny::reactive({
          dplyr::mutate(combined_score = 1)   %>%     ## set confidence score so these matches are retained even if excluding matches on cancer type alone
          unique()
 
-       #},error=function(cond) {return(NA)})
+       },error=function(cond) {return(NA)})
    }
    ## if excluding matches on cancer type alone, filter table
    if(input$confidenceFilter==TRUE) {table <- filter(table, combined_score >0)}
@@ -400,8 +387,7 @@ mergedStudyTable <-  shiny::reactive({
             #need(!is.null(table), "table is NULL")
         )
    
-   ## add some html code to brief_title value with relevant link
-   table$brief_title <- paste0('<a href="',table$Link,'" target="_blank">',table$brief_title ,  " </a>")
+
    
    ## return table
    return(unique(table))
@@ -536,9 +522,6 @@ output$datatable <- DT::renderDT(dplyr::select(formattedTable(),
     # ,     callback = JS('table.page(3).draw(false);'))
 ))
 
-
-# message(print(paste0("defined output for main results table: ", Sys.time() - start_time)))
-
 ```
 
 ```{r layout results table with download and shortlist buttons}
@@ -571,7 +554,6 @@ indicesSelectedRows <- shiny::reactive({
   return(input$datatable_rows_selected)
 })
 
-# message(print(paste0("detect selection of rows: ", Sys.time() - start_time)))
 ```
 
 ```{r download handler for full results}
@@ -626,8 +608,6 @@ output$report <- shiny::downloadHandler(
    }
 )
 
-# message(print(paste0("defined download handler for full results: ", Sys.time() - start_time)))
-
 ```
 
 ### Shortlist (`r renderText(nrow(shortlist()))` studies)
@@ -666,8 +646,6 @@ shiny::observeEvent(input$addToShortlist, {
 
 ```{r define output for shortlist table}
 
-
-
 ## show tooltips
 output$shortlistTable <- DT::renderDT(unique(dplyr::select(shortlist(),
                             "Brief title" = "brief_title",
@@ -700,9 +678,6 @@ output$shortlistTable <- DT::renderDT(unique(dplyr::select(shortlist(),
                                                        }")))
                                 )
   )
-
-
-
 
 ```
 
@@ -820,8 +795,6 @@ output$downloadShortlist <- shiny::downloadHandler(
 ```{r disconnect from database}
 DBI::dbDisconnect(sqlite_con) 
 
-
-
 ```
 
 
@@ -870,8 +843,6 @@ Potential matching trials are ranked according to the following order:
 * Data regarding biological pathways are sourced from KEGG (https://www.kegg.jp/kegg/) using the R BioConductor package: https://www.bioconductor.org/  
   
 * Contains Ordnance Survey data © Crown copyright and database right 2021  
-  
-* Contains Royal Mail data © Royal Mail copyright and database right 2021  
   
 * Source: Office for National Statistics licensed under the Open Government Licence v.3.0  
   

@@ -1179,6 +1179,31 @@ scored_matches <- scored_matches %>%
   
 `r formattable(head(scored_matches))`  
 
+```{r make final changes to tables before saving to DB}
+
+cancerStudies <- cancerStudies %>%
+  dplyr::mutate(last_update_posted_date = as.numeric(last_update_posted_date)) %>%
+  dplyr::mutate(primary_completion_date = as.numeric(primary_completion_date)) %>%
+  dplyr::mutate(last_update_posted_date = as.Date(last_update_posted_date, origin = "1970-01-01")) %>%
+  dplyr::mutate(primary_completion_date = as.Date(primary_completion_date, origin = "1970-01-01")) %>%
+  dplyr::mutate(last_update_posted_date = format(last_update_posted_date, format = "%d %b %Y")) %>%
+  dplyr::mutate(primary_completion_date = format(primary_completion_date, format = "%d %b %Y")) %>%
+  dplyr::mutate(latitude = as.numeric(latitude)) %>%
+  dplyr::mutate(longitude = as.numeric(longitude)) %>%
+  dplyr::mutate(condition_PT = stringr::str_squish(condition_PT)) %>%
+  dplyr::mutate(city = ifelse(test = site_status == "Not yet recruiting", 
+                                     yes = paste0(city, " (in setup)"),
+                                     no = city))           %>%                 ## add flag for sites not yet recruiting
+  dplyr::select(nct_id, brief_title, primary_completion_date, last_update_posted_date, condition, city, overall_status, site_status, site_contacts, central_contacts, refresh_date, Link, condition_PT, latitude, longitude, tx_exclusions) %>%
+  dplyr::mutate(brief_title = paste0('<a href="',Link,'" target="_blank">',brief_title ,  " </a>")) %>%         ## add some html code to brief_title value with relevant link
+  unique()
+
+
+
+```
+
+
+
 ```{r save tables needed for Shiny app to DB}
 ## by doing this last, if any errors encountered above, Shiny app will use previous version of DB
 dbWriteTable(conn = sqlite_con,name = "cancerStudies", cancerStudies , overwrite=TRUE)
@@ -1187,6 +1212,43 @@ dbWriteTable(conn = sqlite_con,name = "scored_matches", scored_matches , overwri
 dbWriteTable(conn = sqlite_con,name = "conditionSynonyms", conditionSynonyms , overwrite=TRUE)
 
 ```
+
+### **Data dictionary**  
+  
+* The following tables are saved to the database, for use by the UI  
+  
+#### **cancerStudies table**  
+  
+```{r preview cancerStudies table}
+
+cancerStudies %>%
+  head() %>%
+  formattable()
+
+```
+
+* cancerStudies.nct_id: a unique identification code given to each clinical study registered on ClinicalTrials.gov. The format is the letters "NCT" followed by an 8-digit number (for example, NCT00000419)    
+  * Only cancer studies with at least one site open in the configured country are included  
+* cancerStudies.brief_title: shortened title of study, appended with HTML tags to open link in new tab  
+* cancerStudies.primary_completion_date: The primary completion date for the study (as defined by NLM) in a date-type format so that it can be used to find studies before/after/inclusive of a date or dates.  For studies that only provide month/year, the last day of the month is used.  
+* cancerStudies.last_update_posted_date: The _posted suffix indicates the date that a submission was made public on ClinicalTrials.gov. Typically, posting occurs the business day after qc review was successfully completed  
+* cancerStudies.condition: the verbatim name(s) of the disease(s) or condition(s) studied in the clinical study, conditions.name in ct.gov database  
+* cancerStudies.city: location of study site  
+* cancerStudies.overall_status: recruitment status of study  
+* cancerStudies.site_status: recruitment status of site  
+* cancerStudies.site_contacts: email addresses for contacts at site, if available  
+* cancerStudies.central_contacts: email addresses for central contacts (typically at sponsor), if available  
+* cancerStudies.refresh_date: date these data were refreshed  
+* cancerStudies.Link: link to study record on clinicaltrials.gov  
+* cancerStudies.condition_PT: mapping to preferred terms for cancer types, as specified in conditionSynonyms file  
+* cancerStudies.latitude: latitude of study site (city)  
+* cancerStudies.longitude: longitude of study site (city)  
+* cancerStudies.tx_exclusions: exclusion criteria related to prior therapies, if any  
+  
+  
+
+
+
 
 ```{r disconnect from  database}
 
