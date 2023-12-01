@@ -8,7 +8,7 @@ output: html_document
 ```{r copyright notice}
  # 
  # This file is part of the cancer-trial-match distribution (https://github.com/digital-ECMT/cancer-trial-match).
- # Copyright (C) 2021 digital ECMT
+ # Copyright (C) 2021-2023 digital ECMT
  # 
  # This program is free software: you can redistribute it and/or modify  
  # it under the terms of the GNU General Public License as published by  
@@ -30,8 +30,6 @@ output: html_document
 ## You may re-use this information (not including logos or Northern Ireland data) free of charge in any format or medium, under the terms of the relevant data owners' licence. In addition, the following attribution statements must be acknowledged or displayed whenever the owners data is used:
 
 ## Contains Ordnance Survey data © Crown copyright and database right 2021
-
-## Contains Royal Mail data © Royal Mail copyright and database right 2021
 
 ## Source: Office for National Statistics licensed under the Open Government Licence v.3.0
 ```
@@ -116,7 +114,7 @@ chemblDB_con <- dbConnect(RSQLite::SQLite(), chembl_db_filename)
 
 ```
 
-**Date of data refresh: `r today`**  
+* **Date of data refresh: `r today`**  
  
 ```{r connect to SQLite DB} 
 # Create an RSQLite database
@@ -124,9 +122,15 @@ sqlite_con <- dbConnect(RSQLite::SQLite(), "indexedTrialData.sqlite")
 
 ```
   
-### **Download and save a table of human genes and synonyms**  
+### **Dictionaries**  
   
-```{r REFACTORED download and process a list of all human genes and their synonyms, warning=FALSE, message=FALSE}  
+* Dictionaries are used to lookup and map terms from ct.gov study record to preferred terms.  
+  
+#### **Human gene names and synonyms**  
+  
+* Entrez Gene Symbols are used as preferred terms for gene names.  
+  
+```{r download and process a list of all human genes and their synonyms, warning=FALSE, message=FALSE}  
 
 ## define common false hits among gene aliases
 common_false_hits_gene_aliases <- c("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "NA", "B12", "EL", "G6PD", "CAT", "CT", "MRI", "OTC", "polymerase", "G1", "PI", "COPD", "A1", "ARM", "ALS", "AA", "B5", "C1", "C2", "C3", "C5", "C6", "D3", "D4", "A-2", "A3", "1D", "1A", "L1")
@@ -144,9 +148,11 @@ humanGenes <- AnnotationDbi::select(org.Hs.eg.db, columns=c("ENTREZID", "SYMBOL"
 # setdiff(x=humanGenes$Symbol, y=humanGenes$Aliases)  
 ```
 
-### **Download and save NCI thesaurus**  
+#### **Drug names and synonyms**  
   
-```{r REFACTORED download NCI thesaurus, message=FALSE}
+* The NCI thesaurus is used as a source of preferred terms and synonyms for drugs, plus parent-child relationships between terms  
+
+```{r download NCI thesaurus, message=FALSE}
 
 ## latest version should always be at this url...
 NCItURL <- "https://evs.nci.nih.gov/ftp1/NCI_Thesaurus/Thesaurus.FLAT.zip"
@@ -161,6 +167,8 @@ tryCatch(
   expr = {
     download.file(url=NCItURL,destfile = destFlatFilename)
     unzip(zipfile = paste0(getwd(),"/",destFlatFilename))
+    ## clean up, remove files
+    invisible(file.remove("NCIt_FLAT.zip"))
   }, error = function(e) {
     print("NCIt download failed")
   }
@@ -171,12 +179,9 @@ NCIt <- read.table("Thesaurus.txt",header = FALSE, sep = "\t", comment.char = ""
 
 names(NCIt) <- c("code", "concept_IRI", "parents", "synonyms", "definition", "display_name", "concept_status", "semantic_type", "concept_in_subset")
 
-## clean up, remove files
-file.remove("NCIt_FLAT.zip")
-file.remove("Thesaurus.txt")
 ```
 
-```{r REFACTORED normalise NCI thesaurus}
+```{r  normalise NCI thesaurus}
 ## normalise columns with concatenated values
 NCIt <- NCIt %>%
   dplyr::mutate(semantic_type = str_split(semantic_type, pattern = "\\|")) %>%    ## an entity may have more than one semantic_type - split and unnest...
@@ -194,7 +199,7 @@ NCIt <- NCIt %>%
 
 ```
 
-```{r REFACTORED join parent synonyms}
+```{r  join parent synonyms}
 ## parent synonym will be used for mechanism search in UI (e.g. MTOR inhibitor is a parent of Everolimus)
 
 ## create a temporary table that will hold a synonym for each parent
@@ -218,7 +223,7 @@ rm(NCItParents)
 
 ```
 
-```{r REFACTORED exclude uninformative entities from NCIt}
+```{r exclude uninformative entities from NCIt}
 
 NCIt <- NCIt %>%
   dplyr::filter(!(concept_status %in% c("Retired_Concept", "Obsolete_Concept", "Provisional_Concept", "Header_Concept", "Concept_Pending_Approval"))) %>% 
@@ -239,15 +244,15 @@ rm(NCIt_multiple_terms)
 
 ```
 
-* A subset of the preprocessed NCI thesaurus (semantic_type==*Pharmacologic Substance* is saved in memory in the NCIt_Pharmacologics table (not saved to DB).  
-
 ```{r subset NCIt for Pharmacologic Substance}
 
 NCIt_Pharmacologics <- unique(dplyr::filter(NCIt, semantic_type %in% c("Immunologic Factor", "Pharmacologic Substance")))
 
 ```
   
-### **Map NCIt drugs to their targets via CHEMBL**  
+#### **Drug-target relationships**  
+  
+* Drug-target relationships are primarily sourced from ChEMBL  
   
 ```{r read data from tables}
 # COMPONENT_SYNONYMS <- dbGetQuery(con, "SELECT * FROM COMPONENT_SYNONYMS")         ## Table storing synonyms for the components of molecular targets
@@ -355,11 +360,9 @@ drugs_targets <- NCIt_to_CHEMBL %>%
   
 ```
 
-### **Map NCIt drugs to their targets via IUPHAR**  
-  
 * Although CHEMBL is comprehensive, it does not include MTOR as a target for Everolimus (only FKBP1A)  
 * There are likely to be other examples  
-* Therefore, supplement drug->target edges from CHEMBL with data from other sources - this case, IUPHAR  
+* Therefore, IUPHAR is used as an additional source of drug-target relationships  
   * See descriptions for downloads here: https://www.guidetopharmacology.org/DATA/file_descriptions.txt  
   
 ```{r download tables from IUPHAR }
@@ -417,12 +420,10 @@ drugs_targets <- unique(rbind(drugs_targets, iuphar_processed))
 #dplyr::filter(drugs_targets, NCIt_code == "C48387")
 ```
 
-```{r NOT NEEDED write drugs_targets to database}
-## create as a table in database
-#dbWriteTable(conn = con,name = "drugs_targets", value = drugs_targets, overwrite=TRUE)
-```
-
-### **Define controlled terms and synonyms for cancer types**  
+#### **Preferred terms and synonyms for cancer types**  
+  
+* Preferred terms and synonyms for cancer types are based on a user-defined term set  
+  * Loaded from *conditionSynonyms6.csv* file  
   
 ```{r create table of cancer types}
 ## conditionSynonyms specifies which cancer types are of interest, and which condition names (as used by clinicaltrials.gov) will be considered as matches for each
@@ -456,19 +457,14 @@ conditionSynonyms <- unique(conditionSynonyms)
 ## create as a table in database
 dbWriteTable(conn = sqlite_con,name = "conditionSynonyms", value = conditionSynonyms, overwrite=TRUE)
 
-## check it has saved
-# dbListTables(sqlite_con)
-
 ```
   
-* A set of mappings between cancer types of interest and condition names (as used by clinicaltrials.gov) must be provided via a file named *conditionSynonyms5.csv*, and these are saved in the *conditionSynonyms* table:  
+### **Index study records**  
   
-`r formattable(head(conditionSynonyms))`  
-    
-### **Connect to clinicaltrials.gov**  
-  
-* A user name and password for an AACT account is required.  
-* see https://aact.ctti-clinicaltrials.org/ for how to create an account  
+* Study records are sourced exclusively from clinicaltrials.gov, via AACT   
+  * A user name and password for an AACT account is required.  
+  * These must be specified in the *trialMatchConfiguration.json* file  
+  * see https://aact.ctti-clinicaltrials.org/ for how to create an account  
   
 ```{r connect to clinicaltrialsgov, message=FALSE}  
 
@@ -476,12 +472,9 @@ dbWriteTable(conn = sqlite_con,name = "conditionSynonyms", value = conditionSyno
 drv = RPostgres::Postgres()
 ctgov_con <- dbConnect(drv, dbname="aact",host="aact-db.ctti-clinicaltrials.org", port=5432, user=aact.username, password=aact.password )
 ```
- 
-### **Get study info for all interventional cancer studies**  
   
-* We will download, index and store data (including results) for all interventional cancer studies (globally, ever)  
-* For now, only data for studies with sites open in the specified country will be used by the trial finder  
-  
+* Only cancer studies with at least one site open in the country specified in *trialMatchConfiguration.json* file are indexed  
+
 ```{r get data for open cancer studies in configured country}
 
 ## get data for all cancer studies that have reported results
@@ -514,11 +507,11 @@ cancerStudies <- cancerStudies %>%
 
 ```
   
-* As of `r today`, there are a total of **`r length(unique(cancerStudies$nct_id))` cancer studies** listed in clinicaltrials.gov and included in this analysis.  
+* As of `r today`, for `r configuration$country` this includes **`r length(unique(cancerStudies$nct_id))` cancer studies**.  
   
-`r formattable(head(cancerStudies))`  
-    
-#### **Map verbatim condition names to controlled set of cancer types**  
+#### **Map condition names to preferred terms for cancer types**  
+  
+* condition names (*conditions.name*) are mapped to cancertype preferred terms using dictionary lookup  
   
 ```{r create dictionary of cancer types}
 
@@ -557,15 +550,11 @@ cancerStudies <- cancerStudies %>%
 
 ```
 
-* **The following condition names have not mapped to controlled terms and are lost at this stage**:  
+* **The following condition names have not mapped to preferred terms and are lost at this stage**:  
   
-**`r unmapped_condition_names`**  
+`r unmapped_condition_names`  
   
-* After mapping to controlled terms for cancer types, **`r length(unique(cancerStudies$nct_id))` studies remain**  
-  
-`r formattable(head(cancerStudies))`  
-  
-### **Get latitude and longitude values for cities**  
+* After mapping to preferred terms for cancer types, **`r length(unique(cancerStudies$nct_id))` studies remain**  
   
 ```{r get lat and long values for cities}
 
@@ -577,8 +566,6 @@ cancerStudies <- cancerStudies %>%
 
 ```
     
-### **Get other tables from clinicaltrials.gov**  
-  
 ```{r format list of study IDs for SQL}
 ## format study IDs for SQL query
 studyIDsForSQL <- paste0("\'",paste(unique(cancerStudies$nct_id), collapse = "\',\'"), "\'")
@@ -635,14 +622,9 @@ design_groups <- dbGetQuery(ctgov_con,getDesignGroupsQ)
 ## NOTE, SOME STUDIES HAVE NO DESIGN GROUPS SPECIFIED, BUT MAY HAVE RESULT GROUPS SPECIFIED
 ```
 
-### **Index study interventions**  
-
-* Interventions are stored as follows in clinicaltrials.gov 
-  * each intervention_id value is unique, i.e. same intervention in different studies is given different *intervention_id* values:
+#### **Map intervention names to preferred terms**  
   
-`r formattable(head(interventions))`  
-  
-* We will map study interventions (as listed in clinicaltrials.gov) to drug entities in the NCI thesaurus (provides preferred terms, mechanism and other info)...  
+* study interventions (*interventions.name*) are mapped to NCI thesaurus entities, display_name values are used as preferred terms  
   
 ```{r create dictionary of drug names}
 ## define semantic types to be included
@@ -683,7 +665,9 @@ interventions <- interventions %>%
 ```
 
 * We retain all interventions at this stage, including those that have not mapped to either NCI thesaurus or KEGG drug target...  
-
+  
+* parent terms are joined from NCI thesaurus - for drugs, these are typically labels for the relevant drug class  
+  
 ```{r join intervention parent terms from NCIt}
 ## to support searching on parent term (drug mechanism) in UI
 interventions <- interventions %>%
@@ -693,10 +677,11 @@ interventions <- interventions %>%
 
 ```
   
-### **Index eligibility criteria**  
+#### **Index inclusion criteria on genetic alterations**  
   
-#### **Index inclusion criteria on gene alterations**  
-
+* Inclusion criteria are indexed based on co-occurrence of an alteration synonym within a 6-word window of a human gene name  
+  * To improve precision, only gene names included in the NCI thesaurus (i.e. gene relevant to cancer) are included  
+  
 ```{r preprocess eligibility criteria}
 
 eligibilities <- eligibilities %>%
@@ -711,8 +696,6 @@ eligibilities <- eligibilities %>%
     unique()
 ```
 
-Eligibility criteria are classified as either *INCLUSION* or *EXCLUSION* based on the occurrence of the patterns *inclusion criteria:* and *exclusion criteria:*  
-  
 ```{r classify as inclusion exclusion criteria}
 
 ## add a column to indicate criterion type
@@ -733,9 +716,9 @@ eligibilities <- tidyr::fill(data=eligibilities, criterion_type, .direction="dow
 ```
   
 * There are some common patterns observed in criteria that are complicate named entity recognition, for example:  
- * The string *BRCA1/2* is shorthand for *BRCA1 or BRCA2* and *RAD51C/D* is shorthand for *RAD51C or RAD51D*  
- * Likewise, the string *BRCA* is shorthand for *BRCA1 or BRCA2*  
-* Expand these so that e.g. *BRCA1/2* is converted to *BRCA1 or BRCA2*  
+  * The string *BRCA1/2* is shorthand for *BRCA1 or BRCA2* and *RAD51C/D* is shorthand for *RAD51C or RAD51D*  
+  * Likewise, the string *BRCA* is shorthand for *BRCA1 or BRCA2*  
+* Such patterns are expanded during preprocessing so that e.g. *BRCA1/2* is converted to *BRCA1 or BRCA2*  
   
 ```{r expand gene abbreviations in eligibility criteria text}
 ## create a copy of criterion text for processing
@@ -847,6 +830,8 @@ eligibilities <- eligibilities %>%
 
 #### **Index exclusion criteria on prior treatment**  
   
+* Similarly, exclusion criteria are indexed based on co-occurrence of the word "prior" or "previous" within a six-word window of a treatment synonym  
+  
 ```{r create a dictionary of therapies and procedures}
 
 ## include "Therapeutic or Preventive Procedure" to get chemotherapy regimens (e.g. FOLFOX)
@@ -905,7 +890,9 @@ cancerStudies <- cancerStudies %>%
 
 ```
 
-### **Index design groups**  
+#### **Index design groups on genetic alterations**  
+  
+* Design group (i.e.treatment arm) titles and descriptions are indexed in same way as inclusion criteria  
   
 ```{r preprocess design group descriptions}
 
@@ -998,8 +985,6 @@ design_groups <- design_groups %>%
 
 ### **Score matches against gene alterations**  
   
-#### **Score studies enrolling patients with feature**  
-  
 * Assign *eligibility_score* +3 to a study if enrolling patients with 1 or more specified alteration  
 * Assign *eligibility_score* +3 to a study if treatment is stratified on specified alteration  
   * **if both of these apply, report treatment stratification over enrollment**  
@@ -1039,10 +1024,9 @@ scored_matches <- design_groups %>%
 
 ```
 
-#### **Score studies with interventions targeting altered gene**  
-  
 * Assign *intervention_score* +2 to a study if any intervention targets an altered gene directly  
-  * The following action types are considered relevant for the following alteration types:  
+  * No intervention scores are assigned if the alteration type is *loss* (since the drug target will not be present)  
+  * For amplifications, positive modulators (e.g. agonsts, activators etc) are not assigned a score  
   
 ```{r specify MOAs relevant for each alteration type}
 
@@ -1062,7 +1046,7 @@ relevant_moas <- data.frame(
   unique()
   
 
-formattable(relevant_moas)
+#formattable(relevant_moas)
 ```
 
 ```{r score matches on intervention targets altered gene}
@@ -1085,8 +1069,6 @@ scored_matches_interventions <- interventions %>%
   unique()
 
 ```
-  
-#### **Score studies with interventions targeting downstream element**  
   
 * We will get pathway information from KEGG, specifically for the pathway *Pathways In Cancer* (KEGG ID *hsa05200*).  
   
@@ -1158,9 +1140,8 @@ scored_matches_interventions <- scored_matches_interventions %>%
 
 ```
 
-#### **Combine eligibility and intervention scores**  
-  
 * Calculate a *combined_score* = *eligibility_score* + *intervention_score*  
+  * The *combined_score* value is used to rank studies in the Shiny app  
   
 ```{r calculate combined scores}
 
@@ -1175,10 +1156,6 @@ scored_matches <- scored_matches %>%
     arrange(desc(combined_score))
 
 ```
-
-* Scored matches are saved in the *scored_matches* table:  
-  
-`r formattable(head(scored_matches))`  
 
 ```{r make final changes to tables before saving to DB}
 
@@ -1207,8 +1184,6 @@ interventions <- interventions %>%
 
 ```
 
-
-
 ```{r save tables needed for Shiny app to DB}
 ## by doing this last, if any errors encountered above, Shiny app will use previous version of DB
 dbWriteTable(conn = sqlite_con,name = "cancerStudies", cancerStudies , overwrite=TRUE)
@@ -1233,7 +1208,7 @@ cancerStudies %>%
     scroll_box(width = "100%", height = "400px")
 
 ```
-
+  
 * cancerStudies.nct_id: a unique identification code given to each clinical study registered on ClinicalTrials.gov. The format is the letters "NCT" followed by an 8-digit number (for example, NCT00000419)    
   * Only cancer studies with at least one site open in the configured country are included  
 * cancerStudies.brief_title: shortened title of study, appended with HTML tags to open link in new tab  
@@ -1252,6 +1227,8 @@ cancerStudies %>%
 * cancerStudies.longitude: longitude of study site (city)  
 * cancerStudies.tx_exclusions: exclusion criteria related to prior therapies, if any  
   
+  
+  
 #### **interventions table**  
   
 ```{r preview interventions table}
@@ -1264,6 +1241,7 @@ interventions %>%
 
 ```
   
+  
 * interventions.nct_id: study identifier  
 * interventions.intervention_name: verbatim intervention name, as stored in ct.gov record  
 * interventions.intervention_pt: preferred term for intervention, based on NCI thesaurus display_name, if available  
@@ -1271,6 +1249,8 @@ interventions %>%
 * interventions.TARGET_SYMBOL: Entrez symbol for molecular target of drug, if available  
 * interventions.action_type: action of intervention on target, if available  
 * interventions.Parent_synonym: synonyms of intervention's parent term in NCI thesaurus  
+  
+  
   
 #### **scored_matches table**  
   
@@ -1284,12 +1264,15 @@ scored_matches %>%
 
 ```
   
+  
+  
 * scored_matches.nct_id: study identifier  
 * scored matches.gene_alteration_type: genetic alteration that has been linked to study, format = <*Entrez symbol*> <*alteration type*>  
 * scored_matches.eligibility_rationale: short text description describing rationale linking study to genetic alteration, if applicable  
-* scored_matches.intervention_rationale: short text description describing rationale linking study intervention to genetic alteration, if applicable   
+* scored_matches.intervention_rationale: short text description describing rationale linking study intervention to genetic alteration, if applicable  
 * scored_matches.matching_criteria: verbatim text from study record (inclusion criteria/treatment group description) linking study to genetic alteration, if applicable  
 * scored_matches.combined_score: sum of eligibility and intervention scores for that combination of study and genetic alteration  
+  
   
 #### **conditionSynonyms table**  
   
