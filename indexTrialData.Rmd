@@ -75,6 +75,7 @@ require(rpart.plot)       ## GPL-3
 require(quanteda)         ## GPL-3
 require(corpus)           ## 	Apache License (== 2.0) 
 require(tidytext)         ## MIT
+require(kableExtra)       ## MIT
 
 ## clean up first
 rm(list=ls())
@@ -1200,6 +1201,10 @@ cancerStudies <- cancerStudies %>%
 
 
 
+interventions <- interventions %>%
+  dplyr::select(nct_id, intervention_name, intervention_pt, NCIt_code, TARGET_SYMBOL, action_type, Parent_synonym) %>%
+  unique()
+
 ```
 
 
@@ -1222,8 +1227,10 @@ dbWriteTable(conn = sqlite_con,name = "conditionSynonyms", conditionSynonyms , o
 ```{r preview cancerStudies table}
 
 cancerStudies %>%
-  head() %>%
-  formattable()
+    head() %>%
+    kable() %>%
+    kable_styling(full_width = F, fixed_thead = T) %>%
+    scroll_box(width = "100%", height = "400px")
 
 ```
 
@@ -1245,9 +1252,59 @@ cancerStudies %>%
 * cancerStudies.longitude: longitude of study site (city)  
 * cancerStudies.tx_exclusions: exclusion criteria related to prior therapies, if any  
   
+#### **interventions table**  
   
+```{r preview interventions table}
 
+interventions %>%
+    head() %>%
+    kable() %>%
+    kable_styling(full_width = F, fixed_thead = T) %>%
+    scroll_box(width = "100%", height = "400px")
 
+```
+  
+* interventions.nct_id: study identifier  
+* interventions.intervention_name: verbatim intervention name, as stored in ct.gov record  
+* interventions.intervention_pt: preferred term for intervention, based on NCI thesaurus display_name, if available  
+* interventions.NCIt_code: NCI thesaurus code for study intervention  
+* interventions.TARGET_SYMBOL: Entrez symbol for molecular target of drug, if available  
+* interventions.action_type: action of intervention on target, if available  
+* interventions.Parent_synonym: synonyms of intervention's parent term in NCI thesaurus  
+  
+#### **scored_matches table**  
+  
+```{r preview scored_matches table}
+
+scored_matches %>%
+    head() %>%
+    kable() %>%
+    kable_styling(full_width = F, fixed_thead = T) %>%
+    scroll_box(width = "100%", height = "400px")
+
+```
+  
+* scored_matches.nct_id: study identifier  
+* scored matches.gene_alteration_type: genetic alteration that has been linked to study, format = <*Entrez symbol*> <*alteration type*>  
+* scored_matches.eligibility_rationale: short text description describing rationale linking study to genetic alteration, if applicable  
+* scored_matches.intervention_rationale: short text description describing rationale linking study intervention to genetic alteration, if applicable   
+* scored_matches.matching_criteria: verbatim text from study record (inclusion criteria/treatment group description) linking study to genetic alteration, if applicable  
+* scored_matches.combined_score: sum of eligibility and intervention scores for that combination of study and genetic alteration  
+  
+#### **conditionSynonyms table**  
+  
+```{r preview conditionSynonyms table}
+
+conditionSynonyms %>%
+    head() %>%
+    kable() %>%
+    kable_styling(full_width = F, fixed_thead = T) %>%
+    scroll_box(width = "100%", height = "400px")
+
+```
+  
+* conditionSynonyms.controlled_cancer_type: user-specified set of preferred terms for cancer types  
+* conditionSynonyms.condition_synonyms: user-specified set of synonyms for each cancer type, used for dictionary lookup against condition.name values in ct.gov study record  
 
 
 ```{r disconnect from  database}
