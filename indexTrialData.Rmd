@@ -473,12 +473,24 @@ drv = RPostgres::Postgres()
 ctgov_con <- dbConnect(drv, dbname="aact",host="aact-db.ctti-clinicaltrials.org", port=5432, user=aact.username, password=aact.password )
 ```
   
-* Only cancer studies with at least one site open in the country specified in *trialMatchConfiguration.json* file are indexed  
+* Only cancer studies with at least one site open in one of the countries specified in *trialMatchConfiguration.json* file are indexed  
 
-```{r get data for open cancer studies in configured country}
+```{r get data for open cancer studies in configured countries}
+
+## format country names for SQL query
+#studyIDsForSQL <- paste0("\'",paste(unique(cancerStudies$nct_id), collapse = "\',\'"), "\'")
+
+countries_for_sql <- configuration$country %>%
+    stringr::str_split(pattern = ",") %>%
+    unlist() %>%
+    stringr::str_squish() %>%
+    sprintf(fmt = "'%s'", .) %>%      ## surround countries with single quotes
+    toString()  %>%       ## convert to string
+    tolower()
+
 
 ## get data for all cancer studies that have reported results
-cancerStudiesQ <- paste0("SELECT s.nct_id, s.brief_title, s.primary_completion_date, s.last_update_posted_date, s.phase, s.acronym, s.number_of_arms, s.number_of_groups,  s.overall_status,  c.name AS condition, f.city, f.status AS site_status, fc.email AS site_contacts, cc.email AS central_contacts
+cancerStudiesQ <- paste0("SELECT s.nct_id, s.brief_title, s.primary_completion_date, s.last_update_posted_date, s.phase, s.acronym, s.number_of_arms, s.number_of_groups,  s.overall_status,  c.name AS condition, f.city, f.country, f.status AS site_status, fc.email AS site_contacts, cc.email AS central_contacts
 FROM studies s
 INNER JOIN conditions c ON c.nct_id = s.nct_id
 INNER JOIN calculated_values cv ON cv.nct_id = s.nct_id
@@ -487,7 +499,7 @@ LEFT JOIN facility_contacts fc ON f.id = fc.facility_id
 LEFT JOIN central_contacts cc ON s.nct_id = cc.nct_id
 WHERE s.study_type LIKE ('Interventional')
 AND s.overall_status IN ('Recruiting', 'Not yet recruiting')
-AND lower(f.country) = '", tolower(configuration$country), "'
+AND lower(f.country) IN (", countries_for_sql, ")
 AND f.status IN ('Recruiting', 'Not yet recruiting')
 AND (c.downcase_name LIKE '%cancer%'
 OR c.downcase_name LIKE '%neoplasm%'
@@ -556,16 +568,6 @@ cancerStudies <- cancerStudies %>%
   
 * After mapping to preferred terms for cancer types, **`r length(unique(cancerStudies$nct_id))` studies remain**  
   
-```{r get lat and long values for cities}
-
-cancerStudies <- cancerStudies %>%
-    dplyr::mutate(city_country = paste0(city, ", ", configuration$country)) %>%
-    geocode(city_country, method = 'osm', lat = latitude , long = longitude) %>%
-    dplyr::select(-city_country) %>%
-    as.data.frame()
-
-```
-    
 ```{r format list of study IDs for SQL}
 ## format study IDs for SQL query
 studyIDsForSQL <- paste0("\'",paste(unique(cancerStudies$nct_id), collapse = "\',\'"), "\'")
@@ -621,7 +623,22 @@ design_groups <- dbGetQuery(ctgov_con,getDesignGroupsQ)
 
 ## NOTE, SOME STUDIES HAVE NO DESIGN GROUPS SPECIFIED, BUT MAY HAVE RESULT GROUPS SPECIFIED
 ```
+  
+#### **Get latitude and longitude values for sites**  
+  
+* City name will be used to get latitude and longitude values to display site locations in user interface  
+  
+```{r get lat and long values for cities}
 
+cancerStudies <- cancerStudies %>%
+    # dplyr::mutate(city_country = paste0(city, ", ", configuration$country)) %>%
+    dplyr::mutate(city_country = paste0(city, ", ", country)) %>%
+    geocode(city_country, method = 'osm', lat = latitude , long = longitude) %>%
+    dplyr::select(-city_country) %>%
+    as.data.frame()
+
+```
+  
 #### **Map intervention names to preferred terms**  
   
 * study interventions (*interventions.name*) are mapped to NCI thesaurus entities, display_name values are used as preferred terms  
