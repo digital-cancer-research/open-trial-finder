@@ -7,7 +7,8 @@
 This repository contains R files to derive data for cancer clinical trials, plus web viewer to visualise results.  
   
 The following files are required to derive data and deploy web viewer:  
-* **trialMatchConfiguration.json:**	configuration file, defines values for country, contact information, "about us" description and privacy policy  
+* **trialMatchConfiguration.json:**	configuration file, defines values for country/countries, contact information, "about us" description and privacy policy
+	* if configuring for >1 country, separate country names by commas (e.g. Switzerland, France)
 * **conditionSynonyms6.csv:**  	defines mappings between cancer types of interest and condition names (as used by clinicaltrials.gov)  
 * **digitalECMTlogo48px.PNG:**	icon for digital Experimental Cancer Medicine Team (creators of this tool)  
 * **indexTrialData.Rmd:**		R script to download and store data required by user interface  
