@@ -821,6 +821,7 @@ humanGenes_dictionary <- humanGenes %>%
 window_size <- 6
 
 eligibilities_alterations_genes <- eligibilities %>%
+    dplyr::filter(criterion_type == "INCLUSION") %>%
     corpus(docid_field = "criterion_index",  text_field = "criteria_processed") %>% 
     tokens() %>%
     kwic(pattern =  alterations_dictionary, window = window_size) %>% 
