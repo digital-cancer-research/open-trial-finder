@@ -148,6 +148,19 @@ humanGenes <- AnnotationDbi::select(org.Hs.eg.db, columns=c("ENTREZID", "SYMBOL"
 # setdiff(x=humanGenes$Symbol, y=humanGenes$Aliases)  
 ```
 
+```{r remove KRAS as synonym of NRAS}
+humanGenes <- humanGenes |>
+    dplyr::filter(!(Symbol == 'NRAS' & Aliases == 'KRAS'))
+
+```
+
+```{r include ARID1a as synonym of ARID1A}
+
+humanGenes <- humanGenes |>
+    dplyr::add_row(GeneID = '8289', Symbol = 'ARID1A', Aliases = 'ARID1a')
+```
+
+
 #### **Drug names and synonyms**  
   
 * The NCI thesaurus is used as a source of preferred terms and synonyms for drugs, plus parent-child relationships between terms  
