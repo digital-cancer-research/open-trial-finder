@@ -510,10 +510,10 @@ INNER JOIN calculated_values cv ON cv.nct_id = s.nct_id
 INNER JOIN facilities f on s.nct_id = f.nct_id
 LEFT JOIN facility_contacts fc ON f.id = fc.facility_id
 LEFT JOIN central_contacts cc ON s.nct_id = cc.nct_id
-WHERE s.study_type LIKE ('Interventional')
-AND s.overall_status IN ('Recruiting', 'Not yet recruiting')
+WHERE s.study_type LIKE ('INTERVENTIONAL')
+AND s.overall_status IN ('RECRUITING', 'NOT YET RECRUITING')
 AND lower(f.country) IN (", countries_for_sql, ")
-AND f.status IN ('Recruiting', 'Not yet recruiting')
+AND f.status IN ('RECRUITING', 'NOT YET RECRUITING')
 AND (c.downcase_name LIKE '%cancer%'
 OR c.downcase_name LIKE '%neoplasm%'
 OR c.downcase_name LIKE '%carcinoma%'
@@ -956,12 +956,14 @@ replacement_strings <- as.character(replacements$expanded)
 names(replacement_strings) <- replacements$verbatim
 # replacement_strings
 
-## replace all occurrences of the verbatim string with the expanded string
+if(length(replacement_strings) > 0) {
+  ## replace all occurrences of the verbatim string with the expanded string
 design_groups$dg_title_description_processed <- design_groups$dg_title_description_processed %>%
   stringr::str_replace_all(pattern = replacement_strings)
+}
 
 
- ########################################################################
+
 
 ## do similar for the pattern <GENE NAME>m
 replacements2 <- data.frame(verbatim = str_extract_all(string = design_groups$dg_title_description_processed, pattern = "\\b[A-Z|0-9]+m") %>% unlist()) %>%
@@ -975,9 +977,12 @@ replacement_strings2 <- as.character(replacements2$expanded)
 names(replacement_strings2) <- replacements2$verbatim
 #replacement_strings2
 
-## replace all occurrences of the verbatim string with the expanded string
+if(length(replacement_strings2)>0) {
+  ## replace all occurrences of the verbatim string with the expanded string
 design_groups$dg_title_description_processed <- design_groups$dg_title_description_processed %>%
   stringr::str_replace_all(pattern = replacement_strings2)
+}
+
 
 
 ```

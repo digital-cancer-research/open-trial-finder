@@ -77,7 +77,7 @@ cancerStudies <- cancerStudies %>%
   # dplyr::mutate(primary_completion_date = as.Date(primary_completion_date, origin = "1970-01-01")) %>%
   # dplyr::mutate(last_update_posted_date = format(last_update_posted_date, format = "%d %b %Y")) %>%
   # dplyr::mutate(primary_completion_date = format(primary_completion_date, format = "%d %b %Y")) %>%
-  dplyr::filter( overall_status == "Recruiting") %>%
+  dplyr::filter( overall_status == "RECRUITING") %>%
   # dplyr::mutate(latitude = as.numeric(latitude)) %>%
   # dplyr::mutate(longitude = as.numeric(longitude)) %>%
   # dplyr::mutate(condition_PT = stringr::str_squish(condition_PT)) %>%
