@@ -178,7 +178,7 @@ reactiveCancerStudies <- shiny::reactive({
    table <- dplyr::filter(cancerStudies, condition_PT %in% cancer_types)
    
    ## if hiding studies in setup, filter table
-   if(input$inSetupFilter==FALSE) {table <- dplyr::filter(table, site_status == "Recruiting")}
+   if(input$inSetupFilter==FALSE) {table <- dplyr::filter(table, site_status == "RECRUITING")}
    
    ## aggregate into compact form
    table <- table %>%
