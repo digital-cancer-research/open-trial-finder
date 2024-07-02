@@ -511,9 +511,9 @@ INNER JOIN facilities f on s.nct_id = f.nct_id
 LEFT JOIN facility_contacts fc ON f.id = fc.facility_id
 LEFT JOIN central_contacts cc ON s.nct_id = cc.nct_id
 WHERE s.study_type LIKE ('INTERVENTIONAL')
-AND s.overall_status IN ('RECRUITING', 'NOT YET RECRUITING')
+AND s.overall_status IN ('RECRUITING', 'NOT_YET_RECRUITING')
 AND lower(f.country) IN (", countries_for_sql, ")
-AND f.status IN ('RECRUITING', 'NOT YET RECRUITING')
+AND f.status IN ('RECRUITING', 'NOT_YET_RECRUITING')
 AND (c.downcase_name LIKE '%cancer%'
 OR c.downcase_name LIKE '%neoplasm%'
 OR c.downcase_name LIKE '%carcinoma%'
