@@ -142,7 +142,7 @@ humanGenes <- AnnotationDbi::select(org.Hs.eg.db, columns=c("ENTREZID", "SYMBOL"
   dplyr::filter(nchar(Aliases)>1) %>%                    ## drop any rows where Aliases value is only a single character
   dplyr::filter(is.na(as.numeric(Aliases))) %>%          ## drop any rows where Aliases is a number
   dplyr::filter(!Aliases %in% common_false_hits_gene_aliases) %>%           ## drop any rows where Aliases is a common false hit (e.g. Roman numerals)
-  unique()
+  base::unique()
 
 ## check if there are any Symbol values that don't appear in Aliases column  
 # setdiff(x=humanGenes$Symbol, y=humanGenes$Aliases)  
@@ -212,7 +212,7 @@ NCIt <- NCIt %>%
   as.data.frame() %>%
   dplyr::select(code, parents, synonyms, display_name, semantic_type, concept_status) %>%
   dplyr::mutate(downloaded = Sys.Date()) %>%
-  unique()
+  base::unique()
 
 ```
 
@@ -223,7 +223,7 @@ NCIt <- NCIt %>%
 NCItParents <- NCIt %>%
   dplyr::filter(code %in% parents)  %>%     ## keep ony entities that have at least one child term
   dplyr::select("ParentID"="code", "Parent_synonym"="synonyms") %>%
-  unique() %>%
+  base::unique() %>%
   dplyr::group_by(ParentID) %>% 
   dplyr::slice_head(n=1) %>%                ## just keep first synonym for each parent term
   as.data.frame()
@@ -251,7 +251,7 @@ NCIt <- NCIt %>%
 NCIt_multiple_terms <- NCIt %>%
   dplyr::group_by(synonyms, semantic_type) %>%
   dplyr::summarise(
-    number_terms = length(unique(code))
+    number_terms = length(base::unique(code))
   ) %>%
   dplyr::filter(number_terms >1) %>%
   as.data.frame()
@@ -263,7 +263,7 @@ rm(NCIt_multiple_terms)
 
 ```{r subset NCIt for Pharmacologic Substance}
 
-NCIt_Pharmacologics <- unique(dplyr::filter(NCIt, semantic_type %in% c("Immunologic Factor", "Pharmacologic Substance")))
+NCIt_Pharmacologics <- base::unique(dplyr::filter(NCIt, semantic_type %in% c("Immunologic Factor", "Pharmacologic Substance")))
 
 ```
   
@@ -308,10 +308,10 @@ MOLECULE_SYNONYMS <- MOLECULE_SYNONYMS %>%
 ## get mapppings between NCIt codes and ChEMBL molregno (Internal Primary Key for the molecule)
 NCIt_to_CHEMBL <- NCIt_Pharmacologics %>%
   dplyr::select(code, synonyms_lower) %>%
-  unique() %>%
+  base::unique() %>%
   merge(by.x = "synonyms_lower", all.x = FALSE, y=dplyr::select(MOLECULE_SYNONYMS, molregno, synonyms_lower)) %>%
   dplyr::select(-synonyms_lower) %>%
-  unique()
+  base::unique()
   
 ## join to CHEMBL_ID (ChEMBL identifier for this compound (for use on web interface etc))
 ## also: 
@@ -331,14 +331,14 @@ NCIt_to_CHEMBL <- NCIt_to_CHEMBL %>%
 # TID: Target associated with this mechanism of action (foreign key to target_dictionary table)
 NCIt_to_CHEMBL <- NCIt_to_CHEMBL %>%
   merge(by.x = "molregno", all.x = TRUE, y=dplyr::select(DRUG_MECHANISM, molregno, mechanism_of_action, action_type, disease_efficacy, selectivity_comment, tid), by.y = "molregno") %>%
-  unique() %>%
+  base::unique() %>%
   dplyr::mutate(disease_efficacy = as.logical(disease_efficacy))
   
 
 # PARENT_TYPE: Higher-level grouping of action types e.g., positive vs negative action
 NCIt_to_CHEMBL <- NCIt_to_CHEMBL %>%
   merge(by.x = "action_type", all.x = TRUE, y=dplyr::select(ACTION_TYPE, action_type, "parent_action_type"="parent_type"), by.y = "action_type") %>%
-  unique()
+  base::unique()
 
 ```
   
@@ -349,7 +349,7 @@ NCIt_to_CHEMBL <- NCIt_to_CHEMBL %>%
   merge(by.x = "tid", all.x = TRUE, y=dplyr::select(TARGET_COMPONENTS, tid, component_id), by.y = "tid") %>%
   merge(by.x = "component_id", all.x = TRUE, y=dplyr::select(COMPONENT_SEQUENCES, component_id, organism, accession), by.y = "component_id") %>%
   dplyr::filter(organism == "Homo sapiens") %>%             ## drop rows related to non-human targets
-  unique()
+  base::unique()
 ```
 
 ```{r map from target UniProt IDs to Entrez Symbols}
@@ -363,7 +363,7 @@ uniprot_ids <- AnnotationDbi::select(org.Hs.eg.db, keys=NCIt_to_CHEMBL$accession
 NCIt_to_CHEMBL <- NCIt_to_CHEMBL %>%
   merge(by.x = "accession", all.x=TRUE, y=uniprot_ids, by.y = "UNIPROT") %>%
   dplyr::rename("TARGET_SYMBOL"= "SYMBOL") %>%
-  unique()
+  base::unique()
 
 ## delete temp table
 rm(uniprot_ids)
@@ -373,7 +373,7 @@ rm(uniprot_ids)
 drugs_targets <- NCIt_to_CHEMBL %>%
   dplyr::select(code, TARGET_SYMBOL, action_type) %>%
   dplyr::rename("NCIt_code"="code") %>%
-  unique()
+  base::unique()
   
 ```
 
@@ -407,7 +407,7 @@ iuphar_processed <- iuphar_interactions %>%
   tidyr::unnest(target_uniprot_id) %>% 
   as.data.frame() %>%  
   merge(by.x = "drug_chembl_id", y = dplyr::select(NCIt_to_CHEMBL,"NCIt_code"="code", chembl_id), by.y = "chembl_id") %>%           ## join to NCIt ID's on CHEMBL ID
-  unique()
+  base::unique()
 
 ```
 
@@ -422,7 +422,7 @@ iuphar_processed <- iuphar_processed %>%
   merge( by.x = "target_uniprot_id", y=iuphar_uniprot_ids, by.y = "UNIPROT") %>%
   dplyr::rename("TARGET_SYMBOL"= "SYMBOL") %>%
   dplyr::select(names(drugs_targets) )     %>%         ## harmonise column names with drugs_targets table
-  unique()
+  base::unique()
 
 
 rm(iuphar_uniprot_ids)
@@ -431,7 +431,7 @@ rm(iuphar_uniprot_ids)
 ```{r add IUPHAR drug target data to ChEMBL data}
 
 ## bind as new rows to drugs_targets table
-drugs_targets <- unique(rbind(drugs_targets, iuphar_processed))
+drugs_targets <- base::unique(rbind(drugs_targets, iuphar_processed))
 
 ## check e.g. for Everolimus (C48387)
 #dplyr::filter(drugs_targets, NCIt_code == "C48387")
@@ -457,9 +457,9 @@ conditionSynonyms <- read.csv(file = "conditionSynonyms6.csv", stringsAsFactors 
 ## in order to deal with this, we will include just the words "Breast", "Gastric", "Solid" as synonyms 
 ## since we are already selecting for cancer studies in the SQL query on clinicaltrials.gov, just the mention of these words should be sufficient... 
 ## first, create a new table where the synonym is just the controlled cancer type 
-simple_conditions <- data.frame(controlled_cancer_type = unique(conditionSynonyms$controlled_cancer_type), condition_synonyms = unique(conditionSynonyms$controlled_cancer_type))
+simple_conditions <- data.frame(controlled_cancer_type = base::unique(conditionSynonyms$controlled_cancer_type), condition_synonyms = base::unique(conditionSynonyms$controlled_cancer_type))
 ## second, bind this to the conditionSynonyms table
-conditionSynonyms <- unique(rbind(conditionSynonyms, simple_conditions))
+conditionSynonyms <- base::unique(rbind(conditionSynonyms, simple_conditions))
 ### now proceed as before - study NCT02264678 should get correctly mapped to Solid, NSCLC, Lung, Gastric, Breast and Ovarian cancer types... 
 ```
 
@@ -469,7 +469,7 @@ conditionSynonyms <- unique(rbind(conditionSynonyms, simple_conditions))
 conditionSynonyms$condition_synonyms <- str_squish(string = conditionSynonyms$condition_synonyms)
 
 ## remove redundancy, if any
-conditionSynonyms <- unique(conditionSynonyms)
+conditionSynonyms <- base::unique(conditionSynonyms)
 
 ## create as a table in database
 dbWriteTable(conn = sqlite_con,name = "conditionSynonyms", value = conditionSynonyms, overwrite=TRUE)
@@ -495,7 +495,7 @@ ctgov_con <- dbConnect(drv, dbname="aact",host="aact-db.ctti-clinicaltrials.org"
 ```{r get data for open cancer studies in configured countries}
 
 ## format country names for SQL query
-#studyIDsForSQL <- paste0("\'",paste(unique(cancerStudies$nct_id), collapse = "\',\'"), "\'")
+#studyIDsForSQL <- paste0("\'",paste(base::unique(cancerStudies$nct_id), collapse = "\',\'"), "\'")
 
 countries_for_sql <- configuration$country %>%
     stringr::str_split(pattern = ",") %>%
@@ -536,7 +536,7 @@ cancerStudies <- cancerStudies %>%
 
 ```
   
-* As of `r today`, for `r configuration$country` this includes **`r length(unique(cancerStudies$nct_id))` cancer studies**.  
+* As of `r today`, for `r configuration$country` this includes **`r length(base::unique(cancerStudies$nct_id))` cancer studies**.  
   
 #### **Map condition names to preferred terms for cancer types**  
   
@@ -571,7 +571,7 @@ cancerStudies <- cancerStudies %>%
   as.data.frame()
 
 ## keep detail of unmapped condition names... 
-unmapped_condition_names <- unique(cancerStudies$condition[is.na(cancerStudies$condition_PT) ])
+unmapped_condition_names <- base::unique(cancerStudies$condition[is.na(cancerStudies$condition_PT) ])
 
 ## now delete rows that haven't been mapped
 cancerStudies <- cancerStudies %>%
@@ -583,11 +583,11 @@ cancerStudies <- cancerStudies %>%
   
 `r unmapped_condition_names`  
   
-* After mapping to preferred terms for cancer types, **`r length(unique(cancerStudies$nct_id))` studies remain**  
+* After mapping to preferred terms for cancer types, **`r length(base::unique(cancerStudies$nct_id))` studies remain**  
   
 ```{r format list of study IDs for SQL}
 ## format study IDs for SQL query
-studyIDsForSQL <- paste0("\'",paste(unique(cancerStudies$nct_id), collapse = "\',\'"), "\'")
+studyIDsForSQL <- paste0("\'",paste(base::unique(cancerStudies$nct_id), collapse = "\',\'"), "\'")
 ```
   
 ```{r get study interventions}
@@ -669,7 +669,7 @@ drug_dictionary <- NCIt %>%
   dplyr::filter(semantic_type %in% semantic_types_drug) %>%
   dplyr::select(code, synonyms) %>%
   dplyr::filter(str_detect(string = synonyms, pattern = "\\(|\\)", negate = TRUE)) %>%           ## omit any rows where synonyms value contains parentheses, as these cause issues with lookup
-  unique() %>%
+  base::unique() %>%
   unstack(form = synonyms ~ code)   %>%                                   ## convert to named list
   quanteda::dictionary()                                                  ## convert to dictionary
 
@@ -694,7 +694,7 @@ interventions <- interventions %>%
   #dplyr::rename("Mechanism"="action_type") %>%
   dplyr::select(nct_id, intervention_id, intervention_name, NCIt_code, intervention_pt,TARGET_SYMBOL, action_type) %>%
   dplyr::mutate(action_type = tolower(action_type)) %>%
-  unique()
+  base::unique()
 
 ```
 
@@ -706,7 +706,7 @@ interventions <- interventions %>%
 ## to support searching on parent term (drug mechanism) in UI
 interventions <- interventions %>%
     merge(by.x = "NCIt_code", y = dplyr::select(NCIt, code, Parent_synonym), by.y = "code") %>%
-    unique() 
+    base::unique() 
 
 
 ```
@@ -727,7 +727,7 @@ eligibilities <- eligibilities %>%
     dplyr::mutate(criterion_index = paste0(nct_id, "_", row_number())) %>%         ## add an index column that uniquely identifies each criterion
     as.data.frame() %>%
     dplyr::select(nct_id, criterion_index, criteria ) %>%
-    unique()
+    base::unique()
 ```
 
 ```{r classify as inclusion exclusion criteria}
@@ -764,7 +764,7 @@ eligibilities$criteria_processed <- eligibilities$criteria %>%
 ## processing of patterns such as BRCA1/2 or RAD51C/D
 # first, create a table with all substrings in criteria that contain a forward slash
 replacements <- data.frame(verbatim = stringr::str_extract_all(string = eligibilities$criteria_processed, pattern = "\\w*/.\\b") %>% unlist()) %>% 
-    unique() %>%
+    base::unique() %>%
     dplyr::mutate(pre = stringr::str_extract(verbatim, pattern = "[^ ]*(?=/)")) %>%        ## get the substring BEFORE the slash
     dplyr::mutate(stem = stringr::str_sub(pre, end = -2))                       %>%        ## nibble the last character off the pre substring
     dplyr::mutate(post = stringr::str_extract(verbatim, pattern = "(?<=/)."))   %>%        ## get the substring AFTER the slash
@@ -791,7 +791,7 @@ replacements2 <- data.frame(verbatim = str_extract_all(string = eligibilities$cr
   dplyr::mutate(stem = verbatim %>% str_sub( end = -2)) %>%
   dplyr::filter(stem %in% humanGenes$Aliases) %>%
   dplyr::mutate(expanded = paste(stem, "mutation", sep = " ")) %>%
-  unique()
+  base::unique()
 
 ## create a named vector to use with str_replace_all
 replacement_strings2 <- as.character(replacements2$expanded)
@@ -851,13 +851,13 @@ eligibilities_alterations_genes <- eligibilities %>%
     dplyr::rename("criterion_index"="docname") %>%
     dplyr::rename("alteration_type"="pattern") %>%
     dplyr::mutate(gene_alteration_type = paste(geneSymbol, alteration_type, sep = " ")) %>%
-    unique()
+    base::unique()
 
 
 eligibilities <- eligibilities %>%
   merge(by.x = "criterion_index", all.x = TRUE, y = eligibilities_alterations_genes, by.y = "criterion_index") %>%
   dplyr::select(nct_id, criterion_index, criterion_type, criteria, gene_alteration_type) %>%
-  unique()
+  base::unique()
 
 
 
@@ -876,7 +876,7 @@ therapy_dictionary <- NCIt %>%
   dplyr::filter(semantic_type %in% semantic_types_therapy) %>%
   dplyr::select(code, synonyms) %>%
   dplyr::filter(str_detect(string = synonyms, pattern = "\\(|\\)", negate = TRUE)) %>%           ## omit any rows where synonyms value contains parentheses, as these cause issues with lookup
-  unique() %>%
+  base::unique() %>%
   unstack(form = synonyms ~ code)   %>%                                   ## convert to named list
   quanteda::dictionary()                                                  ## convert to dictionary
 
@@ -894,7 +894,7 @@ therapy_dictionary <- NCIt %>%
 prior_tx_exclusions <- eligibilities %>%
     dplyr::filter(criterion_type == "EXCLUSION") %>%
     dplyr::select(nct_id, criterion_index, criteria) %>%
-    unique() %>%
+    base::unique() %>%
     corpus(docid_field = "criterion_index",  text_field = "criteria") %>% 
     tokens() %>%
     kwic(pattern =  "previous|prior", window = window_size, valuetype = "regex") %>% 
@@ -911,10 +911,10 @@ prior_tx_exclusions <- eligibilities %>%
     dplyr::select(nct_id, criterion_index, criteria, therapy_code, display_name) %>%
     dplyr::group_by(nct_id) %>%
     dplyr::summarise(
-        tx_exclusions = paste(unique(criteria), collapse = ";\n")
+        tx_exclusions = paste(base::unique(criteria), collapse = ";\n")
     ) %>%
     as.data.frame() %>%
-    unique()
+    base::unique()
 
 ```
 
@@ -934,7 +934,7 @@ cancerStudies <- cancerStudies %>%
 design_groups <- design_groups %>%
   dplyr::mutate(dg_title_description = paste(dg_title, dg_description, sep = ": ")) %>%
   dplyr::select(nct_id, dg_id, dg_title_description) %>%            
-  unique()
+  base::unique()
 
 ## expand gene abbreviations in dg_title_description as for eligibility criteria
 ## create a copy of criterion text for processing
@@ -946,7 +946,7 @@ design_groups$dg_title_description_processed <- design_groups$dg_title_descripti
 ## processing of patterns such as BRCA1/2 or RAD51C/D
 # first, create a table with all substrings in criteria that contain a forward slash
 replacements <- data.frame(verbatim = stringr::str_extract_all(string = design_groups$dg_title_description_processed, pattern = "\\w*/.\\b") %>% unlist()) %>% 
-    unique() %>%
+    base::unique() %>%
     dplyr::mutate(pre = stringr::str_extract(verbatim, pattern = "[^ ]*(?=/)")) %>%        ## get the substring BEFORE the slash
     dplyr::mutate(stem = stringr::str_sub(pre, end = -2))                       %>%        ## nibble the last character off the pre substring
     dplyr::mutate(post = stringr::str_extract(verbatim, pattern = "(?<=/)."))   %>%        ## get the substring AFTER the slash
@@ -974,7 +974,7 @@ replacements2 <- data.frame(verbatim = str_extract_all(string = design_groups$dg
   dplyr::mutate(stem = verbatim %>% str_sub( end = -2)) %>%
   dplyr::filter(stem %in% humanGenes$Aliases) %>%
   dplyr::mutate(expanded = paste(stem, "mutation", sep = " ")) %>%
-  unique()
+  base::unique()
 
 ## create a named vector to use with str_replace_all
 replacement_strings2 <- as.character(replacements2$expanded)
@@ -1009,14 +1009,14 @@ design_groups_alterations_genes <- design_groups %>%
     dplyr::rename("dg_id"="docname") %>%
     dplyr::rename("alteration_type"="pattern") %>%
     dplyr::mutate(gene_alteration_type = paste(na.omit(geneSymbol), na.omit(alteration_type), sep = " ")) %>%
-    unique()
+    base::unique()
 
 
 design_groups <- design_groups %>%
   merge(by.x = "dg_id", all.x = TRUE, y = design_groups_alterations_genes, by.y = "dg_id") %>%
   #dplyr::mutate(gene_alteration_type = paste(geneSymbol, alteration_type, sep = " ")) %>%
   dplyr::select(nct_id, dg_id, dg_title_description, gene_alteration_type) %>%            ## these are only columns needed for Shiny app
-  unique()
+  base::unique()
   
 
 
@@ -1036,12 +1036,12 @@ scored_matches <- eligibilities %>%
   dplyr::filter(!is.na(gene_alteration_type)) %>%
   dplyr::group_by(nct_id, gene_alteration_type) %>%
   dplyr::summarise(
-    matching_criteria = paste(unique(criteria), collapse = "\n\n")
+    matching_criteria = paste(base::unique(criteria), collapse = "\n\n")
     ) %>%
   as.data.frame() %>%
   dplyr::mutate(eligibility_rationale = paste0("Enrolling subjects with ", gene_alteration_type)) %>%
   dplyr::mutate(eligibility_score = 3) %>%
-  unique()
+  base::unique()
 
 
 scored_matches <- design_groups %>%
@@ -1049,18 +1049,18 @@ scored_matches <- design_groups %>%
   dplyr::filter(!is.na(gene_alteration_type)) %>%
   dplyr::group_by(nct_id, gene_alteration_type) %>%
   dplyr::summarise(
-    matching_criteria = paste(unique(dg_title_description), collapse = "\n\n")
+    matching_criteria = paste(base::unique(dg_title_description), collapse = "\n\n")
     ) %>%
   as.data.frame() %>%
   dplyr::mutate(eligibility_rationale = paste0("Stratified on ", gene_alteration_type)) %>%
   dplyr::mutate(eligibility_score = 4) %>%                      ## assign a score of +4 so that this takes precedent over inclusion criteria (where both apply)
-  unique() %>%
+  base::unique() %>%
   rbind(scored_matches) %>%
   group_by(nct_id, gene_alteration_type) %>%
   dplyr::slice_max(eligibility_score, n=1) %>%
   as.data.frame() %>%
   dplyr::mutate(eligibility_score = 3)    %>%                   ## reset scores to +3 so that stratification and enrollment are scored equally
-  unique()
+  base::unique()
 
 ```
 
@@ -1070,7 +1070,7 @@ scored_matches <- design_groups %>%
   
 ```{r specify MOAs relevant for each alteration type}
 
-action_types_list <- list(unique(na.omit(interventions$action_type)))
+action_types_list <- list(base::unique(na.omit(interventions$action_type)))
 
 alteration_types_list <- list(names(alteration_types))
 
@@ -1083,7 +1083,7 @@ relevant_moas <- data.frame(
   as.data.frame() %>%
   dplyr::filter(!(alteration_type == "loss"))    %>%          ## don't reward an intervention that targets a gene that has been lost
   dplyr::filter(!(alteration_type == "amplification" & action_type %in% c("agonist", "activator", "positive allosteric modulator")))    %>%          ## or these
-  unique()
+  base::unique()
   
 
 #formattable(relevant_moas)
@@ -1095,18 +1095,18 @@ relevant_moas <- data.frame(
 scored_matches_interventions <- interventions %>% 
   dplyr::select(nct_id, intervention_name, intervention_pt, TARGET_SYMBOL, action_type) %>%
   dplyr::filter(!is.na(TARGET_SYMBOL)) %>%
-  unique() %>%
+  base::unique() %>%
   dplyr::mutate(intervention_name = ifelse(test = intervention_pt != "", yes = intervention_pt, no = intervention_name))  %>%   ## if there is a pt for intervention, use it...
   merge(by.x = "action_type", y = relevant_moas, by.y = "action_type") %>% 
   dplyr::mutate(gene_alteration_type = paste(TARGET_SYMBOL, alteration_type, sep = " ")) %>%
   dplyr::mutate(intervention_rationale = paste0("Study intervention (", intervention_name, ") targets ", TARGET_SYMBOL)) %>%
   dplyr::group_by(nct_id, gene_alteration_type) %>%
   dplyr::summarise(
-    intervention_rationale = paste(unique(intervention_rationale), collapse = "\n")
+    intervention_rationale = paste(base::unique(intervention_rationale), collapse = "\n")
   ) %>%
   as.data.frame() %>%
   dplyr::mutate(intervention_score = 2) %>%
-  unique()
+  base::unique()
 
 ```
   
@@ -1123,7 +1123,7 @@ tryCatch(
     pathwaysInCancer_mappings <- expand_KEGG_mappings(pathwaysInCancer_KGML)
     pathwaysInCancer_edges <- expand_KEGG_edges(pathwaysInCancer_KGML, pathwaysInCancer_mappings)
     ## create a simple edgelist
-    kegg_edges <- unique(dplyr::select(pathwaysInCancer_edges, "upstream"="entry1symbol", "downstream"="entry2symbol"))
+    kegg_edges <- base::unique(dplyr::select(pathwaysInCancer_edges, "upstream"="entry1symbol", "downstream"="entry2symbol"))
     ## create as a table in database, in case need to fall back on previous version...
     dbWriteTable(conn = sqlite_con,name = "kegg_edges", value = kegg_edges, overwrite=TRUE)
   }, error = function(e) {
@@ -1144,7 +1144,7 @@ kegg_edges <- DBI::dbGetQuery(sqlite_con, "SELECT * FROM kegg_edges")
 scored_matches_interventions_downstream <- interventions %>%
   dplyr::select(nct_id, intervention_name, intervention_pt, TARGET_SYMBOL) %>%
   dplyr::filter(!is.na(TARGET_SYMBOL)) %>%
-  unique() %>%
+  base::unique() %>%
   dplyr::mutate(intervention_name = ifelse(test = intervention_pt != "", yes = intervention_pt, no = intervention_name))  %>%   ## if there is a pt for intervention, use it...
   merge(by.x = "TARGET_SYMBOL", y=kegg_edges, by.y = "downstream") %>%              ## get the genes where the drug target is immediately DOWNSTREAM
   dplyr::filter(upstream %in% humanGenes$Symbol) %>%
@@ -1153,17 +1153,17 @@ scored_matches_interventions_downstream <- interventions %>%
   dplyr::mutate(gene_alteration_type = paste(upstream, alteration_type, sep = " ")) %>%      ## alterations in the upstream gene are matched
   dplyr::group_by(nct_id, intervention_name, gene_alteration_type) %>%
   dplyr::summarise(
-    TARGET_SYMBOL = paste(unique(TARGET_SYMBOL), collapse = ",")
+    TARGET_SYMBOL = paste(base::unique(TARGET_SYMBOL), collapse = ",")
   ) %>%
   as.data.frame() %>%
   dplyr::mutate(intervention_rationale = paste0("Study intervention (", intervention_name, ") targets downstream gene(s) (", TARGET_SYMBOL, ")")) %>%
   dplyr::group_by(nct_id, gene_alteration_type) %>%
   dplyr::summarise(
-    intervention_rationale = paste(unique(intervention_rationale), collapse = "\n")
+    intervention_rationale = paste(base::unique(intervention_rationale), collapse = "\n")
   ) %>%
   as.data.frame() %>%
   dplyr::mutate(intervention_score = 1) %>%                         ## assign score of +1
-  unique()
+  base::unique()
 
 ```
 
@@ -1176,7 +1176,7 @@ scored_matches_interventions <- scored_matches_interventions %>%
   group_by(nct_id, gene_alteration_type) %>%
   dplyr::slice_max(intervention_score, n=1) %>%
   as.data.frame() %>%
-  unique()
+  base::unique()
 
 ```
 
@@ -1192,7 +1192,7 @@ scored_matches <- scored_matches %>%
     dplyr::mutate(combined_score = sum(eligibility_score, intervention_score, na.rm = TRUE)) %>%
     as.data.frame() %>%
     dplyr::select(nct_id, gene_alteration_type, eligibility_rationale, intervention_rationale, matching_criteria, combined_score) %>%
-    unique() %>%
+    base::unique() %>%
     arrange(desc(combined_score))
 
 ```
@@ -1214,13 +1214,13 @@ cancerStudies <- cancerStudies %>%
                                      no = city))           %>%                 ## add flag for sites not yet recruiting
   dplyr::select(nct_id, brief_title, primary_completion_date, last_update_posted_date, condition, city, overall_status, site_status, site_contacts, central_contacts, refresh_date, Link, condition_PT, latitude, longitude, tx_exclusions) %>%
   dplyr::mutate(brief_title = paste0('<a href="',Link,'" target="_blank">',brief_title ,  " </a>")) %>%         ## add some html code to brief_title value with relevant link
-  unique()
+  base::unique()
 
 
 
 interventions <- interventions %>%
   dplyr::select(nct_id, intervention_name, intervention_pt, NCIt_code, TARGET_SYMBOL, action_type, Parent_synonym) %>%
-  unique()
+  base::unique()
 
 ```
 
